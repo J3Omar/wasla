@@ -38,7 +38,8 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.onboarding,
       name: 'onboarding',
-      builder: (context, state) => const _PlaceholderScreen(label: 'Onboarding'),
+      builder: (context, state) =>
+          const _PlaceholderScreen(label: 'Onboarding'),
     ),
     GoRoute(
       path: AppRoutes.home,
@@ -56,12 +57,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.incomingCall,
       name: 'incoming-call',
-      builder: (context, state) => const _PlaceholderScreen(label: 'Incoming Call'),
+      builder: (context, state) =>
+          const _PlaceholderScreen(label: 'Incoming Call'),
     ),
     GoRoute(
       path: AppRoutes.outgoingCall,
       name: 'outgoing-call',
-      builder: (context, state) => const _PlaceholderScreen(label: 'Outgoing Call'),
+      builder: (context, state) =>
+          const _PlaceholderScreen(label: 'Outgoing Call'),
     ),
     GoRoute(
       path: AppRoutes.voiceCall,
@@ -96,10 +99,7 @@ class _PlaceholderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
+        child: Text(label, style: Theme.of(context).textTheme.headlineMedium),
       ),
     );
   }

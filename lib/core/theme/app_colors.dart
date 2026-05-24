@@ -55,9 +55,9 @@ abstract final class AppColors {
     colors: [primaryCyan, tertiaryGreen],
   );
 
-  static const LinearGradient splashGlowGradient = RadialGradient(
+  static const RadialGradient splashGlowGradient = RadialGradient(
     center: Alignment.center,
     radius: 0.8,
     colors: [Color(0x4000DBE7), Color(0x00121416)],
-  ) as LinearGradient;
+  );
 }
