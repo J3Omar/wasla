@@ -42,6 +42,7 @@ dependencies:
 
   # --- State Management ---
   flutter_riverpod: ^2.6.1          # State management
+  google_fonts: ^6.2.1              # Hanken Grotesk + Inter + Geist (no .ttf files needed)
 
 dev_dependencies:
   flutter_test:
@@ -57,23 +58,3 @@ flutter:
 
   assets:
     - assets/images/
-    - assets/fonts/
-
-  fonts:
-    - family: HankenGrotesk
-      fonts:
-        - asset: assets/fonts/HankenGrotesk-Regular.ttf
-        - asset: assets/fonts/HankenGrotesk-Bold.ttf
-          weight: 700
-        - asset: assets/fonts/HankenGrotesk-SemiBold.ttf
-          weight: 600
-    - family: Inter
-      fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
-        - asset: assets/fonts/Inter-Medium.ttf
-          weight: 500
-    - family: Geist
-      fonts:
-        - asset: assets/fonts/Geist-Regular.ttf
-        - asset: assets/fonts/Geist-Medium.ttf
-          weight: 500
