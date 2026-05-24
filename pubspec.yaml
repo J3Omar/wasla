@@ -48,6 +48,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
 
   # --- Drift Code Generation ---
   drift_dev: ^2.25.0
@@ -58,3 +59,19 @@ flutter:
 
   assets:
     - assets/images/
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/Wasla-logo.png"
+  background_color: "#121416"
+  adaptive_icon_background: "#121416"
+  adaptive_icon_foreground: "assets/images/Wasla-logo.png"
+  windows:
+    generate: true
+    image_path: "assets/images/Wasla-logo.png"
+    icon_size: 256
+  web:
+    generate: true
+    image_path: "assets/images/Wasla-logo.png"
+    background_color: "#121416"

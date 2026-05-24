@@ -54,6 +54,17 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  // Set the Linux Window Icon
+  g_autoptr(GError) error = nullptr;
+  g_autoptr(GdkPixbuf) icon = gdk_pixbuf_new_from_file("assets/app_icon.png", &error);
+  if (icon != nullptr) {
+    gtk_window_set_icon(window, icon);
+  } else {
+    g_warning("Failed to load window icon: %s", error->message);
+  }
+
+  gtk_widget_show(GTK_WIDGET(window));
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
