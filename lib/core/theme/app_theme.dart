@@ -42,48 +42,76 @@ abstract final class AppTheme {
       ),
 
       // ── TextTheme ──────────────────────────────────────────────────────────
-      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).copyWith(
-        displayLarge: GoogleFonts.hankenGrotesk(
-          fontSize: 32, fontWeight: FontWeight.w700, color: AppColors.textPrimary,
-        ),
-        displayMedium: GoogleFonts.hankenGrotesk(
-          fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.textPrimary,
-          letterSpacing: -0.4,
-        ),
-        displaySmall: GoogleFonts.hankenGrotesk(
-          fontSize: 24, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
-        ),
-        headlineLarge: GoogleFonts.hankenGrotesk(
-          fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary,
-        ),
-        headlineMedium: GoogleFonts.hankenGrotesk(
-          fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
-        ),
-        headlineSmall: GoogleFonts.hankenGrotesk(
-          fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
-        ),
-        bodyLarge: GoogleFonts.inter(
-          fontSize: 16, fontWeight: FontWeight.w400, color: AppColors.textPrimary,
-          height: 1.5,
-        ),
-        bodyMedium: GoogleFonts.inter(
-          fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textPrimary,
-          height: 1.43,
-        ),
-        bodySmall: GoogleFonts.inter(
-          fontSize: 12, fontWeight: FontWeight.w400, color: AppColors.textSecondary,
-        ),
-        labelLarge: GoogleFonts.getFont('JetBrains Mono', 
-          fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textSecondary,
-          letterSpacing: 0.6,
-        ),
-        labelMedium: GoogleFonts.getFont('JetBrains Mono', 
-          fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textSecondary,
-        ),
-        labelSmall: GoogleFonts.getFont('JetBrains Mono', 
-          fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.textMuted,
-        ),
-      ),
+      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme)
+          .copyWith(
+            displayLarge: GoogleFonts.hankenGrotesk(
+              fontSize: 32,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+            displayMedium: GoogleFonts.hankenGrotesk(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.4,
+            ),
+            displaySmall: GoogleFonts.hankenGrotesk(
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+            headlineLarge: GoogleFonts.hankenGrotesk(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+            headlineMedium: GoogleFonts.hankenGrotesk(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+            headlineSmall: GoogleFonts.hankenGrotesk(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+            bodyLarge: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textPrimary,
+              height: 1.5,
+            ),
+            bodyMedium: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textPrimary,
+              height: 1.43,
+            ),
+            bodySmall: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: AppColors.textSecondary,
+            ),
+            labelLarge: GoogleFonts.getFont(
+              'JetBrains Mono',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.6,
+            ),
+            labelMedium: GoogleFonts.getFont(
+              'JetBrains Mono',
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+            labelSmall: GoogleFonts.getFont(
+              'JetBrains Mono',
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textMuted,
+            ),
+          ),
 
       // ── AppBar ─────────────────────────────────────────────────────────────
       appBarTheme: AppBarTheme(
@@ -111,13 +139,17 @@ abstract final class AppTheme {
         indicatorColor: AppColors.primaryCyan.withValues(alpha: 0.15),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return GoogleFonts.getFont('JetBrains Mono', 
-              fontSize: 11, fontWeight: FontWeight.w600,
+            return GoogleFonts.getFont(
+              'JetBrains Mono',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
               color: AppColors.primaryCyan,
             );
           }
-          return GoogleFonts.getFont('JetBrains Mono', 
-            fontSize: 11, color: AppColors.textMuted,
+          return GoogleFonts.getFont(
+            'JetBrains Mono',
+            fontSize: 11,
+            color: AppColors.textMuted,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
@@ -144,12 +176,16 @@ abstract final class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primaryCyan, width: 1.5),
+          borderSide: const BorderSide(
+            color: AppColors.primaryCyan,
+            width: 1.5,
+          ),
         ),
-        hintStyle: GoogleFonts.inter(
-          fontSize: 14, color: AppColors.textMuted,
+        hintStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textMuted),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
 
       // ── Cards ──────────────────────────────────────────────────────────────
@@ -169,9 +205,12 @@ abstract final class AppTheme {
           backgroundColor: AppColors.primaryCyan,
           foregroundColor: AppColors.bgDeep,
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: GoogleFonts.hankenGrotesk(
-            fontSize: 15, fontWeight: FontWeight.w700,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           minimumSize: const Size(double.infinity, 52),
@@ -182,7 +221,10 @@ abstract final class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primaryCyan,
-          textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+          textStyle: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
 
@@ -200,7 +242,8 @@ abstract final class AppTheme {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.bgSecondary,
         contentTextStyle: GoogleFonts.inter(
-          fontSize: 14, color: AppColors.textPrimary,
+          fontSize: 14,
+          color: AppColors.textPrimary,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         behavior: SnackBarBehavior.floating,

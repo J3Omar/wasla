@@ -5,11 +5,7 @@ import 'core/router/app_router.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    const ProviderScope(
-      child: WaslaApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: WaslaApp()));
 }
 
 class WaslaApp extends StatelessWidget {
