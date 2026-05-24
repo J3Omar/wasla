@@ -65,8 +65,6 @@ flutter_launcher_icons:
   ios: false
   image_path: "assets/images/Wasla-logo.png"
   background_color: "#121416"
-  adaptive_icon_background: "#121416"
-  adaptive_icon_foreground: "assets/images/Wasla-logo.png"
   windows:
     generate: true
     image_path: "assets/images/Wasla-logo.png"

@@ -73,14 +73,14 @@ abstract final class AppTheme {
         bodySmall: GoogleFonts.inter(
           fontSize: 12, fontWeight: FontWeight.w400, color: AppColors.textSecondary,
         ),
-        labelLarge: GoogleFonts.geist(
+        labelLarge: GoogleFonts.getFont('JetBrains Mono', 
           fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textSecondary,
           letterSpacing: 0.6,
         ),
-        labelMedium: GoogleFonts.geist(
+        labelMedium: GoogleFonts.getFont('JetBrains Mono', 
           fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.textSecondary,
         ),
-        labelSmall: GoogleFonts.geist(
+        labelSmall: GoogleFonts.getFont('JetBrains Mono', 
           fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.textMuted,
         ),
       ),
@@ -111,12 +111,12 @@ abstract final class AppTheme {
         indicatorColor: AppColors.primaryCyan.withValues(alpha: 0.15),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return GoogleFonts.geist(
+            return GoogleFonts.getFont('JetBrains Mono', 
               fontSize: 11, fontWeight: FontWeight.w600,
               color: AppColors.primaryCyan,
             );
           }
-          return GoogleFonts.geist(
+          return GoogleFonts.getFont('JetBrains Mono', 
             fontSize: 11, color: AppColors.textMuted,
           );
         }),
@@ -153,7 +153,7 @@ abstract final class AppTheme {
       ),
 
       // ── Cards ──────────────────────────────────────────────────────────────
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: AppColors.bgSecondary,
         elevation: 0,
         shape: RoundedRectangleBorder(

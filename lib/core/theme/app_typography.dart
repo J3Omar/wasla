@@ -53,40 +53,40 @@ abstract final class AppTypography {
       );
 
   // ── Labels — Geist ────────────────────────────────────────────────────────
-  static TextStyle get labelLarge => GoogleFonts.geist(
+  static TextStyle get labelLarge => GoogleFonts.getFont('JetBrains Mono', 
         fontSize: 12,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.6,
         color: AppColors.textSecondary,
       );
 
-  static TextStyle get labelMedium => GoogleFonts.geist(
+  static TextStyle get labelMedium => GoogleFonts.getFont('JetBrains Mono', 
         fontSize: 11,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.4,
         color: AppColors.textSecondary,
       );
 
-  static TextStyle get labelSmall => GoogleFonts.geist(
+  static TextStyle get labelSmall => GoogleFonts.getFont('JetBrains Mono', 
         fontSize: 10,
         fontWeight: FontWeight.w500,
         color: AppColors.textMuted,
       );
 
-  static TextStyle get capsLabel => GoogleFonts.geist(
+  static TextStyle get capsLabel => GoogleFonts.getFont('JetBrains Mono', 
         fontSize: 12,
         fontWeight: FontWeight.w500,
         letterSpacing: 1.2,
         color: AppColors.textSecondary,
       );
 
-  static TextStyle get timestamp => GoogleFonts.geist(
+  static TextStyle get timestamp => GoogleFonts.getFont('JetBrains Mono', 
         fontSize: 10,
         fontWeight: FontWeight.w400,
         color: AppColors.textMuted,
       );
 
-  static TextStyle get ipAddress => GoogleFonts.geist(
+  static TextStyle get ipAddress => GoogleFonts.getFont('JetBrains Mono', 
         fontSize: 11,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.8,
