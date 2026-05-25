@@ -3,15 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../chat/data/chat_repository.dart';
 import '../data/discovery_service.dart';
 import '../domain/device_model.dart';
 
+/// Devices tab — shows live network peers + offline peers from chat history.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final discoveryAsync = ref.watch(discoveryServiceProvider);
+    final knownUuidsAsync = ref.watch(_knownPeersProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -20,12 +23,40 @@ class HomeScreen extends ConsumerWidget {
         loading: () => const _ScanningOverlay(),
         error: (e, _) => _ErrorView(error: e.toString()),
         data: (devicesMap) {
-          // Separate self from other devices
+          // Separate self from others
           final self = devicesMap.values.where((d) => d.isSelf).toList();
-          final others = devicesMap.values.where((d) => !d.isSelf).toList()
+          final onlineOthers = devicesMap.values
+              .where((d) => !d.isSelf)
+              .toList()
             ..sort((a, b) => a.displayName.compareTo(b.displayName));
 
-          return _DeviceListView(self: self, others: others);
+          // Merge offline peers from chat DB
+          return knownUuidsAsync.when(
+            loading: () => _DeviceListView(self: self, others: onlineOthers),
+            error: (error, stackTrace) => _DeviceListView(self: self, others: onlineOthers),
+            data: (knownPeers) {
+              // Build set of online UUIDs to avoid duplicates
+              final onlineUuids = onlineOthers.map((d) => d.uuid).toSet();
+
+              final offlineOthers = knownPeers.entries
+                  .where((e) => !onlineUuids.contains(e.key))
+                  .map((e) => Device(
+                        uuid: e.key,
+                        displayName: e.value,
+                        localIp: '—',
+                        port: 0,
+                        status: DeviceStatus.offline,
+                        lastSeen: DateTime.fromMillisecondsSinceEpoch(0),
+                      ))
+                  .toList()
+                ..sort((a, b) => a.displayName.compareTo(b.displayName));
+
+              return _DeviceListView(
+                self: self,
+                others: [...onlineOthers, ...offlineOthers],
+              );
+            },
+          );
         },
       ),
     );
@@ -33,6 +64,7 @@ class HomeScreen extends ConsumerWidget {
 
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
+      backgroundColor: AppColors.bgSecondary,
       title: Row(
         children: [
           Image.asset('assets/images/Wasla-logo.png', height: 28),
@@ -71,11 +103,29 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
       ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: AppColors.borderDefault),
+      ),
     );
   }
 }
 
-// ── Device List View (Self card + Other Devices section) ─────────────────────
+// ── Known peers provider (uuid → name from chat DB) ───────────────────────────
+
+final _knownPeersProvider =
+    FutureProvider<Map<String, String>>((ref) async {
+  final repo = ref.watch(chatRepositoryProvider);
+  final uuids = await repo.knownPeerUuids();
+  final result = <String, String>{};
+  for (final uuid in uuids) {
+    final name = await repo.getPeerName(uuid);
+    result[uuid] = name ?? uuid.substring(0, 8);
+  }
+  return result;
+});
+
+// ── Device List View ──────────────────────────────────────────────────────────
 
 class _DeviceListView extends StatelessWidget {
   const _DeviceListView({required this.self, required this.others});
@@ -84,10 +134,13 @@ class _DeviceListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onlineCount = others.where((d) => d.status != DeviceStatus.offline).length;
+    final offlineCount = others.where((d) => d.status == DeviceStatus.offline).length;
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       children: [
-        // Always show self device at top
+        // ── This device ──────────────────────────────────────────────────
         if (self.isNotEmpty) ...[
           Text(
             'YOUR DEVICE',
@@ -101,31 +154,89 @@ class _DeviceListView extends StatelessWidget {
           const SizedBox(height: 24),
         ],
 
-        // Other devices section
-        Text(
-          'DEVICES ON NETWORK',
-          style: AppTypography.capsLabel.copyWith(
-            color: AppColors.textMuted,
-            fontSize: 11,
-          ),
+        // ── Online peers ─────────────────────────────────────────────────
+        Row(
+          children: [
+            Text(
+              'DEVICES ON NETWORK',
+              style: AppTypography.capsLabel.copyWith(
+                color: AppColors.textMuted,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (onlineCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.statusOnline.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$onlineCount',
+                  style: AppTypography.labelSmall.copyWith(
+                    color: AppColors.statusOnline,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 10),
 
-        if (others.isEmpty)
+        if (others.where((d) => d.status != DeviceStatus.offline).isEmpty)
           const _NoOtherDevices()
         else
-          ...others.map(
-            (d) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _DeviceCard(device: d),
-            ),
+          ...others
+              .where((d) => d.status != DeviceStatus.offline)
+              .map((d) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _DeviceCard(device: d),
+                  )),
+
+        // ── Offline peers from chat history ──────────────────────────────
+        if (offlineCount > 0) ...[
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Text(
+                'PREVIOUSLY SEEN',
+                style: AppTypography.capsLabel.copyWith(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.statusOffline.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$offlineCount offline',
+                  style: AppTypography.labelSmall.copyWith(
+                    color: AppColors.statusOffline,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 10),
+          ...others
+              .where((d) => d.status == DeviceStatus.offline)
+              .map((d) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _DeviceCard(device: d),
+                  )),
+        ],
       ],
     );
   }
 }
 
-// ── Device Card ──────────────────────────────────────────────────────────────
+// ── Device Card ───────────────────────────────────────────────────────────────
 
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({required this.device});
@@ -133,6 +244,7 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isOffline = device.status == DeviceStatus.offline;
     final statusColor = _statusColor(device.status);
 
     return AnimatedContainer(
@@ -140,108 +252,134 @@ class _DeviceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: device.isSelf
             ? AppColors.primaryCyan.withValues(alpha: 0.06)
-            : AppColors.bgSecondary,
+            : isOffline
+                ? AppColors.bgSecondary.withValues(alpha: 0.5)
+                : AppColors.bgSecondary,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: device.isSelf
               ? AppColors.primaryCyan.withValues(alpha: 0.3)
-              : AppColors.borderDefault,
+              : isOffline
+                  ? AppColors.borderDefault.withValues(alpha: 0.4)
+                  : AppColors.borderDefault,
         ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: device.isSelf
-              ? null
-              : () {
-                  context.push('/chat/${device.uuid}');
-                },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    // Avatar
-                    _DeviceAvatar(device: device, statusColor: statusColor),
-                    const SizedBox(width: 14),
-                    // Info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  device.displayName,
-                                  style: AppTypography.heading4,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (device.isSelf) ...[
-                                const SizedBox(width: 8),
-                                _Badge(
-                                  label: 'THIS DEVICE',
-                                  color: AppColors.primaryCyan,
-                                ),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Directionality(
-                            textDirection: TextDirection.ltr,
-                            child: Text(
-                              device.localIp,
-                              style: AppTypography.ipAddress,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Status chip
-                    _StatusChip(status: device.status, color: statusColor),
-                  ],
-                ),
-
-                // Action buttons row for other devices (below info for mobile)
-                if (!device.isSelf) ...[
-                  const SizedBox(height: 12),
+      child: Opacity(
+        opacity: isOffline ? 0.65 : 1.0,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: device.isSelf
+                ? null
+                : () {
+                    context.push(
+                      '/chat/${device.uuid}',
+                      extra: {
+                        'peerName': device.displayName,
+                        'isOnline': !isOffline,
+                      },
+                    );
+                  },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Column(
+                children: [
                   Row(
                     children: [
+                      // Avatar
+                      _DeviceAvatar(device: device, statusColor: statusColor),
+                      const SizedBox(width: 14),
+                      // Info
                       Expanded(
-                        child: _ActionTile(
-                          icon: Icons.chat_bubble_outline_rounded,
-                          label: 'Chat',
-                          color: AppColors.primaryCyan,
-                          onTap: () {
-                            context.push('/chat/${device.uuid}');
-                          },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    device.displayName,
+                                    style: AppTypography.heading4,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (device.isSelf) ...[
+                                  const SizedBox(width: 8),
+                                  _Badge(
+                                    label: 'THIS DEVICE',
+                                    color: AppColors.primaryCyan,
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Directionality(
+                              textDirection: TextDirection.ltr,
+                              child: Text(
+                                isOffline ? 'Last seen — offline' : device.localIp,
+                                style: AppTypography.ipAddress.copyWith(
+                                  color: isOffline
+                                      ? AppColors.textMuted
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _ActionTile(
-                          icon: Icons.call_outlined,
-                          label: 'Call',
-                          color: AppColors.statusOnline,
-                          onTap: () {},
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _ActionTile(
-                          icon: Icons.videocam_outlined,
-                          label: 'Video',
-                          color: AppColors.primaryPurple,
-                          onTap: () {},
-                        ),
-                      ),
+                      // Status chip
+                      _StatusChip(status: device.status, color: statusColor),
                     ],
                   ),
+
+                  // Action buttons (only for non-self devices)
+                  if (!device.isSelf) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ActionTile(
+                            icon: Icons.chat_bubble_outline_rounded,
+                            label: 'Chat',
+                            color: AppColors.primaryCyan,
+                            enabled: true, // always allow — chat is local
+                            onTap: () {
+                              context.push(
+                                '/chat/${device.uuid}',
+                                extra: {
+                                  'peerName': device.displayName,
+                                  'isOnline': !isOffline,
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ActionTile(
+                            icon: Icons.call_outlined,
+                            label: 'Call',
+                            color: AppColors.statusOnline,
+                            enabled: !isOffline,
+                            onTap: () {},
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ActionTile(
+                            icon: Icons.videocam_outlined,
+                            label: 'Video',
+                            color: AppColors.primaryPurple,
+                            enabled: !isOffline,
+                            onTap: () {},
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -259,7 +397,7 @@ class _DeviceCard extends StatelessWidget {
   }
 }
 
-// ── Sub-widgets ──────────────────────────────────────────────────────────────
+// ── Sub-widgets ───────────────────────────────────────────────────────────────
 
 class _DeviceAvatar extends StatelessWidget {
   const _DeviceAvatar({required this.device, required this.statusColor});
@@ -361,36 +499,41 @@ class _Badge extends StatelessWidget {
   }
 }
 
-/// Full-width action tile (replaces small icon buttons for mobile friendliness)
 class _ActionTile extends StatelessWidget {
   const _ActionTile({
     required this.icon,
     required this.label,
     required this.color,
+    required this.enabled,
     required this.onTap,
   });
   final IconData icon;
   final String label;
   final Color color;
+  final bool enabled;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor = enabled ? color : AppColors.textMuted;
     return GestureDetector(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+          color: effectiveColor.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
+          border: Border.all(color: effectiveColor.withValues(alpha: 0.2)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 18),
+            Icon(icon, color: effectiveColor, size: 18),
             const SizedBox(width: 6),
-            Text(label, style: AppTypography.labelSmall.copyWith(color: color)),
+            Text(
+              label,
+              style: AppTypography.labelSmall.copyWith(color: effectiveColor),
+            ),
           ],
         ),
       ),
@@ -440,14 +583,13 @@ class _PulseDotState extends State<_PulseDot>
 
 // ── Empty / Loading / Error states ───────────────────────────────────────────
 
-/// Shown when no OTHER devices are found (self still visible at top)
 class _NoOtherDevices extends StatelessWidget {
   const _NoOtherDevices();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 48),
+      padding: const EdgeInsets.symmetric(vertical: 40),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -459,7 +601,7 @@ class _NoOtherDevices extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'No other devices found',
+              'No online devices found',
               style: AppTypography.heading4.copyWith(
                 color: AppColors.textSecondary,
               ),

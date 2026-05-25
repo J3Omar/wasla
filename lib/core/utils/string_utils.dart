@@ -1,4 +1,4 @@
-/// Utilities shared across the app.
+// Utilities shared across the app.
 
 /// Converts Arabic-Indic and Extended Arabic-Indic numerals to ASCII digits.
 ///

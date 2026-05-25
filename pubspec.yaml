@@ -45,6 +45,9 @@ dependencies:
   flutter_riverpod: ^2.6.1          # State management
   google_fonts: ^6.2.1              # Hanken Grotesk + Inter + Geist (no .ttf files needed)
 
+  # --- Utilities ---
+  path: ^1.9.1                      # File path joining for Drift DB
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
