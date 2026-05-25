@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/utils/string_utils.dart';
 import '../domain/device_model.dart';
 import 'device_registry.dart';
 import 'mdns_service.dart';
@@ -65,7 +66,9 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
     }
 
     final network = NetworkInfo();
-    final ip = await network.getWifiIP() ?? '127.0.0.1';
+    final rawIp = await network.getWifiIP() ?? '127.0.0.1';
+    // Normalize: some Arabic-locale devices return Arabic-Indic digit strings
+    final ip = normalizeDigits(rawIp);
 
     return Device(
       uuid: uuid,
