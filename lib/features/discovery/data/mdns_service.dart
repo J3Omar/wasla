@@ -71,7 +71,7 @@ class MdnsService {
               )) {
                 if (!_running) break;
                 try {
-                  final payload = String.fromCharCodes(txt.text);
+                  final payload = txt.text;
                   final json = jsonDecode(payload) as Map<String, dynamic>;
                   final device = Device.fromJson(json);
                   if (device.uuid != selfDevice.uuid) {
