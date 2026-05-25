@@ -53,8 +53,7 @@ class MdnsService {
             ResourceRecordQuery.serverPointer('$_serviceType.$_domain'),
           )) {
             if (!_running) break;
-            await for (final _
-                in _client!.lookup<SrvResourceRecord>(
+            await for (final _ in _client!.lookup<SrvResourceRecord>(
               ResourceRecordQuery.service(ptr.domainName),
             )) {
               if (!_running) break;
