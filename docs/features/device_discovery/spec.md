@@ -87,12 +87,12 @@ Every device running the app announces itself on the LAN. Other devices discover
 ## 🧪 Acceptance Criteria
 
 - [x] Own device appears immediately with "THIS DEVICE" badge
-- [ ] Other devices appear within 5 seconds of launch
-- [ ] Devices disappear within 10 seconds of closing the app
+- [x] Other devices appear within 5 seconds of launch
+- [x] Devices disappear within 10 seconds of closing the app
 - [x] Device status is displayed correctly
 - [x] Works without internet (LAN only)
 - [ ] Test: Android → Android on same subnet
-- [ ] Test: Linux → Android on same subnet
+- [x] Test: Linux → Android on same subnet
 
 ---
 

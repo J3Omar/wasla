@@ -190,7 +190,13 @@ class _DeviceCard extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(device.localIp, style: AppTypography.ipAddress),
+                          Directionality(
+                            textDirection: TextDirection.ltr,
+                            child: Text(
+                              device.localIp,
+                              style: AppTypography.ipAddress,
+                            ),
+                          ),
                         ],
                       ),
                     ),

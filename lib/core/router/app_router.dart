@@ -1,11 +1,15 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wasla/features/discovery/presentation/home_screen.dart';
+import 'package:wasla/features/setup/presentation/setup_name_screen.dart';
 
-import 'package:flutter/material.dart';
+const _kNameKey = 'wasla_device_name';
 
 /// Route name constants — use these instead of raw strings
 abstract final class AppRoutes {
   static const String splash = '/';
+  static const String setup = '/setup';
   static const String onboarding = '/onboarding';
   static const String home = '/home';
   static const String chat = '/chat/:deviceId';
@@ -24,7 +28,20 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.splash,
       name: 'splash',
-      redirect: (context, state) => AppRoutes.home,
+      redirect: (context, state) async {
+        const storage = FlutterSecureStorage();
+        final name = await storage.read(key: _kNameKey);
+        // Go to setup if no name exists OR if it's still the auto-generated default
+        final needsSetup = name == null ||
+            name.isEmpty ||
+            name.startsWith('Device-');
+        return needsSetup ? AppRoutes.setup : AppRoutes.home;
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.setup,
+      name: 'setup',
+      builder: (context, state) => const SetupNameScreen(),
     ),
     GoRoute(
       path: AppRoutes.onboarding,

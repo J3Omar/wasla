@@ -22,6 +22,7 @@ dependencies:
   # --- Device Discovery ---
   multicast_dns: ^0.3.2+3           # mDNS — اكتشاف الأجهزة على الـ LAN
   network_info_plus: ^6.1.4         # جلب الـ Local IP للجهاز
+  device_info_plus: ^10.1.2         # قراءة اسم الجهاز (model/hostname)
 
   # --- WebRTC (Audio + Video + Data Channel) ---
   flutter_webrtc: ^0.14.1           # P2P calls + screen share + file transfer
