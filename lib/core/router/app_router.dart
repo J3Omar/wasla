@@ -1,14 +1,5 @@
 import 'package:go_router/go_router.dart';
-
-// Screens — imported as features are built
-// import 'package:wasla/features/onboarding/presentation/splash_screen.dart';
-// import 'package:wasla/features/onboarding/presentation/onboarding_screen.dart';
-// import 'package:wasla/features/discovery/presentation/home_screen.dart';
-// import 'package:wasla/features/chat/presentation/chat_screen.dart';
-// import 'package:wasla/features/call/presentation/incoming_call_screen.dart';
-// import 'package:wasla/features/call/presentation/outgoing_call_screen.dart';
-// import 'package:wasla/features/call/presentation/voice_call_screen.dart';
-// import 'package:wasla/features/call/presentation/video_call_screen.dart';
+import 'package:wasla/features/discovery/presentation/home_screen.dart';
 
 import 'package:flutter/material.dart';
 
@@ -33,7 +24,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.splash,
       name: 'splash',
-      builder: (context, state) => const _PlaceholderScreen(label: 'Splash'),
+      redirect: (context, state) => AppRoutes.home,
     ),
     GoRoute(
       path: AppRoutes.onboarding,
@@ -44,7 +35,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.home,
       name: 'home',
-      builder: (context, state) => const _PlaceholderScreen(label: 'Home'),
+      builder: (context, state) => const HomeScreen(),
     ),
     GoRoute(
       path: AppRoutes.chat,
