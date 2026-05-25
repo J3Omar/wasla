@@ -13,9 +13,10 @@ const _kNameKey = 'wasla_device_name';
 const _kSignalingPort = 8765;
 
 /// Riverpod provider for the discovery service.
-final discoveryServiceProvider = AsyncNotifierProvider<DiscoveryService, Map<String, Device>>(
-  DiscoveryService.new,
-);
+final discoveryServiceProvider =
+    AsyncNotifierProvider<DiscoveryService, Map<String, Device>>(
+      DiscoveryService.new,
+    );
 
 class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
   late final DeviceRegistry _registry;

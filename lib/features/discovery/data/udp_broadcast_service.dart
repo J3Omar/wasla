@@ -11,10 +11,7 @@ const _announceInterval = Duration(seconds: 5);
 /// UDP Broadcast — primary discovery transport.
 /// Announces self every 5 s and listens for other devices.
 class UdpBroadcastService {
-  UdpBroadcastService({
-    required this.registry,
-    required this.selfDevice,
-  });
+  UdpBroadcastService({required this.registry, required this.selfDevice});
 
   final DeviceRegistry registry;
   final Device selfDevice;
@@ -54,11 +51,7 @@ class UdpBroadcastService {
     if (_socket == null || !_running) return;
     try {
       final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
-      _socket!.send(
-        payload,
-        InternetAddress(_broadcastAddress),
-        _udpPort,
-      );
+      _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
     } catch (_) {}
   }
 

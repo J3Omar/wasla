@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 import 'package:multicast_dns/multicast_dns.dart';
 import '../domain/device_model.dart';
 import 'device_registry.dart';
@@ -11,10 +9,7 @@ const _domain = 'local';
 
 /// Handles mDNS announcing and discovery.
 class MdnsService {
-  MdnsService({
-    required this.registry,
-    required this.selfDevice,
-  });
+  MdnsService({required this.registry, required this.selfDevice});
 
   final DeviceRegistry registry;
   final Device selfDevice;
@@ -54,19 +49,17 @@ class MdnsService {
     Future.microtask(() async {
       while (_running && _client != null) {
         try {
-          await for (final ptr
-              in _client!.lookup<PtrResourceRecord>(
+          await for (final ptr in _client!.lookup<PtrResourceRecord>(
             ResourceRecordQuery.serverPointer('$_serviceType.$_domain'),
           )) {
             if (!_running) break;
-            await for (final srv
+            await for (final _
                 in _client!.lookup<SrvResourceRecord>(
               ResourceRecordQuery.service(ptr.domainName),
             )) {
               if (!_running) break;
               // Look for TXT records carrying our JSON payload
-              await for (final txt
-                  in _client!.lookup<TxtResourceRecord>(
+              await for (final txt in _client!.lookup<TxtResourceRecord>(
                 ResourceRecordQuery.text(ptr.domainName),
               )) {
                 if (!_running) break;

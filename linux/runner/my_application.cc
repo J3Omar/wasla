@@ -56,7 +56,11 @@ static void my_application_activate(GApplication* application) {
 
   // Set the Linux Window Icon
   g_autoptr(GError) error = nullptr;
-  g_autoptr(GdkPixbuf) icon = gdk_pixbuf_new_from_file("assets/app_icon.png", &error);
+  g_autofree gchar *exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  g_autofree gchar *exe_dir = g_path_get_dirname(exe_path);
+  g_autofree gchar *icon_path = g_build_filename(exe_dir, "data", "flutter_assets", "assets", "images", "Wasla-logo.png", nullptr);
+  
+  g_autoptr(GdkPixbuf) icon = gdk_pixbuf_new_from_file(icon_path, &error);
   if (icon != nullptr) {
     gtk_window_set_icon(window, icon);
   } else {

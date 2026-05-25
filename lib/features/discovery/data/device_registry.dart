@@ -21,7 +21,10 @@ class DeviceRegistry {
   /// Start the eviction loop.
   void start() {
     _evictionTimer?.cancel();
-    _evictionTimer = Timer.periodic(const Duration(seconds: 2), (_) => _evict());
+    _evictionTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _evict(),
+    );
   }
 
   /// Update or insert a device.

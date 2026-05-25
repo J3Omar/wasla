@@ -45,12 +45,12 @@ class Device {
 
   /// Serialize to JSON payload for UDP/mDNS announcements.
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'name': displayName,
-        'ip': localIp,
-        'port': port,
-        'status': status.name,
-      };
+    'uuid': uuid,
+    'name': displayName,
+    'ip': localIp,
+    'port': port,
+    'status': status.name,
+  };
 
   /// Deserialize from a JSON payload.
   factory Device.fromJson(Map<String, dynamic> json) {

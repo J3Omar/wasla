@@ -169,4 +169,3 @@ class _ChatPlaceholder extends StatelessWidget {
     );
   }
 }
-

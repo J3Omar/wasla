@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
-import '../../../core/router/app_router.dart';
 import '../data/discovery_service.dart';
 import '../domain/device_model.dart';
 
@@ -40,7 +39,9 @@ class HomeScreen extends ConsumerWidget {
           const SizedBox(width: 10),
           Text(
             'Wasla',
-            style: AppTypography.heading3.copyWith(color: AppColors.primaryCyan),
+            style: AppTypography.heading3.copyWith(
+              color: AppColors.primaryCyan,
+            ),
           ),
         ],
       ),
@@ -51,8 +52,9 @@ class HomeScreen extends ConsumerWidget {
           decoration: BoxDecoration(
             color: AppColors.statusOnline.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(20),
-            border:
-                Border.all(color: AppColors.statusOnline.withValues(alpha: 0.4)),
+            border: Border.all(
+              color: AppColors.statusOnline.withValues(alpha: 0.4),
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -61,8 +63,9 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(width: 6),
               Text(
                 'Scanning',
-                style: AppTypography.labelSmall
-                    .copyWith(color: AppColors.statusOnline),
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.statusOnline,
+                ),
               ),
             ],
           ),
@@ -88,8 +91,10 @@ class _DeviceListView extends StatelessWidget {
         if (self.isNotEmpty) ...[
           Text(
             'YOUR DEVICE',
-            style: AppTypography.capsLabel
-                .copyWith(color: AppColors.textMuted, fontSize: 11),
+            style: AppTypography.capsLabel.copyWith(
+              color: AppColors.textMuted,
+              fontSize: 11,
+            ),
           ),
           const SizedBox(height: 10),
           _DeviceCard(device: self.first),
@@ -99,18 +104,22 @@ class _DeviceListView extends StatelessWidget {
         // Other devices section
         Text(
           'DEVICES ON NETWORK',
-          style: AppTypography.capsLabel
-              .copyWith(color: AppColors.textMuted, fontSize: 11),
+          style: AppTypography.capsLabel.copyWith(
+            color: AppColors.textMuted,
+            fontSize: 11,
+          ),
         ),
         const SizedBox(height: 10),
 
         if (others.isEmpty)
           const _NoOtherDevices()
         else
-          ...others.map((d) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _DeviceCard(device: d),
-              )),
+          ...others.map(
+            (d) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _DeviceCard(device: d),
+            ),
+          ),
       ],
     );
   }
@@ -174,16 +183,14 @@ class _DeviceCard extends StatelessWidget {
                               if (device.isSelf) ...[
                                 const SizedBox(width: 8),
                                 _Badge(
-                                    label: 'THIS DEVICE',
-                                    color: AppColors.primaryCyan),
+                                  label: 'THIS DEVICE',
+                                  color: AppColors.primaryCyan,
+                                ),
                               ],
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            device.localIp,
-                            style: AppTypography.ipAddress,
-                          ),
+                          Text(device.localIp, style: AppTypography.ipAddress),
                         ],
                       ),
                     ),
@@ -270,8 +277,9 @@ class _DeviceAvatar extends StatelessWidget {
               device.displayName.isNotEmpty
                   ? device.displayName[0].toUpperCase()
                   : '?',
-              style:
-                  AppTypography.heading3.copyWith(color: AppColors.primaryCyan),
+              style: AppTypography.heading3.copyWith(
+                color: AppColors.primaryCyan,
+              ),
             ),
           ),
         ),
@@ -314,7 +322,10 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(label, style: AppTypography.labelSmall.copyWith(color: color)),
+      child: Text(
+        label,
+        style: AppTypography.labelSmall.copyWith(color: color),
+      ),
     );
   }
 }
@@ -373,10 +384,7 @@ class _ActionTile extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 18),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: AppTypography.labelSmall.copyWith(color: color),
-            ),
+            Text(label, style: AppTypography.labelSmall.copyWith(color: color)),
           ],
         ),
       ),
@@ -418,8 +426,7 @@ class _PulseDotState extends State<_PulseDot>
       child: Container(
         width: 7,
         height: 7,
-        decoration:
-            BoxDecoration(color: widget.color, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
       ),
     );
   }
@@ -445,9 +452,12 @@ class _NoOtherDevices extends StatelessWidget {
               color: AppColors.textMuted.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 16),
-            Text('No other devices found',
-                style: AppTypography.heading4
-                    .copyWith(color: AppColors.textSecondary)),
+            Text(
+              'No other devices found',
+              style: AppTypography.heading4.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               'Make sure other devices are running\nWasla on the same Wi-Fi network',
@@ -522,34 +532,6 @@ class _ScanningOverlayState extends State<_ScanningOverlay>
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.wifi_find_outlined,
-            size: 72,
-            color: AppColors.textMuted.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 20),
-          Text('No devices found', style: AppTypography.heading3),
-          const SizedBox(height: 8),
-          Text(
-            'Make sure other devices are on the\nsame Wi-Fi network',
-            style: AppTypography.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ErrorView extends StatelessWidget {
   const _ErrorView({required this.error});
   final String error;
@@ -562,13 +544,19 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded,
-                size: 64, color: AppColors.statusOffline),
+            const Icon(
+              Icons.wifi_off_rounded,
+              size: 64,
+              color: AppColors.statusOffline,
+            ),
             const SizedBox(height: 16),
             Text('Discovery failed', style: AppTypography.heading3),
             const SizedBox(height: 8),
-            Text(error,
-                style: AppTypography.bodySmall, textAlign: TextAlign.center),
+            Text(
+              error,
+              style: AppTypography.bodySmall,
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
