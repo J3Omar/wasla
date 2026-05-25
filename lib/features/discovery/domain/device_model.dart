@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import '../../../core/utils/string_utils.dart';
 
 /// Represents a single device discovered on the LAN.
 enum DeviceStatus { available, inCall, busy, offline }
@@ -58,8 +57,7 @@ class Device {
     return Device(
       uuid: json['uuid'] as String,
       displayName: json['name'] as String,
-      // Normalize in case the sender device has an Arabic locale
-      localIp: normalizeDigits(json['ip'] as String),
+      localIp: json['ip'] as String,
       port: (json['port'] as num).toInt(),
       status: DeviceStatus.values.firstWhere(
         (s) => s.name == json['status'],
