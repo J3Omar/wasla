@@ -169,7 +169,15 @@ class WebRtcChatService {
 
   /// Send bulk ack_read_all (when opening chat with unread messages).
   Future<void> sendAckReadAll({required String peerIp, required String peerId, required int upToTimestamp}) async {
-    final session = _sessions[peerId];
+    final ip = peerIp.isNotEmpty ? peerIp : ChatDatabase.instance.getPeerIp(peerId);
+    if (ip == null || ip.isEmpty) return; // Cannot connect without an IP
+
+    var session = _sessions[peerId];
+
+    if (session == null || !session.isConnected) {
+      session = await _initiateConnection(peerId, ip);
+    }
+
     if (session?.isConnected == true && session?.dataChannel != null) {
       try {
         session!.dataChannel!.send(RTCDataChannelMessage(jsonEncode({

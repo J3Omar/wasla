@@ -33,7 +33,6 @@ class UdpBroadcastService {
         InternetAddress.anyIPv4,
         _udpPort,
         reuseAddress: true,
-        reusePort: true,
       );
       _socket!.broadcastEnabled = true;
       _socket!.listen(_onPacket);

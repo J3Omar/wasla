@@ -32,29 +32,30 @@ class _SplashScreenState extends State<SplashScreen>
 
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
+      duration: const Duration(milliseconds: 3000), // 3 seconds
     );
 
     _logoOpacity = Tween<double>(
       begin: 0,
       end: 1,
-    ).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.35)));
+    ).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.25)));
 
     _logoScale = Tween<double>(begin: 0.72, end: 1.0).animate(
       CurvedAnimation(
         parent: _ctrl,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeOutBack),
+        curve: const Interval(0.0, 0.3, curve: Curves.easeOutBack),
       ),
     );
 
     _glowOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _ctrl, curve: const Interval(0.15, 0.55)),
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.1, 0.4)),
     );
 
+    // Progress bar takes exactly 3s to fill (the full duration)
     _progressAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _ctrl,
-        curve: const Interval(0.3, 0.95, curve: Curves.easeInOut),
+        curve: const Interval(0.0, 1.0, curve: Curves.easeInOut),
       ),
     );
 
@@ -106,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // Logo + wordmark
+          // App Icon exactly in the center
           Center(
             child: AnimatedBuilder(
               animation: _ctrl,
@@ -114,51 +115,59 @@ class _SplashScreenState extends State<SplashScreen>
                 opacity: _logoOpacity.value,
                 child: Transform.scale(
                   scale: _logoScale.value,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // App icon
-                      Container(
-                        width: 160,
-                        height: 160,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(36),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primaryCyan.withValues(
-                                alpha: 0.35,
-                              ),
-                              blurRadius: 40,
-                              spreadRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(36),
-                          child: Image.asset(
-                            'assets/images/Wasla-logo.png',
-                            fit: BoxFit.cover,
+                  child: Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(36),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryCyan.withValues(
+                            alpha: 0.35,
                           ),
+                          blurRadius: 40,
+                          spreadRadius: 4,
                         ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(36),
+                      child: Image.asset(
+                        'assets/images/Wasla-logo.png',
+                        fit: BoxFit.cover,
                       ),
-                      // Push text below the radial glow circle
-                      SizedBox(height: pushHeight),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-                      // WASLA wordmark
-                      ShaderMask(
-                        shaderCallback: (bounds) =>
-                            AppColors.primaryGradient.createShader(bounds),
-                        child: Text(
-                          'WASLA',
-                          style: AppTypography.heading1.copyWith(
-                            color: Colors.white,
-                            fontSize: 36,
-                            letterSpacing: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
+          // WASLA wordmark positioned below the glow circle
+          Positioned(
+            top: (size.height / 2) + (glowSize / 2) + 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (context, _) => Opacity(
+                  opacity: _logoOpacity.value,
+                  child: Transform.scale(
+                    scale: _logoScale.value,
+                    child: ShaderMask(
+                      shaderCallback: (bounds) =>
+                          AppColors.primaryGradient.createShader(bounds),
+                      child: Text(
+                        'WASLA',
+                        style: AppTypography.heading1.copyWith(
+                          color: Colors.white,
+                          fontSize: 36,
+                          letterSpacing: 10,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

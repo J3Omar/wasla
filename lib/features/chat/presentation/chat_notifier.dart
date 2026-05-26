@@ -41,7 +41,7 @@ class ChatPageState {
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-final chatProvider = AsyncNotifierProviderFamily<ChatNotifier, ChatPageState, ChatArgs>(
+final chatProvider = AutoDisposeAsyncNotifierProviderFamily<ChatNotifier, ChatPageState, ChatArgs>(
   ChatNotifier.new,
 );
 
@@ -60,7 +60,7 @@ class ChatArgs {
 
 // ── ChatNotifier ──────────────────────────────────────────────────────────────
 
-class ChatNotifier extends FamilyAsyncNotifier<ChatPageState, ChatArgs> {
+class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArgs> {
   StreamSubscription<List<ChatMessage>>? _dbSub;
   int _loadedCount = _kPageSize;
 
@@ -181,8 +181,6 @@ class ChatNotifier extends FamilyAsyncNotifier<ChatPageState, ChatArgs> {
 
     // Mark locally
     ChatDatabase.instance.markAllRead(arg.peerId);
-
-    if (arg.peerIp.isEmpty) return;
 
     // Send bulk read ACK if we have an active connection
     final latestTs = unread.map((m) => m.timestamp.millisecondsSinceEpoch).reduce((a, b) => a > b ? a : b);

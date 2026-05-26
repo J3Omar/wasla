@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:go_router/go_router.dart';
+import '../../discovery/domain/device_model.dart';
 import '../../discovery/presentation/home_screen.dart';
 import '../../chat/presentation/chats_list_screen.dart';
 import '../../chat/data/webrtc_chat_service.dart';
@@ -55,6 +57,21 @@ class _MainShellState extends ConsumerState<MainShell> {
             peerId: peerId,
           );
         }
+      };
+
+      // Handle notification tap to open chat screen
+      ChatNotificationService.instance.onNotificationTap = (peerId) {
+        if (!mounted) return;
+        final savedName = ChatDatabase.instance.getPeerName(peerId) ?? 'Device';
+        final targetDevice = Device(
+          uuid: peerId,
+          displayName: savedName,
+          localIp: '',
+          port: 0,
+          status: DeviceStatus.offline,
+          lastSeen: DateTime.now(),
+        );
+        context.push('/chat/$peerId', extra: targetDevice);
       };
     });
   }
