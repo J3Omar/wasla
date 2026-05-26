@@ -14,7 +14,7 @@ class UdpBroadcastService {
   UdpBroadcastService({required this.registry, required this.selfDevice});
 
   final DeviceRegistry registry;
-  final Device selfDevice;
+  Device selfDevice;
 
   RawDatagramSocket? _socket;
   Timer? _announceTimer;
@@ -51,6 +51,17 @@ class UdpBroadcastService {
     if (_socket == null || !_running) return;
     try {
       final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
+      _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
+    } catch (_) {}
+  }
+
+  /// Send a one-shot announce with an arbitrary [device] payload.
+  /// Used by [DiscoveryService] after a name change to immediately broadcast
+  /// the updated name without restarting the service.
+  void announceDevice(Device device) {
+    if (_socket == null || !_running) return;
+    try {
+      final payload = utf8.encode(jsonEncode(device.toJson()));
       _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
     } catch (_) {}
   }
