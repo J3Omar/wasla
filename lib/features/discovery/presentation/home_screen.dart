@@ -157,10 +157,7 @@ class _DeviceCard extends StatelessWidget {
               : () {
                   context.push(
                     '/chat/${device.uuid}',
-                    extra: <String, dynamic>{
-                      'peerName': device.displayName,
-                      'isOnline': device.status != DeviceStatus.offline,
-                    },
+                    extra: device,
                   );
                 },
           child: Padding(

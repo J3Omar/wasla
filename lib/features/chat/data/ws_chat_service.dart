@@ -2,122 +2,205 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import '../domain/chat_message.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Port on which each Wasla instance runs its WebSocket chat server.
+import '../domain/chat_message.dart';
+import 'chat_database.dart';
+
 const kChatWsPort = 8766;
 
-/// Incoming message payload over the wire.
-typedef OnMessageReceived = void Function(Map<String, dynamic> payload);
-typedef OnPeerConnected = void Function();
-typedef OnPeerDisconnected = void Function();
+/// Provider to access the global chat server.
+final globalChatServerProvider = Provider<GlobalChatServer>((ref) {
+  final server = GlobalChatServer();
+  ref.onDispose(() => server.dispose());
+  return server;
+});
 
-/// Manages a local WebSocket server (for receiving) and an outgoing
-/// WebSocket connection (for sending) to enable real-time chat on LAN.
-///
-/// Both sides run their own server. When device A opens chat with B:
-///   - A connects to B's server as a client → A can SEND via this connection
-///   - When B opens chat, B connects to A's server → A can RECEIVE from B's client
-class WsChatService {
-  WsChatService({
-    required this.selfIp,
-    required this.peerIp,
-    required this.onMessage,
-    this.onPeerConnected,
-    this.onPeerDisconnected,
-  });
-
-  final String selfIp;
-  final String peerIp;
-  final OnMessageReceived onMessage;
-  final OnPeerConnected? onPeerConnected;
-  final OnPeerDisconnected? onPeerDisconnected;
-
+/// A global service that listens for incoming LAN chat connections and manages
+/// outgoing connections to peers. It handles background message receiving and acks.
+class GlobalChatServer {
   HttpServer? _server;
-  WebSocket? _outgoing; // our connection to peer's server
+  final Map<String, WebSocket> _outgoingConnections = {};
   bool _started = false;
-  bool _disposed = false;
+  Timer? _retryTimer;
 
-  /// Start the local server and attempt to connect to the peer.
+  /// The UUID of the peer whose chat screen is currently visible.
+  /// If a message arrives from this peer, it is immediately marked as read.
+  String? activeChatPeerId;
+  
+  /// Our own UUID, required so the peer knows who is sending the message.
+  String? selfUuid;
+  
+  /// Our own display name.
+  String? selfName;
+
   Future<void> start() async {
     if (_started) return;
     _started = true;
-
-    await _startServer();
-    await _connectToPeer();
-  }
-
-  Future<void> _startServer() async {
     try {
       _server = await HttpServer.bind(InternetAddress.anyIPv4, kChatWsPort);
-      _server!.transform(WebSocketTransformer()).listen(
-        (ws) {
-          onPeerConnected?.call();
-          ws.listen(
-            (data) {
-              if (data is String) {
-                try {
-                  final json = jsonDecode(data) as Map<String, dynamic>;
-                  onMessage(json);
-                } catch (_) {}
-              }
-            },
-            onDone: () => onPeerDisconnected?.call(),
-          );
-        },
-        onError: (_) {},
-      );
+      _server!.transform(WebSocketTransformer()).listen((ws) {
+        ws.listen(
+          (data) {
+            if (data is String) {
+              try {
+                final json = jsonDecode(data) as Map<String, dynamic>;
+                _handleIncomingPayload(ws, json);
+              } catch (_) {}
+            }
+          },
+          onError: (_) {},
+        );
+      });
     } catch (e) {
-      // Port already in use — another chat might be open. Ignore for now.
+      // Port already in use. Ignore.
     }
+    
+    _retryTimer = Timer.periodic(const Duration(seconds: 5), (_) => _flushQueue());
   }
 
-  Future<void> _connectToPeer() async {
-    if (_disposed) return;
-    for (int attempt = 0; attempt < 10; attempt++) {
-      if (_disposed) return;
-      try {
-        _outgoing = await WebSocket.connect(
-          'ws://$peerIp:$kChatWsPort',
-        ).timeout(const Duration(seconds: 3));
-        _outgoing!.done.then((_) {
-          if (!_disposed) _scheduleReconnect();
-        });
-        return;
-      } catch (_) {
-        await Future<void>.delayed(const Duration(seconds: 2));
+  Future<void> _flushQueue() async {
+    if (selfUuid == null || selfName == null) return;
+    
+    final unsent = ChatDatabase.instance.getUnsentMessages();
+    if (unsent.isEmpty) return;
+
+    for (final msg in unsent) {
+      final peerIp = ChatDatabase.instance.getPeerIp(msg.peerId);
+      if (peerIp == null) continue;
+
+      final payload = {
+        'type': 'msg',
+        'senderId': selfUuid,
+        'senderName': selfName,
+        'content': msg.content,
+        'ts': msg.timestamp.millisecondsSinceEpoch,
+      };
+
+      final sent = await sendMessage(peerIp, payload);
+      if (sent) {
+        ChatDatabase.instance.updateStatus(msg.id, MessageStatus.sent);
       }
     }
-    // Could not connect — peer might not have the chat open yet
   }
 
-  void _scheduleReconnect() {
-    Future<void>.delayed(const Duration(seconds: 3), () {
-      if (!_disposed) _connectToPeer();
-    });
-  }
+  void _handleIncomingPayload(WebSocket ws, Map<String, dynamic> payload) {
+    final type = payload['type'] as String?;
+    final senderId = payload['senderId'] as String?;
+    final ts = (payload['ts'] as num?)?.toInt();
 
-  /// Send a JSON payload to the peer.
-  bool send(Map<String, dynamic> payload) {
-    if (_outgoing == null || _outgoing!.readyState != WebSocket.open) {
-      return false;
+    if (type == null || ts == null) return;
+
+    // Handle acks first - they don't require senderId
+    if (type == 'ack_delivery') {
+      ChatDatabase.instance.updateStatusByTimestamp(ts, MessageStatus.delivered);
+      return;
     }
-    try {
-      _outgoing!.add(jsonEncode(payload));
-      return true;
-    } catch (_) {
-      return false;
+
+    if (type == 'ack_read') {
+      ChatDatabase.instance.updateStatusByTimestamp(ts, MessageStatus.read);
+      return;
+    }
+
+    // Messages require senderId
+    if (senderId == null) return;
+
+    if (type == 'msg') {
+      final content = payload['content'] as String;
+      final senderName = payload['senderName'] as String?;
+      
+      if (senderName != null) {
+        ChatDatabase.instance.upsertPeer(senderId, senderName);
+      }
+
+      final msg = ChatMessage(
+        id: 0,
+        peerId: senderId,
+        content: content,
+        isSent: false,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(ts),
+        status: MessageStatus.delivered,
+        type: MessageType.text,
+      );
+      ChatDatabase.instance.insert(msg);
+
+      // If user is actively in this chat, mark as read immediately
+      if (activeChatPeerId == senderId) {
+        ChatDatabase.instance.markAllRead(senderId);
+      }
+
+      // Acknowledge delivery
+      _sendToSocket(ws, {
+        'type': 'ack_delivery',
+        'senderId': selfUuid,
+        'ts': ts,
+      });
+
+      // If the user is currently looking at this chat, acknowledge read
+      if (activeChatPeerId == senderId) {
+        _sendToSocket(ws, {
+          'type': 'ack_read',
+          'senderId': selfUuid,
+          'ts': ts,
+        });
+      }
     }
   }
 
-  bool get isConnected =>
-      _outgoing != null && _outgoing!.readyState == WebSocket.open;
+  /// Sends a message to a peer by their IP. Manages the connection automatically.
+  Future<bool> sendMessage(String peerIp, Map<String, dynamic> payload) async {
+    // Clean up stale connection if it exists
+    final existing = _outgoingConnections[peerIp];
+    if (existing != null && existing.readyState != WebSocket.open) {
+      _outgoingConnections.remove(peerIp);
+    }
+    
+    WebSocket? ws = _outgoingConnections[peerIp];
+    
+    if (ws == null) {
+      try {
+        ws = await WebSocket.connect('ws://$peerIp:$kChatWsPort')
+            .timeout(const Duration(seconds: 2));
+        _outgoingConnections[peerIp] = ws;
+        
+        // Listen for incoming acks on this outgoing socket
+        ws.listen((data) {
+          if (data is String) {
+            try {
+              final json = jsonDecode(data) as Map<String, dynamic>;
+              _handleIncomingPayload(ws!, json);
+            } catch (_) {}
+          }
+        }, onDone: () {
+          _outgoingConnections.remove(peerIp);
+        }, onError: (_) {
+          _outgoingConnections.remove(peerIp);
+        });
+      } catch (_) {
+        _outgoingConnections.remove(peerIp);
+        return false;
+      }
+    }
+
+    return _sendToSocket(ws, payload);
+  }
+
+  bool _sendToSocket(WebSocket ws, Map<String, dynamic> payload) {
+    if (ws.readyState == WebSocket.open) {
+      try {
+        ws.add(jsonEncode(payload));
+        return true;
+      } catch (_) {}
+    }
+    return false;
+  }
 
   Future<void> dispose() async {
-    _disposed = true;
-    await _outgoing?.close();
+    _retryTimer?.cancel();
     await _server?.close(force: true);
-    _outgoing = null;
-    _server = null;
+    for (final ws in _outgoingConnections.values) {
+      await ws.close();
+    }
+    _outgoingConnections.clear();
   }
 }

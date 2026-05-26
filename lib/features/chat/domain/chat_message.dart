@@ -6,6 +6,7 @@ enum MessageStatus {
   sent, // sent over the network
   delivered, // peer acknowledged receipt
   failed, // send failed
+  read, // peer has seen the message
 }
 
 /// Type of message content.
@@ -26,6 +27,7 @@ class ChatMessage {
     required this.timestamp,
     required this.status,
     this.type = MessageType.text,
+    this.isRead = false,
     this.fileName,
     this.fileSize,
   });
@@ -40,7 +42,7 @@ class ChatMessage {
 
   /// true = sent by us, false = received from peer.
   final bool isSent;
-
+  final bool isRead;
   final DateTime timestamp;
   final MessageStatus status;
   final MessageType type;
@@ -54,6 +56,7 @@ class ChatMessage {
     String? peerId,
     String? content,
     bool? isSent,
+    bool? isRead,
     DateTime? timestamp,
     MessageStatus? status,
     MessageType? type,
@@ -65,6 +68,7 @@ class ChatMessage {
       peerId: peerId ?? this.peerId,
       content: content ?? this.content,
       isSent: isSent ?? this.isSent,
+      isRead: isRead ?? this.isRead,
       timestamp: timestamp ?? this.timestamp,
       status: status ?? this.status,
       type: type ?? this.type,

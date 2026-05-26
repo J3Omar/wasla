@@ -3,12 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../discovery/domain/device_model.dart';
 import '../domain/chat_message.dart';
+import '../data/chat_database.dart';
+import '../../discovery/data/discovery_service.dart';
 import 'chat_notifier.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -23,7 +25,12 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
+  final _focusNode = FocusNode();
   bool _hasText = false;
+  int _prevMessageCount = 0;
+  
+  bool _isSelectionMode = false;
+  final Set<int> _selectedIds = {};
 
   late final ChatArgs _args;
 
@@ -35,6 +42,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       peerIp: widget.device.localIp,
       peerName: widget.device.displayName,
     );
+    
+    // Save the peer name to database so we remember it offline
+    ChatDatabase.instance.upsertPeer(widget.device.uuid, widget.device.displayName);
+
     _inputController.addListener(() {
       final has = _inputController.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
@@ -45,6 +56,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void dispose() {
     _inputController.dispose();
     _scrollController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -64,6 +76,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
     _inputController.clear();
+    _focusNode.requestFocus();
     await ref.read(chatProvider(_args).notifier).sendMessage(text);
     _scrollToBottom();
   }
@@ -74,7 +87,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      appBar: _buildAppBar(),
+      appBar: _isSelectionMode ? _buildSelectionAppBar(chatState) : _buildAppBar(),
       body: Column(
         children: [
           Expanded(
@@ -89,7 +102,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (messages.isEmpty) {
                   return _EmptyConversation(device: widget.device);
                 }
-                _scrollToBottom();
+                // Only scroll if a new message arrived (count changed)
+                final int prevCount = _prevMessageCount;
+                if (messages.length != prevCount) {
+                  _prevMessageCount = messages.length;
+                  _scrollToBottom();
+                }
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(
@@ -102,11 +120,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     final prev = index > 0 ? messages[index - 1] : null;
                     final showDate =
                         prev == null || !_sameDay(msg.timestamp, prev.timestamp);
-                    return Column(
-                      children: [
-                        if (showDate) _DateDivider(date: msg.timestamp),
-                        _MessageBubble(message: msg),
-                      ],
+                    return RepaintBoundary(
+                      child: Column(
+                        children: [
+                          if (showDate) _DateDivider(date: msg.timestamp),
+                          _MessageBubble(
+                            message: msg,
+                            isSelected: _selectedIds.contains(msg.id),
+                            isSelectionMode: _isSelectionMode,
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                setState(() {
+                                  if (_selectedIds.contains(msg.id)) {
+                                    _selectedIds.remove(msg.id);
+                                    if (_selectedIds.isEmpty) _isSelectionMode = false;
+                                  } else {
+                                    _selectedIds.add(msg.id);
+                                  }
+                                });
+                              }
+                            },
+                            onLongPress: () {
+                              if (!_isSelectionMode) {
+                                setState(() {
+                                  _isSelectionMode = true;
+                                  _selectedIds.add(msg.id);
+                                });
+                              }
+                            },
+                          ),
+                        ],
+                      ),
                     );
                   },
                 );
@@ -115,6 +159,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           _InputBar(
             controller: _inputController,
+            focusNode: _focusNode,
             hasText: _hasText,
             peerName: widget.device.displayName,
             onSend: _send,
@@ -124,7 +169,102 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  PreferredSizeWidget _buildSelectionAppBar(AsyncValue<List<ChatMessage>> chatState) {
+    return AppBar(
+      backgroundColor: AppColors.bgSecondary,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.close_rounded, color: AppColors.textPrimary),
+        onPressed: () {
+          setState(() {
+            _isSelectionMode = false;
+            _selectedIds.clear();
+          });
+        },
+      ),
+      title: Text(
+        '${_selectedIds.length} selected',
+        style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.select_all_rounded, color: AppColors.textPrimary),
+          onPressed: () {
+            if (chatState.hasValue) {
+              setState(() {
+                if (_selectedIds.length == chatState.value!.length) {
+                  _selectedIds.clear();
+                  _isSelectionMode = false;
+                } else {
+                  _selectedIds.addAll(chatState.value!.map((m) => m.id));
+                }
+              });
+            }
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+          onPressed: () async {
+            if (_selectedIds.isEmpty) return;
+            final confirm = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: AppColors.bgSecondary,
+                title: Text('Delete Messages', style: AppTypography.heading3),
+                content: Text('Are you sure you want to delete the selected messages?', style: AppTypography.bodyMedium),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: Text('Cancel', style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted)),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: Text('Delete', style: AppTypography.bodyMedium.copyWith(color: Colors.redAccent)),
+                  ),
+                ],
+              ),
+            );
+            if (confirm == true) {
+              ChatDatabase.instance.deleteMessages(_selectedIds.toList());
+              setState(() {
+                _isSelectionMode = false;
+                _selectedIds.clear();
+              });
+            }
+          },
+        ),
+      ],
+    );
+  }
+
   PreferredSizeWidget _buildAppBar() {
+    // Watch discovery service for real-time status updates
+    final devicesState = ref.watch(discoveryServiceProvider);
+    Device? currentDevice;
+    if (devicesState is AsyncData<Map<String, Device>>) {
+      currentDevice = devicesState.value[widget.device.uuid];
+    }
+    
+    final displayDevice = currentDevice ?? widget.device.copyWith(status: DeviceStatus.offline);
+    
+    String statusText;
+    Color statusColor;
+    switch (displayDevice.status) {
+      case DeviceStatus.available:
+        statusText = 'Online • ${displayDevice.localIp}';
+        statusColor = Colors.greenAccent.shade400;
+        break;
+      case DeviceStatus.inCall:
+        statusText = 'On Call • ${displayDevice.localIp}';
+        statusColor = Colors.redAccent;
+        break;
+      case DeviceStatus.busy:
+      case DeviceStatus.offline:
+        statusText = 'Offline';
+        statusColor = Colors.orangeAccent;
+        break;
+    }
+
     return AppBar(
       backgroundColor: AppColors.bgSecondary,
       elevation: 0,
@@ -138,14 +278,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       titleSpacing: 0,
       title: Row(
         children: [
-          _PeerAvatar(name: widget.device.displayName),
+          _PeerAvatar(name: displayDevice.displayName),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.device.displayName,
+                  displayDevice.displayName,
                   style: AppTypography.bodyMedium.copyWith(
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
@@ -155,9 +295,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Directionality(
                   textDirection: TextDirection.ltr,
                   child: Text(
-                    '▾ ${widget.device.localIp}',
+                    statusText,
                     style: AppTypography.labelSmall.copyWith(
-                      color: AppColors.statusOnline,
+                      color: statusColor,
                     ),
                   ),
                 ),
@@ -186,10 +326,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
           color: AppColors.bgSecondary,
+          onSelected: (value) async {
+            if (value == 'delete') {
+              setState(() {
+                _isSelectionMode = true;
+                _selectedIds.clear();
+              });
+            }
+          },
           itemBuilder: (_) => [
             PopupMenuItem(
-              value: 'clear',
-              child: Text('Clear chat', style: AppTypography.bodySmall),
+              value: 'delete',
+              child: Text('Delete messages', style: AppTypography.bodySmall),
             ),
           ],
         ),
@@ -323,32 +471,68 @@ class _DateDivider extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    this.onTap,
+    this.onLongPress,
+  });
+  
   final ChatMessage message;
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Align(
-        alignment:
-            message.isSent ? Alignment.centerRight : Alignment.centerLeft,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          child: Column(
-            crossAxisAlignment: message.isSent
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              message.isSent
-                  ? _SentBubble(message: message)
-                  : _ReceivedBubble(message: message),
-              const SizedBox(height: 3),
-              _Timestamp(message: message),
-            ],
-          ),
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        color: isSelected ? AppColors.primaryCyan.withValues(alpha: 0.15) : Colors.transparent,
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            if (isSelectionMode)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0, left: 4.0),
+                child: IgnorePointer(
+                  child: Checkbox(
+                    value: isSelected,
+                    onChanged: (_) {},
+                    activeColor: AppColors.primaryCyan,
+                    side: const BorderSide(color: AppColors.textMuted),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Align(
+                alignment:
+                    message.isSent ? Alignment.centerRight : Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.75,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: message.isSent
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      message.isSent
+                          ? _SentBubble(message: message)
+                          : _ReceivedBubble(message: message),
+                      const SizedBox(height: 3),
+                      _Timestamp(message: message),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -455,17 +639,23 @@ class _StatusIcon extends StatelessWidget {
           ),
         );
       case MessageStatus.sent:
-        return const Icon(Icons.check, size: 12, color: AppColors.textMuted);
+        return const Icon(Icons.check, size: 14, color: AppColors.textMuted);
       case MessageStatus.delivered:
         return const Icon(
           Icons.done_all,
-          size: 12,
-          color: AppColors.primaryCyan,
+          size: 14,
+          color: AppColors.textMuted,
+        );
+      case MessageStatus.read:
+        return const Icon(
+          Icons.done_all,
+          size: 14,
+          color: AppColors.primaryCyan, // or Colors.greenAccent
         );
       case MessageStatus.failed:
         return const Icon(
           Icons.error_outline,
-          size: 12,
+          size: 14,
           color: AppColors.statusOffline,
         );
     }
@@ -479,12 +669,14 @@ class _StatusIcon extends StatelessWidget {
 class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
+    required this.focusNode,
     required this.hasText,
     required this.peerName,
     required this.onSend,
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool hasText;
   final String peerName;
   final VoidCallback onSend;
@@ -525,11 +717,12 @@ class _InputBar extends StatelessWidget {
               ),
               child: TextField(
                 controller: controller,
+                focusNode: focusNode,
                 style: AppTypography.bodyMedium,
                 maxLines: null,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: 'Message ${peerName.split(' ').first}…',
+                  hintText: 'Write message...',
                   hintStyle: AppTypography.bodyMedium.copyWith(
                     color: AppColors.textMuted,
                   ),

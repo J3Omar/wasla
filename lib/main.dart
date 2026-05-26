@@ -6,7 +6,11 @@ import 'features/chat/data/chat_database.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await ChatDatabase.instance.open();
+  try {
+    await ChatDatabase.instance.open();
+  } catch (e) {
+    debugPrint('CRITICAL: Failed to open ChatDatabase: $e');
+  }
   runApp(const ProviderScope(child: WaslaApp()));
 }
 

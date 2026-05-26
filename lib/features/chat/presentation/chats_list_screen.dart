@@ -1,263 +1,257 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../discovery/data/discovery_service.dart';
+import '../../discovery/domain/device_model.dart';
 import '../data/chat_database.dart';
-import '../data/chat_repository.dart';
+import '../domain/chat_message.dart';
 
-/// Shows all local conversations — accessible even when devices are offline.
+final recentChatsProvider = StreamProvider<List<ChatMessage>>((ref) {
+  return ChatDatabase.instance.watchRecentConversations();
+});
+
+final unreadCountsProvider = StreamProvider<Map<String, int>>((ref) {
+  return ChatDatabase.instance.watchRecentConversations().map((_) {
+    return ChatDatabase.instance.getUnreadCounts();
+  });
+});
+
+final totalUnreadProvider = StreamProvider<int>((ref) {
+  return ChatDatabase.instance.watchRecentConversations().map((_) {
+    return ChatDatabase.instance.getTotalUnread();
+  });
+});
+
 class ChatsListScreen extends ConsumerWidget {
   const ChatsListScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final conversationsAsync = ref.watch(conversationsProvider);
+    final recentChatsAsync = ref.watch(recentChatsProvider);
+    final unreadCounts = ref.watch(unreadCountsProvider).valueOrNull ?? {};
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
       appBar: AppBar(
         backgroundColor: AppColors.bgSecondary,
-        title: Text('Chats', style: AppTypography.heading3),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.borderDefault),
+        elevation: 0,
+        title: Text(
+          'Chats',
+          style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
         ),
+        centerTitle: true,
       ),
-      body: conversationsAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primaryCyan),
-        ),
-        error: (e, _) =>
-            Center(child: Text('Error: $e', style: AppTypography.bodySmall)),
-        data: (conversations) {
-          if (conversations.isEmpty) {
-            return const _EmptyChats();
+      body: recentChatsAsync.when(
+        data: (messages) {
+          if (messages.isEmpty) {
+            return const _EmptyState();
           }
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: conversations.length,
-            separatorBuilder: (context, index) => Container(
-              height: 1,
-              margin: const EdgeInsets.only(left: 80),
+            itemCount: messages.length,
+            separatorBuilder: (_, __) => const Divider(
               color: AppColors.borderDefault,
+              height: 1,
+              indent: 72,
             ),
-            itemBuilder: (context, i) {
-              final conv = conversations[i];
-              return _ConversationTile(conversation: conv);
+            itemBuilder: (context, index) {
+              final msg = messages[index];
+              final unread = unreadCounts[msg.peerId] ?? 0;
+              return _ChatTile(message: msg, unreadCount: unread);
             },
           );
         },
+        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primaryCyan)),
+        error: (e, st) => Center(
+          child: Text('Error loading chats', style: TextStyle(color: Colors.red.shade300)),
+        ),
       ),
     );
   }
 }
 
-// ── Conversation Tile ─────────────────────────────────────────────────────────
-
-class _ConversationTile extends StatelessWidget {
-  const _ConversationTile({required this.conversation});
-  final Conversation conversation;
+class _ChatTile extends ConsumerWidget {
+  const _ChatTile({required this.message, this.unreadCount = 0});
+  final ChatMessage message;
+  final int unreadCount;
 
   @override
-  Widget build(BuildContext context) {
-    final hasUnread = conversation.unreadCount > 0;
-    final lastMsgTime = conversation.lastMessageAt > 0
-        ? _formatTime(
-            DateTime.fromMillisecondsSinceEpoch(conversation.lastMessageAt),
-          )
-        : '';
+  Widget build(BuildContext context, WidgetRef ref) {
+    final devicesState = ref.watch(discoveryServiceProvider);
+    
+    // Try to find the device in the current discovery list
+    Device? peerDevice;
+    if (devicesState is AsyncData<Map<String, Device>>) {
+      peerDevice = devicesState.value[message.peerId];
+    }
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          context.push(
-            '/chat/${conversation.peerUuid}',
-            extra: <String, dynamic>{
-              'peerName': conversation.peerName,
-              'isOnline':
-                  false, // from chat history — online status unknown here
-            },
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
+    // Try to get saved name from DB if offline
+    final savedName = ChatDatabase.instance.getPeerName(message.peerId);
+    
+    // If online, save/update their name in DB
+    if (peerDevice != null) {
+      ChatDatabase.instance.upsertPeer(message.peerId, peerDevice.displayName);
+    }
+
+    final displayName = peerDevice?.displayName ?? savedName ?? 'Device (${message.peerId.substring(0, 4)}...)';
+    final status = peerDevice?.status ?? DeviceStatus.offline;
+
+    final timeStr = DateFormat.jm().format(message.timestamp);
+
+    Color statusColor;
+    switch (status) {
+      case DeviceStatus.available:
+        statusColor = Colors.greenAccent.shade400;
+        break;
+      case DeviceStatus.inCall:
+        statusColor = Colors.redAccent;
+        break;
+      case DeviceStatus.offline:
+      case DeviceStatus.busy:
+        statusColor = Colors.orangeAccent;
+        break;
+    }
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      leading: Stack(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: AppColors.primaryCyan.withValues(alpha: 0.2),
+            child: Text(
+              displayName[0].toUpperCase(),
+              style: AppTypography.heading3.copyWith(color: AppColors.primaryCyan),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.bgPrimary, width: 2),
+              ),
+            ),
+          ),
+        ],
+      ),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              displayName,
+              style: unreadCount > 0
+                  ? AppTypography.heading4.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700)
+                  : AppTypography.heading4,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Avatar
-              _Avatar(name: conversation.peerName, hasUnread: hasUnread),
-              const SizedBox(width: 14),
-
-              // Name + Last message
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            conversation.peerName,
-                            style: AppTypography.heading4.copyWith(
-                              fontWeight: hasUnread
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Text(
-                          lastMsgTime,
-                          style: AppTypography.labelSmall.copyWith(
-                            color: hasUnread
-                                ? AppColors.primaryCyan
-                                : AppColors.textMuted,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            conversation.lastMessage.isEmpty
-                                ? 'No messages yet'
-                                : conversation.lastMessage,
-                            style: AppTypography.bodySmall.copyWith(
-                              color: hasUnread
-                                  ? AppColors.textSecondary
-                                  : AppColors.textMuted,
-                              fontWeight: hasUnread
-                                  ? FontWeight.w500
-                                  : FontWeight.w400,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (hasUnread)
-                          _UnreadBadge(count: conversation.unreadCount),
-                      ],
-                    ),
-                  ],
+              Text(
+                timeStr,
+                style: AppTypography.labelSmall.copyWith(
+                  color: unreadCount > 0 ? AppColors.primaryCyan : AppColors.textMuted,
                 ),
               ),
+              if (unreadCount > 0)
+                const SizedBox(height: 4),
+              if (unreadCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryCyan,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$unreadCount',
+                    style: AppTypography.labelSmall.copyWith(
+                      color: AppColors.bgDeep,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
             ],
           ),
-        ),
+        ],
       ),
-    );
-  }
-
-  String _formatTime(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-
-    if (diff.inMinutes < 1) return 'now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m';
-    if (diff.inDays < 1) {
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    }
-    if (diff.inDays < 7) return '${diff.inDays}d';
-    return '${dt.day}/${dt.month}';
-  }
-}
-
-// ── Sub-widgets ───────────────────────────────────────────────────────────────
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, required this.hasUnread});
-  final String name;
-  final bool hasUnread;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.bgTertiary,
-        border: Border.all(
-          color: hasUnread
-              ? AppColors.primaryCyan.withValues(alpha: 0.5)
-              : AppColors.borderDefault,
-          width: hasUnread ? 2 : 1,
-        ),
-      ),
-      child: Center(
-        child: ShaderMask(
-          shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: AppTypography.heading3.copyWith(
-              color: Colors.white,
-              fontSize: 20,
-            ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
+        child: Text(
+          message.isSent ? 'You: ${message.content}' : message.content,
+          style: AppTypography.bodyLarge.copyWith(
+            color: unreadCount > 0 ? AppColors.textPrimary : AppColors.textSecondary,
+            fontSize: 14,
+            fontWeight: unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
+      onTap: () {
+        // If we have the full device object, pass it. 
+        // Otherwise, create a dummy offline device to view history.
+        final targetDevice = peerDevice ?? Device(
+          uuid: message.peerId,
+          displayName: displayName,
+          localIp: '',
+          port: 0,
+          status: DeviceStatus.offline,
+          lastSeen: DateTime.now(),
+        );
+
+        context.push('/chat/${message.peerId}', extra: targetDevice);
+      },
     );
   }
 }
 
-class _UnreadBadge extends StatelessWidget {
-  const _UnreadBadge({required this.count});
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(left: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        count > 99 ? '99+' : '$count',
-        style: AppTypography.labelSmall.copyWith(
-          color: AppColors.bgDeep,
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyChats extends StatelessWidget {
-  const _EmptyChats();
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline_rounded,
-            size: 64,
-            color: AppColors.textMuted.withValues(alpha: 0.35),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'No chats yet',
-            style: AppTypography.heading4.copyWith(
-              color: AppColors.textSecondary,
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.chat_bubble_outline_rounded,
+              size: 80,
+              color: AppColors.primaryCyan.withValues(alpha: 0.5),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap a device in the Devices tab\nto start a conversation',
-            style: AppTypography.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
+            const SizedBox(height: 24),
+            Text(
+              'No Recent Chats',
+              style: AppTypography.heading3.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'To start chatting, go to the Devices tab, tap on a device, and click the Chat button.',
+              textAlign: TextAlign.center,
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textMuted,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
