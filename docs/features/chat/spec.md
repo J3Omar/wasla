@@ -9,18 +9,15 @@ Text messaging between two devices via WebRTC Data Channel, stored locally with 
 
 ## ✅ Prerequisites
 
-- [ ] **Device Discovery complete** — need the peer's IP to establish a connection
-- [ ] **WebRTC Signaling working** — Data Channel requires a peer connection first
-- [ ] Dependencies in `pubspec.yaml`:
+- [x] **Device Discovery complete** — peer IP available from `Device.localIp`
+- [x] **Transport layer** — Using `dart:io` WebSocket (port 8766) instead of WebRTC Data Channel for Phase 1. WebRTC upgrade planned for voice/video feature.
+- [x] Dependencies in `pubspec.yaml`:
   ```yaml
-  flutter_webrtc: ^0.x.x
-  drift: ^2.x.x
-  sqlite3_flutter_libs: ^0.5.x
-  drift_dev: ^2.x.x        # dev dependency
-  build_runner: ^2.x.x      # dev dependency
+  sqlite3: ^2.9.4
+  sqlite3_flutter_libs: ^0.5.30
+  path: ^1.9.0
+  intl: ^0.19.0
   ```
-
-> **Note:** Chat uses the same WebRTC connection that Voice/Video Call will use — build the signaling layer once for both.
 
 ---
 
@@ -34,41 +31,37 @@ Text messaging between two devices via WebRTC Data Channel, stored locally with 
 
 ## 🔧 Coding Checklist
 
-### Step 1 — Data: Drift Database
-- [ ] Create `lib/features/chat/data/chat_database.dart`
-  ```dart
-  class Messages extends Table {
-    IntColumn get id => integer().autoIncrement()();
-    TextColumn get conversationId => text()();  // peer UUID
-    TextColumn get content => text()();
-    BoolColumn get isSent => boolean()();
-    DateTimeColumn get timestamp => dateTime()();
-    IntColumn get status => intEnum<MessageStatus>()();
-    IntColumn get type => intEnum<MessageType>()();
-    TextColumn get fileName => text().nullable()();
-    IntColumn get fileSize => integer().nullable()();
-  }
-  ```
-- [ ] Run `dart run build_runner build`
+### Step 1 — Data: SQLite Database
+- [x] Create `lib/features/chat/domain/chat_message.dart` — ChatMessage + enums
+- [x] Create `lib/features/chat/data/chat_database.dart` — SQLite via `sqlite3` package (no code gen)
 
-### Step 2 — Data: Chat Repository
-- [ ] Create `lib/features/chat/data/chat_repository.dart`
-  - `saveMessage(Message)` → Drift
-  - `watchMessages(conversationId)` → `Stream<List<Message>>`
-  - `updateStatus(id, status)`
+### Step 2 — Data: WebSocket Transport
+- [x] Create `lib/features/chat/data/ws_chat_service.dart`
+  - Runs `HttpServer` on port 8766 for receiving
+  - Connects to peer's server for sending
+  - Auto-reconnects on disconnect
+  - Sends JSON: `{"type": "msg", "content": "...", "ts": epoch_ms}`
 
-### Step 3 — Data: Data Channel Service
-- [ ] Create `lib/features/chat/data/data_channel_service.dart`
-  - Create WebRTC Data Channel
-  - Send JSON: `{"type": "msg", "content": "...", "ts": "..."}`
-  - Receive + parse + save to Drift
+### Step 3 — Presentation: State
+- [x] Create `lib/features/chat/presentation/chat_notifier.dart`
+  - `ChatArgs` (peerId, peerIp, peerName) as family arg
+  - Subscribes to DB stream
+  - Sends optimistically with status tracking
 
 ### Step 4 — Presentation: Chat Screen
-- [ ] Create `lib/features/chat/presentation/chat_screen.dart`
-  - `ListView` with messages from Drift
-  - `MessageBubble` — received (dark bg) vs sent (gradient)
-  - Input bar + Send button
-  - Call buttons in AppBar
+- [x] Create `lib/features/chat/presentation/chat_screen.dart`
+  - AppBar: avatar, device name, IP (green), call buttons
+  - `_SentBubble` — gradient (Cyan→Purple), rounded corners, glow shadow
+  - `_ReceivedBubble` — `bgTertiary` dark, left-aligned
+  - `_Timestamp` with `_StatusIcon` (sending/sent/delivered/failed)
+  - `_DateDivider` between different days
+  - `_EmptyConversation` when no messages yet
+  - `_InputBar`: attach (+), text field, animated send button
+
+### Step 5 — Wiring
+- [x] Updated router: `/chat/:deviceId` now opens `ChatScreen(device: device)`
+- [x] Updated `HomeScreen` Chat tile to pass `Device` as extra
+- [x] `main.dart` opens `ChatDatabase` at startup
 
 ---
 

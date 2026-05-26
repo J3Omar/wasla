@@ -5,6 +5,7 @@ import 'package:wasla/features/setup/presentation/splash_screen.dart';
 import 'package:wasla/features/setup/presentation/setup_name_screen.dart';
 import 'package:wasla/features/shell/presentation/main_shell.dart';
 import 'package:wasla/features/chat/presentation/chat_screen.dart';
+import 'package:wasla/features/discovery/domain/device_model.dart';
 
 /// Route name constants — use these instead of raw strings
 abstract final class AppRoutes {
@@ -46,16 +47,8 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.chat,
       name: 'chat',
       builder: (context, state) {
-        final deviceId = state.pathParameters['deviceId']!;
-        // peerName and isOnline passed as extras from push callers
-        final extra = state.extra as Map<String, dynamic>?;
-        final peerName = extra?['peerName'] as String? ?? deviceId;
-        final isOnline = extra?['isOnline'] as bool? ?? false;
-        return ChatScreen(
-          peerUuid: deviceId,
-          peerName: peerName,
-          isOnline: isOnline,
-        );
+        final device = state.extra as Device;
+        return ChatScreen(device: device);
       },
     ),
 

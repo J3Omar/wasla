@@ -216,14 +216,7 @@ class _DeviceCard extends StatelessWidget {
                           label: 'Chat',
                           color: AppColors.primaryCyan,
                           onTap: () {
-                            context.push(
-                              '/chat/${device.uuid}',
-                              extra: <String, dynamic>{
-                                'peerName': device.displayName,
-                                'isOnline':
-                                    device.status != DeviceStatus.offline,
-                              },
-                            );
+                            context.push('/chat/${device.uuid}', extra: device);
                           },
                         ),
                       ),
