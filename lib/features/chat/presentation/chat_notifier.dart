@@ -2,19 +2,46 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:uuid/uuid.dart';
 
 import '../data/chat_database.dart';
-import '../data/ws_chat_service.dart';
+import '../data/webrtc_chat_service.dart';
 import '../domain/chat_message.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
+const _kPageSize = 30;
+const _uuid = Uuid();
+
+// ── Chat Page State ───────────────────────────────────────────────────────────
+
+class ChatPageState {
+  const ChatPageState({
+    required this.messages,
+    required this.hasMore,
+    this.isLoadingMore = false,
+  });
+
+  final List<ChatMessage> messages;
+  final bool hasMore;
+  final bool isLoadingMore;
+
+  ChatPageState copyWith({
+    List<ChatMessage>? messages,
+    bool? hasMore,
+    bool? isLoadingMore,
+  }) {
+    return ChatPageState(
+      messages: messages ?? this.messages,
+      hasMore: hasMore ?? this.hasMore,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    );
+  }
+}
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-/// Provider for the chat notifier for a specific peer device.
-/// Key: peerId (UUID string)
-final chatProvider = AsyncNotifierProviderFamily<ChatNotifier, List<ChatMessage>, ChatArgs>(
+final chatProvider = AsyncNotifierProviderFamily<ChatNotifier, ChatPageState, ChatArgs>(
   ChatNotifier.new,
 );
 
@@ -25,65 +52,88 @@ class ChatArgs {
   final String peerName;
 
   @override
-  bool operator ==(Object other) =>
-      other is ChatArgs && other.peerId == peerId;
+  bool operator ==(Object other) => other is ChatArgs && other.peerId == peerId;
 
   @override
   int get hashCode => peerId.hashCode;
 }
 
-/// State notifier for a single conversation.
-class ChatNotifier extends FamilyAsyncNotifier<List<ChatMessage>, ChatArgs> {
+// ── ChatNotifier ──────────────────────────────────────────────────────────────
+
+class ChatNotifier extends FamilyAsyncNotifier<ChatPageState, ChatArgs> {
   StreamSubscription<List<ChatMessage>>? _dbSub;
+  int _loadedCount = _kPageSize;
 
   @override
-  Future<List<ChatMessage>> build(ChatArgs arg) async {
-    // Open DB if not already open
+  Future<ChatPageState> build(ChatArgs arg) async {
     await ChatDatabase.instance.open();
 
-    // Save the peer's last known IP so the background queue can reach them offline
-    ChatDatabase.instance.upsertPeer(arg.peerId, arg.peerName, arg.peerIp);
+    // Save peer's IP so the offline queue can reach them later
+    if (arg.peerIp.isNotEmpty) {
+      ChatDatabase.instance.upsertPeer(arg.peerId, arg.peerName, arg.peerIp);
+    }
 
-    // Mark this peer as active in the global server so incoming messages get ack_read
-    final server = ref.read(globalChatServerProvider);
-    server.activeChatPeerId = arg.peerId;
+    final service = ref.read(webrtcChatServiceProvider);
 
-    // Load our own UUID and Name for sending and background queue
+    // Mark this peer as the active chat (so incoming messages get read ACK)
+    service.activeChatPeerId = arg.peerId;
+
+    // Load identity so WebRTC service can sign messages
     const storage = FlutterSecureStorage();
-    server.selfUuid ??= await storage.read(key: _kUuidKey) ?? '';
-    server.selfName ??= await storage.read(key: _kNameKey) ?? 'Wasla User';
+    service.selfUuid ??= await storage.read(key: _kUuidKey) ?? '';
+    service.selfName ??= await storage.read(key: _kNameKey) ?? 'Wasla User';
 
-    // Subscribe to DB stream (the GlobalChatServer will insert into DB)
+    // Subscribe to DB changes — only rebuild if message list changes
     _dbSub = ChatDatabase.instance.watchMessages(arg.peerId).listen((msgs) {
-      state = AsyncData(msgs);
+      if (state.hasValue) {
+        final current = state.value!;
+        // Merge new messages into current paginated list
+        // New messages are appended; already-loaded older messages keep pagination
+        state = AsyncData(current.copyWith(
+          messages: _mergeMessages(current.messages, msgs),
+        ));
+      }
     });
 
     ref.onDispose(() {
       _dbSub?.cancel();
-      // If we are leaving this chat, unmark active peer
-      if (server.activeChatPeerId == arg.peerId) {
-        server.activeChatPeerId = null;
+      if (service.activeChatPeerId == arg.peerId) {
+        service.activeChatPeerId = null;
       }
     });
 
-    // Mark all existing messages from this peer as read
-    // and notify the sender so they see blue ticks
-    final messages = ChatDatabase.instance.getMessages(arg.peerId);
-    final unreadReceived = messages.where((m) => !m.isSent && !m.isRead).toList();
-    ChatDatabase.instance.markAllRead(arg.peerId);
-    
-    // Send ack_read for each unread message so the sender gets blue ticks
-    if (unreadReceived.isNotEmpty && arg.peerIp.isNotEmpty) {
-      for (final msg in unreadReceived) {
-        await server.sendMessage(arg.peerIp, {
-          'type': 'ack_read',
-          'senderId': server.selfUuid,
-          'ts': msg.timestamp.millisecondsSinceEpoch,
-        });
-      }
-    }
+    // Load initial page (last 30 messages, chronologically)
+    final total = ChatDatabase.instance.countMessages(arg.peerId);
+    final initialMessages = ChatDatabase.instance.getMessagesPaged(arg.peerId, offset: 0, limit: _kPageSize);
 
-    return ChatDatabase.instance.getMessages(arg.peerId);
+    // Mark all received messages as read and send bulk ACK to sender
+    await _markAllReadAndAck(service, initialMessages);
+
+    return ChatPageState(
+      messages: initialMessages,
+      hasMore: total > _kPageSize,
+    );
+  }
+
+  /// Load 30 older messages (scroll-up pagination).
+  Future<void> loadMoreMessages() async {
+    if (!state.hasValue) return;
+    final current = state.value!;
+    if (!current.hasMore || current.isLoadingMore) return;
+
+    state = AsyncData(current.copyWith(isLoadingMore: true));
+
+    final total = ChatDatabase.instance.countMessages(arg.peerId);
+    final nextOffset = _loadedCount;
+    final older = ChatDatabase.instance.getMessagesPaged(arg.peerId, offset: nextOffset, limit: _kPageSize);
+
+    _loadedCount += older.length;
+
+    state = AsyncData(current.copyWith(
+      messages: [...older, ...current.messages],
+      hasMore: _loadedCount < total,
+      isLoadingMore: false,
+    ));
   }
 
   /// Send a text message to the peer.
@@ -91,39 +141,67 @@ class ChatNotifier extends FamilyAsyncNotifier<List<ChatMessage>, ChatArgs> {
     if (text.trim().isEmpty) return;
 
     final now = DateTime.now();
-    final server = ref.read(globalChatServerProvider);
+    final service = ref.read(webrtcChatServiceProvider);
 
-    const storage = FlutterSecureStorage();
-    final selfName = await storage.read(key: _kNameKey) ?? 'Unknown';
-
-    // Optimistically insert as "sending"
+    // Create draft with a stable UUID
     final draft = ChatMessage(
       id: 0,
+      messageUuid: _uuid.v4(),
       peerId: arg.peerId,
       content: text.trim(),
       isSent: true,
       timestamp: now,
-      status: MessageStatus.sending,
+      status: MessageStatus.queued,
       type: MessageType.text,
     );
+
+    // Optimistically insert (triggers DB stream → UI update)
     final saved = ChatDatabase.instance.insert(draft);
 
-    // Try to send over WebSocket via Global Server
-    final payload = {
-      'type': 'msg',
-      'senderId': server.selfUuid,
-      'senderName': selfName,
-      'content': text.trim(),
-      'ts': now.millisecondsSinceEpoch,
-    };
-    
-    final sent = await server.sendMessage(arg.peerIp, payload);
+    // Try to send via WebRTC
+    final sent = await service.sendChatMessage(
+      peerId: arg.peerId,
+      peerIp: arg.peerIp,
+      message: saved,
+    );
 
-    // If it fails to send immediately, we leave it as sending! 
-    // The GlobalChatServer background queue will auto-retry every 5 seconds.
+    // Update status — if sent, mark as sent; if not, stay queued (retry timer handles it)
     ChatDatabase.instance.updateStatus(
       saved.id,
-      sent ? MessageStatus.sent : MessageStatus.sending,
+      sent ? MessageStatus.sent : MessageStatus.queued,
     );
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────────
+
+  Future<void> _markAllReadAndAck(WebRtcChatService service, List<ChatMessage> messages) async {
+    // Find unread received messages
+    final unread = messages.where((m) => !m.isSent && !m.isRead).toList();
+    if (unread.isEmpty) return;
+
+    // Mark locally
+    ChatDatabase.instance.markAllRead(arg.peerId);
+
+    if (arg.peerIp.isEmpty) return;
+
+    // Send bulk read ACK if we have an active connection
+    final latestTs = unread.map((m) => m.timestamp.millisecondsSinceEpoch).reduce((a, b) => a > b ? a : b);
+    await service.sendAckReadAll(
+      peerIp: arg.peerIp,
+      peerId: arg.peerId,
+      upToTimestamp: latestTs,
+    );
+  }
+
+  /// Merge new messages from the DB stream with the currently displayed list.
+  /// Keeps all already-displayed messages, appends any new ones.
+  List<ChatMessage> _mergeMessages(List<ChatMessage> current, List<ChatMessage> all) {
+    if (current.isEmpty) return all;
+    // Get the timestamp of the oldest loaded message to know our lower bound
+    final oldestLoaded = current.first.timestamp;
+    // From all messages, keep those >= oldestLoaded (don't go beyond pagination)
+    final filtered = all.where((m) => !m.timestamp.isBefore(oldestLoaded)).toList();
+    if (filtered.isEmpty) return current;
+    return filtered;
   }
 }

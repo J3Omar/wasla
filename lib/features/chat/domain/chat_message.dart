@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart';
 
 /// Delivery status of a chat message.
+/// Ordinal value matters — DB stores as int, and we only ever upgrade (never downgrade).
 enum MessageStatus {
-  sending, // locally created, not yet sent
-  sent, // sent over the network
-  delivered, // peer acknowledged receipt
-  failed, // send failed
-  read, // peer has seen the message
+  queued,    // 0 — saved locally, waiting for connection
+  sent,      // 1 — left our device, arrived at peer's WebRTC server
+  delivered, // 2 — peer device received it (app may not be in this chat)
+  read,      // 3 — peer opened THIS specific chat
+  failed,    // 4 — unrecoverable error (kept last for ordinal safety)
 }
 
 /// Type of message content.
@@ -26,6 +27,7 @@ class ChatMessage {
     required this.isSent,
     required this.timestamp,
     required this.status,
+    this.messageUuid = '',
     this.type = MessageType.text,
     this.isRead = false,
     this.fileName,
@@ -33,6 +35,9 @@ class ChatMessage {
   });
 
   final int id;
+
+  /// Stable UUID per message — used for ACK routing (not timestamp-based).
+  final String messageUuid;
 
   /// The UUID of the peer device (conversation key).
   final String peerId;
@@ -53,6 +58,7 @@ class ChatMessage {
 
   ChatMessage copyWith({
     int? id,
+    String? messageUuid,
     String? peerId,
     String? content,
     bool? isSent,
@@ -65,6 +71,7 @@ class ChatMessage {
   }) {
     return ChatMessage(
       id: id ?? this.id,
+      messageUuid: messageUuid ?? this.messageUuid,
       peerId: peerId ?? this.peerId,
       content: content ?? this.content,
       isSent: isSent ?? this.isSent,
@@ -79,7 +86,7 @@ class ChatMessage {
 
   /// Serialize to JSON for network transport.
   Map<String, dynamic> toJson() => {
-    'id': id,
+    'id': messageUuid,  // send UUID as 'id' over network
     'peerId': peerId,
     'content': content,
     'isSent': isSent,
@@ -92,7 +99,8 @@ class ChatMessage {
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
-      id: (json['id'] as num?)?.toInt() ?? 0,
+      id: 0,
+      messageUuid: json['id'] as String? ?? '',
       peerId: json['peerId'] as String,
       content: json['content'] as String,
       isSent: json['isSent'] as bool,
@@ -108,8 +116,8 @@ class ChatMessage {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || (other is ChatMessage && other.id == id);
+      identical(this, other) || (other is ChatMessage && other.id == id && other.status == status);
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode => Object.hash(id, status);
 }

@@ -5,9 +5,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../discovery/presentation/home_screen.dart';
-import '../../chat/presentation/chats_list_screen.dart'; // also exports totalUnreadProvider
-import '../../chat/data/ws_chat_service.dart';
+import '../../chat/presentation/chats_list_screen.dart';
+import '../../chat/data/webrtc_chat_service.dart';
 import '../../chat/data/chat_database.dart';
+import '../../chat/data/chat_notification_service.dart';
 import '../../profile/presentation/profile_screen.dart';
 
 /// Top-level navigation shell with 3 tabs.
@@ -31,13 +32,30 @@ class _MainShellState extends ConsumerState<MainShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final server = ref.read(globalChatServerProvider);
-      await server.start();
+      // Open database
       await ChatDatabase.instance.open();
-      // Load identity so acks work even before a chat is opened
+
+      // Initialize notifications
+      await ChatNotificationService.instance.initialize();
+
+      // Start WebRTC chat service and load identity
       const storage = FlutterSecureStorage();
-      server.selfUuid ??= await storage.read(key: 'wasla_device_uuid') ?? '';
-      server.selfName ??= await storage.read(key: 'wasla_device_name') ?? 'Wasla User';
+      final service = ref.read(webrtcChatServiceProvider);
+      service.selfUuid ??= await storage.read(key: 'wasla_device_uuid') ?? '';
+      service.selfName ??= await storage.read(key: 'wasla_device_name') ?? 'Wasla User';
+      await service.start();
+
+      // Wire notification display when a message arrives in background
+      service.onMessageReceived = (peerId, senderName, content) {
+        // Only show notification if user is NOT in this specific chat
+        if (service.activeChatPeerId != peerId) {
+          ChatNotificationService.instance.showMessageNotification(
+            senderName: senderName,
+            content: content,
+            peerId: peerId,
+          );
+        }
+      };
     });
   }
 

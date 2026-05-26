@@ -1,21 +1,17 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../discovery/domain/device_model.dart';
+import '../../discovery/data/discovery_service.dart';
 import '../domain/chat_message.dart';
 import '../data/chat_database.dart';
-import '../../discovery/data/discovery_service.dart';
 import 'chat_notifier.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.device});
-
   final Device device;
 
   @override
@@ -27,10 +23,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   bool _hasText = false;
-  int _prevMessageCount = 0;
-  
+
   bool _isSelectionMode = false;
   final Set<int> _selectedIds = {};
+  bool _isLoadingMore = false;
 
   late final ChatArgs _args;
 
@@ -42,7 +38,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       peerIp: widget.device.localIp,
       peerName: widget.device.displayName,
     );
-    
+
     // Save the peer name to database so we remember it offline
     ChatDatabase.instance.upsertPeer(widget.device.uuid, widget.device.displayName);
 
@@ -50,6 +46,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final has = _inputController.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
     });
+
+    // Listen for scroll-to-top to trigger pagination
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    // With reverse:true, pixels==0 is the TOP (oldest messages)
+    if (_scrollController.position.pixels <= 80 && !_isLoadingMore) {
+      _isLoadingMore = true;
+      ref.read(chatProvider(_args).notifier).loadMoreMessages().then((_) {
+        _isLoadingMore = false;
+      });
+    }
   }
 
   @override
@@ -60,17 +69,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
+
 
   Future<void> _send() async {
     final text = _inputController.text.trim();
@@ -78,7 +77,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _inputController.clear();
     _focusNode.requestFocus();
     await ref.read(chatProvider(_args).notifier).sendMessage(text);
-    _scrollToBottom();
   }
 
   @override
@@ -98,61 +96,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               error: (e, _) => Center(
                 child: Text('Error: $e', style: AppTypography.bodySmall),
               ),
-              data: (messages) {
+              data: (pageState) {
+                final messages = pageState.messages;
                 if (messages.isEmpty) {
                   return _EmptyConversation(device: widget.device);
                 }
-                // Only scroll if a new message arrived (count changed)
-                final int prevCount = _prevMessageCount;
-                if (messages.length != prevCount) {
-                  _prevMessageCount = messages.length;
-                  _scrollToBottom();
-                }
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = messages[index];
-                    final prev = index > 0 ? messages[index - 1] : null;
-                    final showDate =
-                        prev == null || !_sameDay(msg.timestamp, prev.timestamp);
-                    return RepaintBoundary(
-                      child: Column(
-                        children: [
-                          if (showDate) _DateDivider(date: msg.timestamp),
-                          _MessageBubble(
-                            message: msg,
-                            isSelected: _selectedIds.contains(msg.id),
-                            isSelectionMode: _isSelectionMode,
-                            onTap: () {
-                              if (_isSelectionMode) {
-                                setState(() {
-                                  if (_selectedIds.contains(msg.id)) {
-                                    _selectedIds.remove(msg.id);
-                                    if (_selectedIds.isEmpty) _isSelectionMode = false;
-                                  } else {
-                                    _selectedIds.add(msg.id);
-                                  }
-                                });
-                              }
-                            },
-                            onLongPress: () {
-                              if (!_isSelectionMode) {
-                                setState(() {
-                                  _isSelectionMode = true;
-                                  _selectedIds.add(msg.id);
-                                });
-                              }
-                            },
-                          ),
-                        ],
+                return Stack(
+                  children: [
+                    // reverse: true means index 0 = newest, auto-anchors to bottom
+                    ListView.builder(
+                      controller: _scrollController,
+                      reverse: true,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                    );
-                  },
+                      itemCount: messages.length + (pageState.hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        // Loading indicator at top (last item in reversed list)
+                        if (pageState.hasMore && index == messages.length) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: pageState.isLoadingMore
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppColors.primaryCyan,
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          );
+                        }
+
+                        // reversed: index 0 = last message (newest)
+                        final reversedIndex = messages.length - 1 - index;
+                        final msg = messages[reversedIndex];
+                        final prev = reversedIndex > 0 ? messages[reversedIndex - 1] : null;
+                        final showDate = prev == null || !_sameDay(msg.timestamp, prev.timestamp);
+
+                        return RepaintBoundary(
+                          child: Column(
+                            children: [
+                              if (showDate) _DateDivider(date: msg.timestamp),
+                              _MessageBubble(
+                                message: msg,
+                                isSelected: _selectedIds.contains(msg.id),
+                                isSelectionMode: _isSelectionMode,
+                                onTap: () {
+                                  if (_isSelectionMode) {
+                                    setState(() {
+                                      if (_selectedIds.contains(msg.id)) {
+                                        _selectedIds.remove(msg.id);
+                                        if (_selectedIds.isEmpty) _isSelectionMode = false;
+                                      } else {
+                                        _selectedIds.add(msg.id);
+                                      }
+                                    });
+                                  }
+                                },
+                                onLongPress: () {
+                                  if (!_isSelectionMode) {
+                                    setState(() {
+                                      _isSelectionMode = true;
+                                      _selectedIds.add(msg.id);
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 );
               },
             ),
@@ -169,7 +189,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  PreferredSizeWidget _buildSelectionAppBar(AsyncValue<List<ChatMessage>> chatState) {
+  PreferredSizeWidget _buildSelectionAppBar(AsyncValue<ChatPageState> chatState) {
     return AppBar(
       backgroundColor: AppColors.bgSecondary,
       elevation: 0,
@@ -192,11 +212,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onPressed: () {
             if (chatState.hasValue) {
               setState(() {
-                if (_selectedIds.length == chatState.value!.length) {
+                final allIds = chatState.value!.messages.map((m) => m.id).toSet();
+                if (_selectedIds.length == allIds.length) {
                   _selectedIds.clear();
                   _isSelectionMode = false;
                 } else {
-                  _selectedIds.addAll(chatState.value!.map((m) => m.id));
+                  _selectedIds.addAll(allIds);
                 }
               });
             }
@@ -211,7 +232,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               builder: (ctx) => AlertDialog(
                 backgroundColor: AppColors.bgSecondary,
                 title: Text('Delete Messages', style: AppTypography.heading3),
-                content: Text('Are you sure you want to delete the selected messages?', style: AppTypography.bodyMedium),
+                content: Text(
+                  'Are you sure you want to delete ${_selectedIds.length} message(s)?',
+                  style: AppTypography.bodyMedium,
+                ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(ctx).pop(false),
@@ -238,21 +262,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   PreferredSizeWidget _buildAppBar() {
-    // Watch discovery service for real-time status updates
     final devicesState = ref.watch(discoveryServiceProvider);
     Device? currentDevice;
     if (devicesState is AsyncData<Map<String, Device>>) {
       currentDevice = devicesState.value[widget.device.uuid];
     }
-    
+
     final displayDevice = currentDevice ?? widget.device.copyWith(status: DeviceStatus.offline);
-    
+
     String statusText;
     Color statusColor;
     switch (displayDevice.status) {
       case DeviceStatus.available:
         statusText = 'Online • ${displayDevice.localIp}';
-        statusColor = Colors.greenAccent.shade400;
+        statusColor = AppColors.statusOnline;
         break;
       case DeviceStatus.inCall:
         statusText = 'On Call • ${displayDevice.localIp}';
@@ -261,7 +284,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       case DeviceStatus.busy:
       case DeviceStatus.offline:
         statusText = 'Offline';
-        statusColor = Colors.orangeAccent;
+        statusColor = AppColors.statusOffline;
         break;
     }
 
@@ -269,10 +292,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       backgroundColor: AppColors.bgSecondary,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(
-          Icons.arrow_back_rounded,
-          color: AppColors.textPrimary,
-        ),
+        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
         onPressed: () => Navigator.of(context).pop(),
       ),
       titleSpacing: 0,
@@ -296,9 +316,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   textDirection: TextDirection.ltr,
                   child: Text(
                     statusText,
-                    style: AppTypography.labelSmall.copyWith(
-                      color: statusColor,
-                    ),
+                    style: AppTypography.labelSmall.copyWith(color: statusColor),
                   ),
                 ),
               ],
@@ -308,25 +326,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(
-            Icons.phone_rounded,
-            color: AppColors.textSecondary,
-            size: 20,
-          ),
+          icon: const Icon(Icons.phone_rounded, color: AppColors.textSecondary, size: 20),
           onPressed: () => _showComingSoon(context, 'Voice call'),
         ),
         IconButton(
-          icon: const Icon(
-            Icons.videocam_rounded,
-            color: AppColors.textSecondary,
-            size: 22,
-          ),
+          icon: const Icon(Icons.videocam_rounded, color: AppColors.textSecondary, size: 22),
           onPressed: () => _showComingSoon(context, 'Video call'),
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
           color: AppColors.bgSecondary,
-          onSelected: (value) async {
+          onSelected: (value) {
             if (value == 'delete') {
               setState(() {
                 _isSelectionMode = true;
@@ -451,9 +461,7 @@ class _DateDivider extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text(
               label,
-              style: AppTypography.labelSmall.copyWith(
-                color: AppColors.textMuted,
-              ),
+              style: AppTypography.labelSmall.copyWith(color: AppColors.textMuted),
             ),
           ),
           const Expanded(child: Divider(color: AppColors.borderDefault)),
@@ -478,7 +486,7 @@ class _MessageBubble extends StatelessWidget {
     this.onTap,
     this.onLongPress,
   });
-  
+
   final ChatMessage message;
   final bool isSelected;
   final bool isSelectionMode;
@@ -511,8 +519,7 @@ class _MessageBubble extends StatelessWidget {
               ),
             Expanded(
               child: Align(
-                alignment:
-                    message.isSent ? Alignment.centerRight : Alignment.centerLeft,
+                alignment: message.isSent ? Alignment.centerRight : Alignment.centerLeft,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.75,
@@ -629,35 +636,20 @@ class _StatusIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     switch (status) {
-      case MessageStatus.sending:
+      case MessageStatus.queued:
         return const SizedBox(
           width: 10,
           height: 10,
-          child: CircularProgressIndicator(
-            strokeWidth: 1.5,
-            color: AppColors.textMuted,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.textMuted),
         );
       case MessageStatus.sent:
         return const Icon(Icons.check, size: 14, color: AppColors.textMuted);
       case MessageStatus.delivered:
-        return const Icon(
-          Icons.done_all,
-          size: 14,
-          color: AppColors.textMuted,
-        );
+        return const Icon(Icons.done_all, size: 14, color: AppColors.textMuted);
       case MessageStatus.read:
-        return const Icon(
-          Icons.done_all,
-          size: 14,
-          color: AppColors.primaryCyan, // or Colors.greenAccent
-        );
+        return const Icon(Icons.done_all, size: 14, color: AppColors.primaryCyan);
       case MessageStatus.failed:
-        return const Icon(
-          Icons.error_outline,
-          size: 14,
-          color: AppColors.statusOffline,
-        );
+        return const Icon(Icons.error_outline, size: 14, color: AppColors.statusOffline);
     }
   }
 }
@@ -723,13 +715,8 @@ class _InputBar extends StatelessWidget {
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   hintText: 'Write message...',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textMuted,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
+                  hintStyle: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   border: InputBorder.none,
                 ),
                 onSubmitted: (_) => onSend(),
@@ -748,9 +735,7 @@ class _InputBar extends StatelessWidget {
                 height: 42,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: hasText
-                      ? AppColors.primaryCyan
-                      : AppColors.bgTertiary,
+                  color: hasText ? AppColors.primaryCyan : AppColors.bgTertiary,
                   boxShadow: hasText
                       ? [
                           BoxShadow(

@@ -53,7 +53,7 @@ class ChatsListScreen extends ConsumerWidget {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: messages.length,
-            separatorBuilder: (_, __) => const Divider(
+            separatorBuilder: (_, _) => const Divider(
               color: AppColors.borderDefault,
               height: 1,
               indent: 72,

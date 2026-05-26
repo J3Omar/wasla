@@ -38,7 +38,7 @@ class GlobalChatServer {
     if (_started) return;
     _started = true;
     try {
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, kChatWsPort);
+      _server = await HttpServer.bind(InternetAddress.anyIPv4, kChatWsPort, shared: true);
       _server!.transform(WebSocketTransformer()).listen((ws) {
         ws.listen(
           (data) {
@@ -160,7 +160,7 @@ class GlobalChatServer {
     if (ws == null) {
       try {
         ws = await WebSocket.connect('ws://$peerIp:$kChatWsPort')
-            .timeout(const Duration(seconds: 2));
+            .timeout(const Duration(seconds: 5));
         _outgoingConnections[peerIp] = ws;
         
         // Listen for incoming acks on this outgoing socket
