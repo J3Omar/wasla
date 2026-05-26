@@ -44,9 +44,7 @@ class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
         suggested = android.model;
       } else if (Platform.isLinux) {
         final linux = await info.linuxInfo;
-        suggested = linux.prettyName.isNotEmpty
-            ? linux.prettyName
-            : linux.name;
+        suggested = linux.prettyName.isNotEmpty ? linux.prettyName : linux.name;
       } else if (Platform.isWindows) {
         final windows = await info.windowsInfo;
         suggested = windows.computerName;
@@ -106,8 +104,10 @@ class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_rounded,
-                    color: AppColors.textPrimary),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: AppColors.textPrimary,
+                ),
                 onPressed: () => context.pop(),
               ),
             )
@@ -118,7 +118,10 @@ class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
                 child: CircularProgressIndicator(color: AppColors.primaryCyan),
               )
             : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 48),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 48,
+                ),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -215,8 +218,10 @@ class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
                         ),
                         validator: (val) {
                           final v = val?.trim() ?? '';
-                          if (v.length < 2) return 'Name must be at least 2 characters';
-                          if (v.length > 30) return 'Name must be 30 characters or less';
+                          if (v.length < 2)
+                            return 'Name must be at least 2 characters';
+                          if (v.length > 30)
+                            return 'Name must be 30 characters or less';
                           return null;
                         },
                       ),
@@ -233,7 +238,9 @@ class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
                             borderRadius: BorderRadius.circular(14),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primaryCyan.withValues(alpha: 0.25),
+                                color: AppColors.primaryCyan.withValues(
+                                  alpha: 0.25,
+                                ),
                                 blurRadius: 16,
                                 offset: const Offset(0, 4),
                               ),

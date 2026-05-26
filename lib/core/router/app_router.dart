@@ -63,8 +63,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.settings,
       name: 'settings',
-      builder: (context, state) =>
-          const _PlaceholderScreen(label: 'Settings'),
+      builder: (context, state) => const _PlaceholderScreen(label: 'Settings'),
     ),
   ],
 );

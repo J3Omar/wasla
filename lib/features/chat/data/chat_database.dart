@@ -50,9 +50,9 @@ class ChatDatabase extends _$ChatDatabase {
           ..where((t) => t.lastMessage.equals('').not())
           ..orderBy([
             (t) => OrderingTerm(
-                  expression: t.lastMessageAt,
-                  mode: OrderingMode.desc,
-                ),
+              expression: t.lastMessageAt,
+              mode: OrderingMode.desc,
+            ),
           ]))
         .watch();
   }
@@ -79,9 +79,9 @@ class ChatDatabase extends _$ChatDatabase {
     final peer = msg.peerUuid.value;
 
     // Check if conversation exists
-    final existing = await (select(conversations)
-          ..where((t) => t.peerUuid.equals(peer)))
-        .getSingleOrNull();
+    final existing = await (select(
+      conversations,
+    )..where((t) => t.peerUuid.equals(peer))).getSingleOrNull();
 
     if (existing == null) {
       // Auto-create conversation row
@@ -94,11 +94,14 @@ class ChatDatabase extends _$ChatDatabase {
         ),
       );
     } else {
-      await (update(conversations)..where((t) => t.peerUuid.equals(peer)))
-          .write(ConversationsCompanion(
-        lastMessage: Value(body),
-        lastMessageAt: Value(ts),
-      ));
+      await (update(
+        conversations,
+      )..where((t) => t.peerUuid.equals(peer))).write(
+        ConversationsCompanion(
+          lastMessage: Value(body),
+          lastMessageAt: Value(ts),
+        ),
+      );
     }
   }
 
@@ -106,25 +109,24 @@ class ChatDatabase extends _$ChatDatabase {
   Future<void> markRead(String peerUuid) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await (update(messages)
-          ..where((t) =>
-              t.peerUuid.equals(peerUuid) & t.readAt.isNull()))
+          ..where((t) => t.peerUuid.equals(peerUuid) & t.readAt.isNull()))
         .write(MessagesCompanion(readAt: Value(now)));
 
-    await (update(conversations)
-          ..where((t) => t.peerUuid.equals(peerUuid)))
+    await (update(conversations)..where((t) => t.peerUuid.equals(peerUuid)))
         .write(const ConversationsCompanion(unreadCount: Value(0)));
   }
 
   /// Increment unread count for a conversation (called on incoming message).
   Future<void> incrementUnread(String peerUuid) async {
-    final existing = await (select(conversations)
-          ..where((t) => t.peerUuid.equals(peerUuid)))
-        .getSingleOrNull();
+    final existing = await (select(
+      conversations,
+    )..where((t) => t.peerUuid.equals(peerUuid))).getSingleOrNull();
     if (existing != null) {
-      await (update(conversations)..where((t) => t.peerUuid.equals(peerUuid)))
-          .write(ConversationsCompanion(
-        unreadCount: Value(existing.unreadCount + 1),
-      ));
+      await (update(
+        conversations,
+      )..where((t) => t.peerUuid.equals(peerUuid))).write(
+        ConversationsCompanion(unreadCount: Value(existing.unreadCount + 1)),
+      );
     }
   }
 
@@ -136,9 +138,9 @@ class ChatDatabase extends _$ChatDatabase {
 
   /// Get peer name from conversations table.
   Future<String?> getPeerName(String peerUuid) async {
-    final row = await (select(conversations)
-          ..where((t) => t.peerUuid.equals(peerUuid)))
-        .getSingleOrNull();
+    final row = await (select(
+      conversations,
+    )..where((t) => t.peerUuid.equals(peerUuid))).getSingleOrNull();
     return row?.peerName;
   }
 }

@@ -26,11 +26,11 @@ class ChatsListScreen extends ConsumerWidget {
         ),
       ),
       body: conversationsAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator(color: AppColors.primaryCyan)),
-        error: (e, _) => Center(
-          child: Text('Error: $e', style: AppTypography.bodySmall),
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryCyan),
         ),
+        error: (e, _) =>
+            Center(child: Text('Error: $e', style: AppTypography.bodySmall)),
         data: (conversations) {
           if (conversations.isEmpty) {
             return const _EmptyChats();
@@ -65,7 +65,8 @@ class _ConversationTile extends StatelessWidget {
     final hasUnread = conversation.unreadCount > 0;
     final lastMsgTime = conversation.lastMessageAt > 0
         ? _formatTime(
-            DateTime.fromMillisecondsSinceEpoch(conversation.lastMessageAt))
+            DateTime.fromMillisecondsSinceEpoch(conversation.lastMessageAt),
+          )
         : '';
 
     return Material(
@@ -76,7 +77,8 @@ class _ConversationTile extends StatelessWidget {
             '/chat/${conversation.peerUuid}',
             extra: <String, dynamic>{
               'peerName': conversation.peerName,
-              'isOnline': false, // from chat history — online status unknown here
+              'isOnline':
+                  false, // from chat history — online status unknown here
             },
           );
         },
@@ -137,7 +139,8 @@ class _ConversationTile extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (hasUnread) _UnreadBadge(count: conversation.unreadCount),
+                        if (hasUnread)
+                          _UnreadBadge(count: conversation.unreadCount),
                       ],
                     ),
                   ],

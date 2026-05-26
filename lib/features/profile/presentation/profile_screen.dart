@@ -79,7 +79,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryCyan))
+              child: CircularProgressIndicator(color: AppColors.primaryCyan),
+            )
           : SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
               child: Column(
@@ -97,8 +98,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             gradient: AppColors.primaryGradient,
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    AppColors.primaryCyan.withValues(alpha: 0.3),
+                                color: AppColors.primaryCyan.withValues(
+                                  alpha: 0.3,
+                                ),
                                 blurRadius: 24,
                                 spreadRadius: 2,
                               ),
@@ -147,10 +149,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color:
-                            AppColors.statusOnline.withValues(alpha: 0.12),
+                        color: AppColors.statusOnline.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: AppColors.statusOnline.withValues(alpha: 0.3),
@@ -187,8 +190,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     label: 'Display Name',
                     value: _name,
                     trailing: IconButton(
-                      icon: const Icon(Icons.edit_outlined,
-                          size: 18, color: AppColors.primaryCyan),
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: AppColors.primaryCyan,
+                      ),
                       onPressed: () async {
                         await context.push(AppRoutes.onboarding);
                         _load(); // refresh after edit
@@ -216,10 +222,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Center(
                     child: Column(
                       children: [
-                        Image.asset(
-                          'assets/images/Wasla-logo.png',
-                          height: 48,
-                        ),
+                        Image.asset('assets/images/Wasla-logo.png', height: 48),
                         const SizedBox(height: 10),
                         Text(
                           'Wasla',
@@ -302,10 +305,9 @@ class _InfoCard extends StatelessWidget {
                 Text(
                   value,
                   style: AppTypography.bodyMedium.copyWith(
-                    fontFamily:
-                        label == 'Device UUID' || label == 'Local IP'
-                            ? 'JetBrains Mono'
-                            : null,
+                    fontFamily: label == 'Device UUID' || label == 'Local IP'
+                        ? 'JetBrains Mono'
+                        : null,
                     fontSize: label == 'Device UUID' ? 13 : null,
                   ),
                 ),

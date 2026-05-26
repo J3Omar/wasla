@@ -12,8 +12,7 @@ class ChatRepository {
   final ChatDatabase _db;
 
   /// Stream of all conversations (Chats tab).
-  Stream<List<Conversation>> watchConversations() =>
-      _db.watchConversations();
+  Stream<List<Conversation>> watchConversations() => _db.watchConversations();
 
   /// Stream of messages for a specific peer.
   Stream<List<Message>> watchMessages(String peerUuid) =>
@@ -58,8 +57,7 @@ class ChatRepository {
   Future<List<String>> knownPeerUuids() => _db.knownPeerUuids();
 
   /// Get stored peer name.
-  Future<String?> getPeerName(String peerUuid) =>
-      _db.getPeerName(peerUuid);
+  Future<String?> getPeerName(String peerUuid) => _db.getPeerName(peerUuid);
 
   /// Ensure conversation row exists (called when a peer is discovered).
   Future<void> ensureConversation({
@@ -69,10 +67,7 @@ class ChatRepository {
     final existing = await _db.getPeerName(peerUuid);
     if (existing == null) {
       await _db.upsertConversation(
-        ConversationsCompanion.insert(
-          peerUuid: peerUuid,
-          peerName: peerName,
-        ),
+        ConversationsCompanion.insert(peerUuid: peerUuid, peerName: peerName),
       );
     } else if (existing != peerName) {
       // Peer renamed their device — update
@@ -93,12 +88,13 @@ final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   return ChatRepository(db);
 });
 
-final conversationsProvider =
-    StreamProvider<List<Conversation>>((ref) {
+final conversationsProvider = StreamProvider<List<Conversation>>((ref) {
   return ref.watch(chatRepositoryProvider).watchConversations();
 });
 
-final messagesProvider =
-    StreamProvider.family<List<Message>, String>((ref, peerUuid) {
+final messagesProvider = StreamProvider.family<List<Message>, String>((
+  ref,
+  peerUuid,
+) {
   return ref.watch(chatRepositoryProvider).watchMessages(peerUuid);
 });

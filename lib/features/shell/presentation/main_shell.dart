@@ -18,20 +18,13 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
 
-  static const _tabs = [
-    HomeScreen(),
-    ChatsListScreen(),
-    ProfileScreen(),
-  ];
+  static const _tabs = [HomeScreen(), ChatsListScreen(), ProfileScreen()];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _tabs,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _tabs),
       bottomNavigationBar: _WaslaNavBar(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
@@ -48,9 +41,21 @@ class _WaslaNavBar extends StatelessWidget {
   final ValueChanged<int> onTap;
 
   static const _items = [
-    _NavItem(icon: Icons.wifi_find_outlined, activeIcon: Icons.wifi_find_rounded, label: 'Devices'),
-    _NavItem(icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: 'Chats'),
-    _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile'),
+    _NavItem(
+      icon: Icons.wifi_find_outlined,
+      activeIcon: Icons.wifi_find_rounded,
+      label: 'Devices',
+    ),
+    _NavItem(
+      icon: Icons.chat_bubble_outline_rounded,
+      activeIcon: Icons.chat_bubble_rounded,
+      label: 'Chats',
+    ),
+    _NavItem(
+      icon: Icons.person_outline_rounded,
+      activeIcon: Icons.person_rounded,
+      label: 'Profile',
+    ),
   ];
 
   @override

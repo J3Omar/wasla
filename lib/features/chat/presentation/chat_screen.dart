@@ -53,7 +53,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (body.isEmpty) return;
     _controller.clear();
 
-    await ref.read(chatRepositoryProvider).sendMessage(
+    await ref
+        .read(chatRepositoryProvider)
+        .sendMessage(
           peerUuid: widget.peerUuid,
           peerName: widget.peerName,
           body: body,
@@ -103,12 +105,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (messages.isEmpty) return const _EmptyMessages();
                 return ListView.builder(
                   controller: _scrollCtrl,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   itemCount: messages.length,
                   itemBuilder: (context, i) {
                     final msg = messages[i];
                     final isMine = msg.senderUuid == _myUuid;
-                    final showDate = i == 0 ||
+                    final showDate =
+                        i == 0 ||
                         _differentDay(messages[i - 1].sentAt, msg.sentAt);
                     return Column(
                       children: [
@@ -137,7 +143,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return AppBar(
       backgroundColor: AppColors.bgSecondary,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+        icon: const Icon(
+          Icons.arrow_back_rounded,
+          color: AppColors.textPrimary,
+        ),
         onPressed: () => Navigator.of(context).pop(),
       ),
       title: Row(
@@ -149,7 +158,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppColors.bgTertiary,
-              border: Border.all(color: AppColors.primaryCyan.withValues(alpha: 0.4)),
+              border: Border.all(
+                color: AppColors.primaryCyan.withValues(alpha: 0.4),
+              ),
             ),
             child: Center(
               child: Text(
@@ -235,8 +246,9 @@ class _MessageBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
-        mainAxisAlignment:
-            isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isMine) const SizedBox(width: 4),
@@ -260,8 +272,9 @@ class _MessageBubble extends StatelessWidget {
                     : Border.all(color: AppColors.borderDefault),
               ),
               child: Column(
-                crossAxisAlignment:
-                    isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isMine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   Text(
                     message.body,
@@ -372,7 +385,9 @@ class _InputBarState extends State<_InputBar> {
                           ),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 10),
+                            horizontal: 18,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                     ),
@@ -390,26 +405,24 @@ class _InputBarState extends State<_InputBar> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    gradient: _hasText
-                        ? AppColors.primaryGradient
-                        : null,
+                    gradient: _hasText ? AppColors.primaryGradient : null,
                     color: _hasText ? null : AppColors.bgTertiary,
                     shape: BoxShape.circle,
                     boxShadow: _hasText
                         ? [
                             BoxShadow(
-                              color: AppColors.primaryCyan.withValues(alpha: 0.3),
+                              color: AppColors.primaryCyan.withValues(
+                                alpha: 0.3,
+                              ),
                               blurRadius: 10,
-                            )
+                            ),
                           ]
                         : null,
                   ),
                   child: Icon(
                     Icons.send_rounded,
                     size: 20,
-                    color: _hasText
-                        ? AppColors.bgDeep
-                        : AppColors.textMuted,
+                    color: _hasText ? AppColors.bgDeep : AppColors.textMuted,
                   ),
                 ),
               ),
@@ -436,8 +449,11 @@ class _OfflineBanner extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.wifi_off_rounded,
-              size: 14, color: AppColors.statusOffline),
+          Icon(
+            Icons.wifi_off_rounded,
+            size: 14,
+            color: AppColors.statusOffline,
+          ),
           const SizedBox(width: 8),
           Text(
             'Device offline — messages saved locally',
@@ -511,10 +527,7 @@ class _EmptyMessages extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Start the conversation',
-            style: AppTypography.bodySmall,
-          ),
+          Text('Start the conversation', style: AppTypography.bodySmall),
         ],
       ),
     );

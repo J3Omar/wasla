@@ -35,9 +35,10 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 2200),
     );
 
-    _logoOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.35)),
-    );
+    _logoOpacity = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.35)));
 
     _logoScale = Tween<double>(begin: 0.72, end: 1.0).animate(
       CurvedAnimation(
@@ -124,7 +125,9 @@ class _SplashScreenState extends State<SplashScreen>
                           borderRadius: BorderRadius.circular(36),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primaryCyan.withValues(alpha: 0.35),
+                              color: AppColors.primaryCyan.withValues(
+                                alpha: 0.35,
+                              ),
                               blurRadius: 40,
                               spreadRadius: 4,
                             ),
@@ -213,7 +216,9 @@ class _SplashScreenState extends State<SplashScreen>
                           borderRadius: BorderRadius.circular(8),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primaryCyan.withValues(alpha: 0.5),
+                              color: AppColors.primaryCyan.withValues(
+                                alpha: 0.5,
+                              ),
                               blurRadius: 6,
                             ),
                           ],
