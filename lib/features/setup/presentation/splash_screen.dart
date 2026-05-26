@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -66,7 +67,7 @@ class _SplashScreenState extends State<SplashScreen>
         name == null || name.isEmpty || name.startsWith('Device-');
 
     if (mounted) {
-      context.go(needsSetup ? AppRoutes.setup : AppRoutes.home);
+      context.go(needsSetup ? AppRoutes.onboarding : AppRoutes.home);
     }
   }
 
@@ -79,6 +80,8 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final glowSize = math.min(size.width * 0.9, 400.0);
+    final pushHeight = math.max(24.0, (glowSize / 2) - 80 + 24);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -91,8 +94,8 @@ class _SplashScreenState extends State<SplashScreen>
               opacity: _glowOpacity.value,
               child: Center(
                 child: Container(
-                  width: size.width * 0.9,
-                  height: size.width * 0.9,
+                  width: glowSize,
+                  height: glowSize,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: AppColors.splashGlowGradient,
@@ -115,10 +118,10 @@ class _SplashScreenState extends State<SplashScreen>
                     children: [
                       // App icon
                       Container(
-                        width: 120,
-                        height: 120,
+                        width: 160,
+                        height: 160,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
+                          borderRadius: BorderRadius.circular(36),
                           boxShadow: [
                             BoxShadow(
                               color: AppColors.primaryCyan.withValues(alpha: 0.35),
@@ -128,14 +131,15 @@ class _SplashScreenState extends State<SplashScreen>
                           ],
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(28),
+                          borderRadius: BorderRadius.circular(36),
                           child: Image.asset(
                             'assets/images/Wasla-logo.png',
                             fit: BoxFit.cover,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      // Push text below the radial glow circle
+                      SizedBox(height: pushHeight),
 
                       // WASLA wordmark
                       ShaderMask(
@@ -146,20 +150,9 @@ class _SplashScreenState extends State<SplashScreen>
                           style: AppTypography.heading1.copyWith(
                             color: Colors.white,
                             fontSize: 36,
-                            letterSpacing: 8,
+                            letterSpacing: 10,
                             fontWeight: FontWeight.w800,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Arabic subtitle
-                      Text(
-                        'وصلة',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textMuted,
-                          fontSize: 16,
-                          letterSpacing: 2,
                         ),
                       ),
                     ],

@@ -155,7 +155,13 @@ class _DeviceCard extends StatelessWidget {
           onTap: device.isSelf
               ? null
               : () {
-                  context.push('/chat/${device.uuid}');
+                  context.push(
+                    '/chat/${device.uuid}',
+                    extra: <String, dynamic>{
+                      'peerName': device.displayName,
+                      'isOnline': device.status != DeviceStatus.offline,
+                    },
+                  );
                 },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -210,7 +216,13 @@ class _DeviceCard extends StatelessWidget {
                           label: 'Chat',
                           color: AppColors.primaryCyan,
                           onTap: () {
-                            context.push('/chat/${device.uuid}');
+                            context.push(
+                              '/chat/${device.uuid}',
+                              extra: <String, dynamic>{
+                                'peerName': device.displayName,
+                                'isOnline': device.status != DeviceStatus.offline,
+                              },
+                            );
                           },
                         ),
                       ),
@@ -265,8 +277,8 @@ class _DeviceAvatar extends StatelessWidget {
     return Stack(
       children: [
         Container(
-          width: 48,
-          height: 48,
+          width: 56,
+          height: 56,
           decoration: BoxDecoration(
             color: AppColors.bgTertiary,
             shape: BoxShape.circle,
@@ -277,22 +289,23 @@ class _DeviceAvatar extends StatelessWidget {
               device.displayName.isNotEmpty
                   ? device.displayName[0].toUpperCase()
                   : '?',
-              style: AppTypography.heading3.copyWith(
+              style: AppTypography.heading2.copyWith(
                 color: AppColors.primaryCyan,
+                fontSize: 22,
               ),
             ),
           ),
         ),
         Positioned(
-          bottom: 0,
-          right: 0,
+          bottom: 1,
+          right: 1,
           child: Container(
-            width: 14,
-            height: 14,
+            width: 16,
+            height: 16,
             decoration: BoxDecoration(
               color: statusColor,
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.bgPrimary, width: 2),
+              border: Border.all(color: AppColors.bgPrimary, width: 2.5),
             ),
           ),
         ),

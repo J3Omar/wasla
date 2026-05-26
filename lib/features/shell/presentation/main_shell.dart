@@ -71,8 +71,8 @@ class _WaslaNavBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 64,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 4),
           child: Row(
             children: List.generate(_items.length, (i) {
               final item = _items[i];

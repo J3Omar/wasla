@@ -2,23 +2,25 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../discovery/data/discovery_service.dart';
 
 const _kNameKey = 'wasla_device_name';
 
 /// First-launch screen — user sets their device display name.
-class SetupNameScreen extends StatefulWidget {
+class SetupNameScreen extends ConsumerStatefulWidget {
   const SetupNameScreen({super.key});
 
   @override
-  State<SetupNameScreen> createState() => _SetupNameScreenState();
+  ConsumerState<SetupNameScreen> createState() => _SetupNameScreenState();
 }
 
-class _SetupNameScreenState extends State<SetupNameScreen> {
+class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
   final _controller = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _loading = true;
@@ -75,7 +77,17 @@ class _SetupNameScreenState extends State<SetupNameScreen> {
     await storage.write(key: _kNameKey, value: _controller.text.trim());
 
     if (mounted) {
-      context.go('/home');
+      // Update the discovery service in-place — no restart, no port rebinding.
+      // The home screen reflects the new name immediately; a UDP broadcast
+      // announces it to all peers on the LAN within seconds.
+      final notifier = ref.read(discoveryServiceProvider.notifier);
+      notifier.updateSelfName();
+
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/home');
+      }
     }
   }
 
@@ -89,6 +101,17 @@ class _SetupNameScreenState extends State<SetupNameScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
+      appBar: context.canPop()
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded,
+                    color: AppColors.textPrimary),
+                onPressed: () => context.pop(),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: _loading
             ? const Center(
@@ -153,7 +176,7 @@ class _SetupNameScreenState extends State<SetupNameScreen> {
                         onFieldSubmitted: (_) => _save(),
                         style: AppTypography.bodyLarge,
                         decoration: InputDecoration(
-                          hintText: 'e.g. Omar\'s Phone',
+                          hintText: 'e.g. My Phone',
                           hintStyle: AppTypography.bodyLarge.copyWith(
                             color: AppColors.textMuted,
                           ),

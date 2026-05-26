@@ -74,7 +74,10 @@ class _ConversationTile extends StatelessWidget {
         onTap: () {
           context.push(
             '/chat/${conversation.peerUuid}',
-            extra: conversation.peerName,
+            extra: <String, dynamic>{
+              'peerName': conversation.peerName,
+              'isOnline': false, // from chat history — online status unknown here
+            },
           );
         },
         child: Padding(

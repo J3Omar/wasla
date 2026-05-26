@@ -8,6 +8,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/string_utils.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
@@ -58,7 +59,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       setState(() {
         _name = name;
         _uuid = uuid;
-        _localIp = ip;
+        _localIp = normalizeDigits(ip);
         _loading = false;
       });
     }
@@ -189,7 +190,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       icon: const Icon(Icons.edit_outlined,
                           size: 18, color: AppColors.primaryCyan),
                       onPressed: () async {
-                        await context.push(AppRoutes.setup);
+                        await context.push(AppRoutes.onboarding);
                         _load(); // refresh after edit
                       },
                     ),
@@ -221,7 +222,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Wasla · وصلة',
+                          'Wasla',
                           style: AppTypography.bodySmall.copyWith(
                             color: AppColors.textMuted,
                           ),

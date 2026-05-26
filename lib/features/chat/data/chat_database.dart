@@ -44,9 +44,10 @@ class ChatDatabase extends _$ChatDatabase {
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
-  /// All conversations ordered by most recent message.
+  /// All conversations with messages, ordered by most recent message.
   Stream<List<Conversation>> watchConversations() {
     return (select(conversations)
+          ..where((t) => t.lastMessage.equals('').not())
           ..orderBy([
             (t) => OrderingTerm(
                   expression: t.lastMessageAt,
@@ -87,7 +88,7 @@ class ChatDatabase extends _$ChatDatabase {
       await into(conversations).insert(
         ConversationsCompanion.insert(
           peerUuid: peer,
-          peerName: const Value('Unknown Device'),
+          peerName: 'Unknown Device',
           lastMessage: Value(body),
           lastMessageAt: Value(ts),
         ),

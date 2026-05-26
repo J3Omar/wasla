@@ -12,7 +12,7 @@ class MdnsService {
   MdnsService({required this.registry, required this.selfDevice});
 
   final DeviceRegistry registry;
-  final Device selfDevice;
+  Device selfDevice;
 
   MDnsClient? _client;
   Timer? _announceTimer;
