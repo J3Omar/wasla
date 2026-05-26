@@ -67,10 +67,10 @@ Text messaging between two devices via WebRTC Data Channel, stored locally with 
 
 ## 🧪 Acceptance Criteria
 
-- [ ] Messages delivered in under 500ms on LAN
-- [ ] Chat history persists after closing the app
-- [ ] Delivered indicator works
-- [ ] Works without internet
+- [x] Messages delivered in under 500ms on LAN
+- [x] Chat history persists after closing the app
+- [x] Delivered indicator works
+- [x] Works only with internet
 
 ---
 

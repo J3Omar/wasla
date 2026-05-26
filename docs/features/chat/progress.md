@@ -30,5 +30,5 @@
 
 - [ ] Windows → Android
 - [ ] Android → Windows
-- [ ] Android → Android
-- [ ] Linux → Android
+- [x] Android → Android
+- [x] Linux → Android
