@@ -41,12 +41,19 @@ class ChatPageState {
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-final chatProvider = AutoDisposeAsyncNotifierProviderFamily<ChatNotifier, ChatPageState, ChatArgs>(
-  ChatNotifier.new,
-);
+final chatProvider =
+    AutoDisposeAsyncNotifierProviderFamily<
+      ChatNotifier,
+      ChatPageState,
+      ChatArgs
+    >(ChatNotifier.new);
 
 class ChatArgs {
-  const ChatArgs({required this.peerId, required this.peerIp, required this.peerName});
+  const ChatArgs({
+    required this.peerId,
+    required this.peerIp,
+    required this.peerName,
+  });
   final String peerId;
   final String peerIp;
   final String peerName;
@@ -60,7 +67,8 @@ class ChatArgs {
 
 // ── ChatNotifier ──────────────────────────────────────────────────────────────
 
-class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArgs> {
+class ChatNotifier
+    extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArgs> {
   StreamSubscription<List<ChatMessage>>? _dbSub;
   int _loadedCount = _kPageSize;
 
@@ -89,9 +97,9 @@ class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArg
         final current = state.value!;
         // Merge new messages into current paginated list
         // New messages are appended; already-loaded older messages keep pagination
-        state = AsyncData(current.copyWith(
-          messages: _mergeMessages(current.messages, msgs),
-        ));
+        state = AsyncData(
+          current.copyWith(messages: _mergeMessages(current.messages, msgs)),
+        );
       }
     });
 
@@ -104,7 +112,11 @@ class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArg
 
     // Load initial page (last 30 messages, chronologically)
     final total = ChatDatabase.instance.countMessages(arg.peerId);
-    final initialMessages = ChatDatabase.instance.getMessagesPaged(arg.peerId, offset: 0, limit: _kPageSize);
+    final initialMessages = ChatDatabase.instance.getMessagesPaged(
+      arg.peerId,
+      offset: 0,
+      limit: _kPageSize,
+    );
 
     // Mark all received messages as read and send bulk ACK to sender
     await _markAllReadAndAck(service, initialMessages);
@@ -125,15 +137,21 @@ class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArg
 
     final total = ChatDatabase.instance.countMessages(arg.peerId);
     final nextOffset = _loadedCount;
-    final older = ChatDatabase.instance.getMessagesPaged(arg.peerId, offset: nextOffset, limit: _kPageSize);
+    final older = ChatDatabase.instance.getMessagesPaged(
+      arg.peerId,
+      offset: nextOffset,
+      limit: _kPageSize,
+    );
 
     _loadedCount += older.length;
 
-    state = AsyncData(current.copyWith(
-      messages: [...older, ...current.messages],
-      hasMore: _loadedCount < total,
-      isLoadingMore: false,
-    ));
+    state = AsyncData(
+      current.copyWith(
+        messages: [...older, ...current.messages],
+        hasMore: _loadedCount < total,
+        isLoadingMore: false,
+      ),
+    );
   }
 
   /// Send a text message to the peer.
@@ -174,7 +192,10 @@ class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArg
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  Future<void> _markAllReadAndAck(WebRtcChatService service, List<ChatMessage> messages) async {
+  Future<void> _markAllReadAndAck(
+    WebRtcChatService service,
+    List<ChatMessage> messages,
+  ) async {
     // Find unread received messages
     final unread = messages.where((m) => !m.isSent && !m.isRead).toList();
     if (unread.isEmpty) return;
@@ -183,7 +204,9 @@ class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArg
     ChatDatabase.instance.markAllRead(arg.peerId);
 
     // Send bulk read ACK if we have an active connection
-    final latestTs = unread.map((m) => m.timestamp.millisecondsSinceEpoch).reduce((a, b) => a > b ? a : b);
+    final latestTs = unread
+        .map((m) => m.timestamp.millisecondsSinceEpoch)
+        .reduce((a, b) => a > b ? a : b);
     await service.sendAckReadAll(
       peerIp: arg.peerIp,
       peerId: arg.peerId,
@@ -193,12 +216,17 @@ class ChatNotifier extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArg
 
   /// Merge new messages from the DB stream with the currently displayed list.
   /// Keeps all already-displayed messages, appends any new ones.
-  List<ChatMessage> _mergeMessages(List<ChatMessage> current, List<ChatMessage> all) {
+  List<ChatMessage> _mergeMessages(
+    List<ChatMessage> current,
+    List<ChatMessage> all,
+  ) {
     if (current.isEmpty) return all;
     // Get the timestamp of the oldest loaded message to know our lower bound
     final oldestLoaded = current.first.timestamp;
     // From all messages, keep those >= oldestLoaded (don't go beyond pagination)
-    final filtered = all.where((m) => !m.timestamp.isBefore(oldestLoaded)).toList();
+    final filtered = all
+        .where((m) => !m.timestamp.isBefore(oldestLoaded))
+        .toList();
     if (filtered.isEmpty) return current;
     return filtered;
   }

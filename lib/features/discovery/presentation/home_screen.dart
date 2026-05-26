@@ -155,10 +155,7 @@ class _DeviceCard extends StatelessWidget {
           onTap: device.isSelf
               ? null
               : () {
-                  context.push(
-                    '/chat/${device.uuid}',
-                    extra: device,
-                  );
+                  context.push('/chat/${device.uuid}', extra: device);
                 },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

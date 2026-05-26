@@ -31,7 +31,9 @@ class ChatDatabase {
       _db!.execute('SELECT peer_id FROM messages LIMIT 1;');
     } catch (e) {
       // If the table exists but with wrong schema, delete and recreate
-      try { File(path).deleteSync(); } catch (_) {}
+      try {
+        File(path).deleteSync();
+      } catch (_) {}
       _db = sqlite3.open(path);
     }
 
@@ -53,8 +55,12 @@ class ChatDatabase {
     ''');
 
     // Additive migrations — safe to run repeatedly
-    _runSafe('ALTER TABLE messages ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0;');
-    _runSafe('ALTER TABLE messages ADD COLUMN message_uuid TEXT NOT NULL DEFAULT \'\';');
+    _runSafe(
+      'ALTER TABLE messages ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0;',
+    );
+    _runSafe(
+      'ALTER TABLE messages ADD COLUMN message_uuid TEXT NOT NULL DEFAULT \'\';',
+    );
 
     // ── Peers table ─────────────────────────────────────────────────────────
     _db!.execute('''
@@ -67,12 +73,18 @@ class ChatDatabase {
     _runSafe('ALTER TABLE peers ADD COLUMN last_ip TEXT;');
 
     // ── Indexes ─────────────────────────────────────────────────────────────
-    _db!.execute('CREATE INDEX IF NOT EXISTS idx_peer_ts ON messages (peer_id, timestamp);');
-    _db!.execute('CREATE INDEX IF NOT EXISTS idx_uuid ON messages (message_uuid);');
+    _db!.execute(
+      'CREATE INDEX IF NOT EXISTS idx_peer_ts ON messages (peer_id, timestamp);',
+    );
+    _db!.execute(
+      'CREATE INDEX IF NOT EXISTS idx_uuid ON messages (message_uuid);',
+    );
   }
 
   void _runSafe(String sql) {
-    try { _db!.execute(sql); } catch (_) {}
+    try {
+      _db!.execute(sql);
+    } catch (_) {}
   }
 
   void _notifyListeners() => _controller.add(null);
@@ -106,10 +118,11 @@ class ChatDatabase {
 
   /// Update message status by DB row id.
   void updateStatus(int id, MessageStatus status) {
-    _db!.execute(
-      'UPDATE messages SET status = ? WHERE id = ? AND status < ?',
-      [status.index, id, status.index],
-    );
+    _db!.execute('UPDATE messages SET status = ? WHERE id = ? AND status < ?', [
+      status.index,
+      id,
+      status.index,
+    ]);
     _notifyListeners();
   }
 
@@ -148,7 +161,11 @@ class ChatDatabase {
 
   /// Paginated fetch — newest first (offset 0 = latest 30).
   /// Call with offset=0 initially, then offset=30, 60, etc.
-  List<ChatMessage> getMessagesPaged(String peerId, {int offset = 0, int limit = _kPageSize}) {
+  List<ChatMessage> getMessagesPaged(
+    String peerId, {
+    int offset = 0,
+    int limit = _kPageSize,
+  }) {
     final rows = _db!.select(
       'SELECT * FROM messages WHERE peer_id = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?',
       [peerId, limit, offset],
@@ -159,14 +176,20 @@ class ChatDatabase {
 
   /// Count total messages for a peer.
   int countMessages(String peerId) {
-    final rows = _db!.select('SELECT COUNT(*) as cnt FROM messages WHERE peer_id = ?', [peerId]);
+    final rows = _db!.select(
+      'SELECT COUNT(*) as cnt FROM messages WHERE peer_id = ?',
+      [peerId],
+    );
     return (rows.first['cnt'] as int?) ?? 0;
   }
 
   /// Check if a message with this UUID already exists (deduplication).
   bool hasMessage(String uuid) {
     if (uuid.isEmpty) return false;
-    final rows = _db!.select('SELECT id FROM messages WHERE message_uuid = ? LIMIT 1', [uuid]);
+    final rows = _db!.select(
+      'SELECT id FROM messages WHERE message_uuid = ? LIMIT 1',
+      [uuid],
+    );
     return rows.isNotEmpty;
   }
 
@@ -226,13 +249,15 @@ class ChatDatabase {
     }
 
     int? lastHash;
-    return _controller.stream.map((_) {
-      final msgs = getMessages(peerId);
-      final h = hashList(msgs);
-      if (h == lastHash) return <ChatMessage>[];  // no meaningful change
-      lastHash = h;
-      return msgs;
-    }).where((msgs) => msgs.isNotEmpty);
+    return _controller.stream
+        .map((_) {
+          final msgs = getMessages(peerId);
+          final h = hashList(msgs);
+          if (h == lastHash) return <ChatMessage>[]; // no meaningful change
+          lastHash = h;
+          return msgs;
+        })
+        .where((msgs) => msgs.isNotEmpty);
   }
 
   /// Fetch the latest message for each peer to display in the Chats list.
@@ -272,10 +297,10 @@ class ChatDatabase {
         'INSERT OR IGNORE INTO peers (uuid, display_name) VALUES (?, ?)',
         [uuid, displayName],
       );
-      _db!.execute(
-        'UPDATE peers SET display_name = ? WHERE uuid = ?',
-        [displayName, uuid],
-      );
+      _db!.execute('UPDATE peers SET display_name = ? WHERE uuid = ?', [
+        displayName,
+        uuid,
+      ]);
     }
     // Don't notify listeners for peer upserts — avoids unnecessary rebuilds
   }
@@ -283,7 +308,10 @@ class ChatDatabase {
   /// Get a peer's display name if saved
   String? getPeerName(String uuid) {
     if (_db == null) return null;
-    final rows = _db!.select('SELECT display_name FROM peers WHERE uuid = ? LIMIT 1', [uuid]);
+    final rows = _db!.select(
+      'SELECT display_name FROM peers WHERE uuid = ? LIMIT 1',
+      [uuid],
+    );
     if (rows.isEmpty) return null;
     return rows.first['display_name'] as String?;
   }
@@ -291,7 +319,10 @@ class ChatDatabase {
   /// Get a peer's last known IP
   String? getPeerIp(String uuid) {
     if (_db == null) return null;
-    final rows = _db!.select('SELECT last_ip FROM peers WHERE uuid = ? LIMIT 1', [uuid]);
+    final rows = _db!.select(
+      'SELECT last_ip FROM peers WHERE uuid = ? LIMIT 1',
+      [uuid],
+    );
     if (rows.isEmpty) return null;
     return rows.first['last_ip'] as String?;
   }

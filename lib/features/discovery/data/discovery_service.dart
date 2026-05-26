@@ -54,7 +54,7 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
       final network = NetworkInfo();
       final currentRawIp = await network.getWifiIP() ?? '127.0.0.1';
       final currentIp = normalizeDigits(currentRawIp);
-      
+
       if (_selfUuid != null && _udp.selfDevice.localIp != currentIp) {
         // IP changed! Update self device and broadcast immediately
         final newSelf = _udp.selfDevice.copyWith(localIp: currentIp);

@@ -3,11 +3,11 @@ import 'package:flutter/foundation.dart';
 /// Delivery status of a chat message.
 /// Ordinal value matters — DB stores as int, and we only ever upgrade (never downgrade).
 enum MessageStatus {
-  queued,    // 0 — saved locally, waiting for connection
-  sent,      // 1 — left our device, arrived at peer's WebRTC server
+  queued, // 0 — saved locally, waiting for connection
+  sent, // 1 — left our device, arrived at peer's WebRTC server
   delivered, // 2 — peer device received it (app may not be in this chat)
-  read,      // 3 — peer opened THIS specific chat
-  failed,    // 4 — unrecoverable error (kept last for ordinal safety)
+  read, // 3 — peer opened THIS specific chat
+  failed, // 4 — unrecoverable error (kept last for ordinal safety)
 }
 
 /// Type of message content.
@@ -86,7 +86,7 @@ class ChatMessage {
 
   /// Serialize to JSON for network transport.
   Map<String, dynamic> toJson() => {
-    'id': messageUuid,  // send UUID as 'id' over network
+    'id': messageUuid, // send UUID as 'id' over network
     'peerId': peerId,
     'content': content,
     'isSent': isSent,
@@ -116,7 +116,8 @@ class ChatMessage {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || (other is ChatMessage && other.id == id && other.status == status);
+      identical(this, other) ||
+      (other is ChatMessage && other.id == id && other.status == status);
 
   @override
   int get hashCode => Object.hash(id, status);

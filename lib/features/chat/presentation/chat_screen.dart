@@ -40,7 +40,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     // Save the peer name to database so we remember it offline
-    ChatDatabase.instance.upsertPeer(widget.device.uuid, widget.device.displayName);
+    ChatDatabase.instance.upsertPeer(
+      widget.device.uuid,
+      widget.device.displayName,
+    );
 
     _inputController.addListener(() {
       final has = _inputController.text.trim().isNotEmpty;
@@ -69,8 +72,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-
-
   Future<void> _send() async {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
@@ -85,7 +86,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      appBar: _isSelectionMode ? _buildSelectionAppBar(chatState) : _buildAppBar(),
+      appBar: _isSelectionMode
+          ? _buildSelectionAppBar(chatState)
+          : _buildAppBar(),
       body: Column(
         children: [
           Expanded(
@@ -135,8 +138,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         // reversed: index 0 = last message (newest)
                         final reversedIndex = messages.length - 1 - index;
                         final msg = messages[reversedIndex];
-                        final prev = reversedIndex > 0 ? messages[reversedIndex - 1] : null;
-                        final showDate = prev == null || !_sameDay(msg.timestamp, prev.timestamp);
+                        final prev = reversedIndex > 0
+                            ? messages[reversedIndex - 1]
+                            : null;
+                        final showDate =
+                            prev == null ||
+                            !_sameDay(msg.timestamp, prev.timestamp);
 
                         return RepaintBoundary(
                           child: Column(
@@ -151,7 +158,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     setState(() {
                                       if (_selectedIds.contains(msg.id)) {
                                         _selectedIds.remove(msg.id);
-                                        if (_selectedIds.isEmpty) _isSelectionMode = false;
+                                        if (_selectedIds.isEmpty)
+                                          _isSelectionMode = false;
                                       } else {
                                         _selectedIds.add(msg.id);
                                       }
@@ -189,7 +197,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  PreferredSizeWidget _buildSelectionAppBar(AsyncValue<ChatPageState> chatState) {
+  PreferredSizeWidget _buildSelectionAppBar(
+    AsyncValue<ChatPageState> chatState,
+  ) {
     return AppBar(
       backgroundColor: AppColors.bgSecondary,
       elevation: 0,
@@ -208,11 +218,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.select_all_rounded, color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.select_all_rounded,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () {
             if (chatState.hasValue) {
               setState(() {
-                final allIds = chatState.value!.messages.map((m) => m.id).toSet();
+                final allIds = chatState.value!.messages
+                    .map((m) => m.id)
+                    .toSet();
                 if (_selectedIds.length == allIds.length) {
                   _selectedIds.clear();
                   _isSelectionMode = false;
@@ -224,7 +239,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           },
         ),
         IconButton(
-          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+          icon: const Icon(
+            Icons.delete_outline_rounded,
+            color: Colors.redAccent,
+          ),
           onPressed: () async {
             if (_selectedIds.isEmpty) return;
             final confirm = await showDialog<bool>(
@@ -239,11 +257,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(ctx).pop(false),
-                    child: Text('Cancel', style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted)),
+                    child: Text(
+                      'Cancel',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                    ),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(ctx).pop(true),
-                    child: Text('Delete', style: AppTypography.bodyMedium.copyWith(color: Colors.redAccent)),
+                    child: Text(
+                      'Delete',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: Colors.redAccent,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -268,7 +296,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       currentDevice = devicesState.value[widget.device.uuid];
     }
 
-    final displayDevice = currentDevice ?? widget.device.copyWith(status: DeviceStatus.offline);
+    final displayDevice =
+        currentDevice ?? widget.device.copyWith(status: DeviceStatus.offline);
 
     String statusText;
     Color statusColor;
@@ -292,7 +321,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       backgroundColor: AppColors.bgSecondary,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+        icon: const Icon(
+          Icons.arrow_back_rounded,
+          color: AppColors.textPrimary,
+        ),
         onPressed: () => Navigator.of(context).pop(),
       ),
       titleSpacing: 0,
@@ -316,7 +348,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   textDirection: TextDirection.ltr,
                   child: Text(
                     statusText,
-                    style: AppTypography.labelSmall.copyWith(color: statusColor),
+                    style: AppTypography.labelSmall.copyWith(
+                      color: statusColor,
+                    ),
                   ),
                 ),
               ],
@@ -326,11 +360,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.phone_rounded, color: AppColors.textSecondary, size: 20),
+          icon: const Icon(
+            Icons.phone_rounded,
+            color: AppColors.textSecondary,
+            size: 20,
+          ),
           onPressed: () => _showComingSoon(context, 'Voice call'),
         ),
         IconButton(
-          icon: const Icon(Icons.videocam_rounded, color: AppColors.textSecondary, size: 22),
+          icon: const Icon(
+            Icons.videocam_rounded,
+            color: AppColors.textSecondary,
+            size: 22,
+          ),
           onPressed: () => _showComingSoon(context, 'Video call'),
         ),
         PopupMenuButton<String>(
@@ -356,9 +398,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showComingSoon(BuildContext ctx, String feature) {
-    ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(content: Text('$feature — coming soon!')),
-    );
+    ScaffoldMessenger.of(
+      ctx,
+    ).showSnackBar(SnackBar(content: Text('$feature — coming soon!')));
   }
 
   static bool _sameDay(DateTime a, DateTime b) =>
@@ -461,7 +503,9 @@ class _DateDivider extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Text(
               label,
-              style: AppTypography.labelSmall.copyWith(color: AppColors.textMuted),
+              style: AppTypography.labelSmall.copyWith(
+                color: AppColors.textMuted,
+              ),
             ),
           ),
           const Expanded(child: Divider(color: AppColors.borderDefault)),
@@ -500,7 +544,9 @@ class _MessageBubble extends StatelessWidget {
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        color: isSelected ? AppColors.primaryCyan.withValues(alpha: 0.15) : Colors.transparent,
+        color: isSelected
+            ? AppColors.primaryCyan.withValues(alpha: 0.15)
+            : Colors.transparent,
         padding: const EdgeInsets.only(bottom: 6),
         child: Row(
           mainAxisSize: MainAxisSize.max,
@@ -519,7 +565,9 @@ class _MessageBubble extends StatelessWidget {
               ),
             Expanded(
               child: Align(
-                alignment: message.isSent ? Alignment.centerRight : Alignment.centerLeft,
+                alignment: message.isSent
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.75,
@@ -640,16 +688,27 @@ class _StatusIcon extends StatelessWidget {
         return const SizedBox(
           width: 10,
           height: 10,
-          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.textMuted),
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: AppColors.textMuted,
+          ),
         );
       case MessageStatus.sent:
         return const Icon(Icons.check, size: 14, color: AppColors.textMuted);
       case MessageStatus.delivered:
         return const Icon(Icons.done_all, size: 14, color: AppColors.textMuted);
       case MessageStatus.read:
-        return const Icon(Icons.done_all, size: 14, color: AppColors.primaryCyan);
+        return const Icon(
+          Icons.done_all,
+          size: 14,
+          color: AppColors.primaryCyan,
+        );
       case MessageStatus.failed:
-        return const Icon(Icons.error_outline, size: 14, color: AppColors.statusOffline);
+        return const Icon(
+          Icons.error_outline,
+          size: 14,
+          color: AppColors.statusOffline,
+        );
     }
   }
 }
@@ -715,8 +774,13 @@ class _InputBar extends StatelessWidget {
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   hintText: 'Write message...',
-                  hintStyle: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  hintStyle: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   border: InputBorder.none,
                 ),
                 onSubmitted: (_) => onSend(),
@@ -739,7 +803,9 @@ class _InputBar extends StatelessWidget {
                   boxShadow: hasText
                       ? [
                           BoxShadow(
-                            color: AppColors.primaryCyan.withValues(alpha: 0.35),
+                            color: AppColors.primaryCyan.withValues(
+                              alpha: 0.35,
+                            ),
                             blurRadius: 12,
                           ),
                         ]

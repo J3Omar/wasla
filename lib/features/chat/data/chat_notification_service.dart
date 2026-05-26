@@ -6,7 +6,8 @@ class ChatNotificationService {
   ChatNotificationService._();
   static final ChatNotificationService instance = ChatNotificationService._();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
   /// Callback called when user taps a notification.
@@ -17,8 +18,12 @@ class ChatNotificationService {
     if (_initialized) return;
     _initialized = true;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const linuxSettings = LinuxInitializationSettings(defaultActionName: 'Open');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    const linuxSettings = LinuxInitializationSettings(
+      defaultActionName: 'Open',
+    );
 
     const initSettings = InitializationSettings(
       android: androidSettings,
@@ -37,8 +42,10 @@ class ChatNotificationService {
 
     // Request Android notification permission (Android 13+)
     if (Platform.isAndroid) {
-      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      final androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       await androidPlugin?.requestNotificationsPermission();
     }
   }
@@ -74,13 +81,7 @@ class ChatNotificationService {
       linux: linuxDetails,
     );
 
-    await _plugin.show(
-      notifId,
-      senderName,
-      content,
-      details,
-      payload: peerId,
-    );
+    await _plugin.show(notifId, senderName, content, details, payload: peerId);
   }
 
   /// Dismiss the notification for a specific peer (when chat is opened).

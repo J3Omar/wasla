@@ -65,9 +65,14 @@ class ChatsListScreen extends ConsumerWidget {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primaryCyan)),
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryCyan),
+        ),
         error: (e, st) => Center(
-          child: Text('Error loading chats', style: TextStyle(color: Colors.red.shade300)),
+          child: Text(
+            'Error loading chats',
+            style: TextStyle(color: Colors.red.shade300),
+          ),
         ),
       ),
     );
@@ -82,7 +87,7 @@ class _ChatTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final devicesState = ref.watch(discoveryServiceProvider);
-    
+
     // Try to find the device in the current discovery list
     Device? peerDevice;
     if (devicesState is AsyncData<Map<String, Device>>) {
@@ -91,13 +96,16 @@ class _ChatTile extends ConsumerWidget {
 
     // Try to get saved name from DB if offline
     final savedName = ChatDatabase.instance.getPeerName(message.peerId);
-    
+
     // If online, save/update their name in DB
     if (peerDevice != null) {
       ChatDatabase.instance.upsertPeer(message.peerId, peerDevice.displayName);
     }
 
-    final displayName = peerDevice?.displayName ?? savedName ?? 'Device (${message.peerId.substring(0, 4)}...)';
+    final displayName =
+        peerDevice?.displayName ??
+        savedName ??
+        'Device (${message.peerId.substring(0, 4)}...)';
     final status = peerDevice?.status ?? DeviceStatus.offline;
 
     final timeStr = DateFormat.jm().format(message.timestamp);
@@ -125,7 +133,9 @@ class _ChatTile extends ConsumerWidget {
             backgroundColor: AppColors.primaryCyan.withValues(alpha: 0.2),
             child: Text(
               displayName[0].toUpperCase(),
-              style: AppTypography.heading3.copyWith(color: AppColors.primaryCyan),
+              style: AppTypography.heading3.copyWith(
+                color: AppColors.primaryCyan,
+              ),
             ),
           ),
           Positioned(
@@ -150,7 +160,10 @@ class _ChatTile extends ConsumerWidget {
             child: Text(
               displayName,
               style: unreadCount > 0
-                  ? AppTypography.heading4.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700)
+                  ? AppTypography.heading4.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    )
                   : AppTypography.heading4,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -162,14 +175,18 @@ class _ChatTile extends ConsumerWidget {
               Text(
                 timeStr,
                 style: AppTypography.labelSmall.copyWith(
-                  color: unreadCount > 0 ? AppColors.primaryCyan : AppColors.textMuted,
+                  color: unreadCount > 0
+                      ? AppColors.primaryCyan
+                      : AppColors.textMuted,
                 ),
               ),
-              if (unreadCount > 0)
-                const SizedBox(height: 4),
+              if (unreadCount > 0) const SizedBox(height: 4),
               if (unreadCount > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primaryCyan,
                     borderRadius: BorderRadius.circular(12),
@@ -192,7 +209,9 @@ class _ChatTile extends ConsumerWidget {
         child: Text(
           message.isSent ? 'You: ${message.content}' : message.content,
           style: AppTypography.bodyLarge.copyWith(
-            color: unreadCount > 0 ? AppColors.textPrimary : AppColors.textSecondary,
+            color: unreadCount > 0
+                ? AppColors.textPrimary
+                : AppColors.textSecondary,
             fontSize: 14,
             fontWeight: unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -201,16 +220,18 @@ class _ChatTile extends ConsumerWidget {
         ),
       ),
       onTap: () {
-        // If we have the full device object, pass it. 
+        // If we have the full device object, pass it.
         // Otherwise, create a dummy offline device to view history.
-        final targetDevice = peerDevice ?? Device(
-          uuid: message.peerId,
-          displayName: displayName,
-          localIp: '',
-          port: 0,
-          status: DeviceStatus.offline,
-          lastSeen: DateTime.now(),
-        );
+        final targetDevice =
+            peerDevice ??
+            Device(
+              uuid: message.peerId,
+              displayName: displayName,
+              localIp: '',
+              port: 0,
+              status: DeviceStatus.offline,
+              lastSeen: DateTime.now(),
+            );
 
         context.push('/chat/${message.peerId}', extra: targetDevice);
       },

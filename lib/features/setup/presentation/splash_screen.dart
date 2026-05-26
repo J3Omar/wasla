@@ -47,9 +47,10 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    _glowOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _ctrl, curve: const Interval(0.1, 0.4)),
-    );
+    _glowOpacity = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.1, 0.4)));
 
     // Progress bar takes exactly 3s to fill (the full duration)
     _progressAnim = Tween<double>(begin: 0, end: 1).animate(
@@ -122,9 +123,7 @@ class _SplashScreenState extends State<SplashScreen>
                       borderRadius: BorderRadius.circular(36),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primaryCyan.withValues(
-                            alpha: 0.35,
-                          ),
+                          color: AppColors.primaryCyan.withValues(alpha: 0.35),
                           blurRadius: 40,
                           spreadRadius: 4,
                         ),

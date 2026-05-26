@@ -27,10 +27,10 @@ class GlobalChatServer {
   /// The UUID of the peer whose chat screen is currently visible.
   /// If a message arrives from this peer, it is immediately marked as read.
   String? activeChatPeerId;
-  
+
   /// Our own UUID, required so the peer knows who is sending the message.
   String? selfUuid;
-  
+
   /// Our own display name.
   String? selfName;
 
@@ -38,30 +38,34 @@ class GlobalChatServer {
     if (_started) return;
     _started = true;
     try {
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, kChatWsPort, shared: true);
+      _server = await HttpServer.bind(
+        InternetAddress.anyIPv4,
+        kChatWsPort,
+        shared: true,
+      );
       _server!.transform(WebSocketTransformer()).listen((ws) {
-        ws.listen(
-          (data) {
-            if (data is String) {
-              try {
-                final json = jsonDecode(data) as Map<String, dynamic>;
-                _handleIncomingPayload(ws, json);
-              } catch (_) {}
-            }
-          },
-          onError: (_) {},
-        );
+        ws.listen((data) {
+          if (data is String) {
+            try {
+              final json = jsonDecode(data) as Map<String, dynamic>;
+              _handleIncomingPayload(ws, json);
+            } catch (_) {}
+          }
+        }, onError: (_) {});
       });
     } catch (e) {
       // Port already in use. Ignore.
     }
-    
-    _retryTimer = Timer.periodic(const Duration(seconds: 5), (_) => _flushQueue());
+
+    _retryTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _flushQueue(),
+    );
   }
 
   Future<void> _flushQueue() async {
     if (selfUuid == null || selfName == null) return;
-    
+
     final unsent = ChatDatabase.instance.getUnsentMessages();
     if (unsent.isEmpty) return;
 
@@ -93,7 +97,10 @@ class GlobalChatServer {
 
     // Handle acks first - they don't require senderId
     if (type == 'ack_delivery') {
-      ChatDatabase.instance.updateStatusByTimestamp(ts, MessageStatus.delivered);
+      ChatDatabase.instance.updateStatusByTimestamp(
+        ts,
+        MessageStatus.delivered,
+      );
       return;
     }
 
@@ -108,7 +115,7 @@ class GlobalChatServer {
     if (type == 'msg') {
       final content = payload['content'] as String;
       final senderName = payload['senderName'] as String?;
-      
+
       if (senderName != null) {
         ChatDatabase.instance.upsertPeer(senderId, senderName);
       }
@@ -138,11 +145,7 @@ class GlobalChatServer {
 
       // If the user is currently looking at this chat, acknowledge read
       if (activeChatPeerId == senderId) {
-        _sendToSocket(ws, {
-          'type': 'ack_read',
-          'senderId': selfUuid,
-          'ts': ts,
-        });
+        _sendToSocket(ws, {'type': 'ack_read', 'senderId': selfUuid, 'ts': ts});
       }
     }
   }
@@ -154,28 +157,33 @@ class GlobalChatServer {
     if (existing != null && existing.readyState != WebSocket.open) {
       _outgoingConnections.remove(peerIp);
     }
-    
+
     WebSocket? ws = _outgoingConnections[peerIp];
-    
+
     if (ws == null) {
       try {
-        ws = await WebSocket.connect('ws://$peerIp:$kChatWsPort')
-            .timeout(const Duration(seconds: 5));
+        ws = await WebSocket.connect(
+          'ws://$peerIp:$kChatWsPort',
+        ).timeout(const Duration(seconds: 5));
         _outgoingConnections[peerIp] = ws;
-        
+
         // Listen for incoming acks on this outgoing socket
-        ws.listen((data) {
-          if (data is String) {
-            try {
-              final json = jsonDecode(data) as Map<String, dynamic>;
-              _handleIncomingPayload(ws!, json);
-            } catch (_) {}
-          }
-        }, onDone: () {
-          _outgoingConnections.remove(peerIp);
-        }, onError: (_) {
-          _outgoingConnections.remove(peerIp);
-        });
+        ws.listen(
+          (data) {
+            if (data is String) {
+              try {
+                final json = jsonDecode(data) as Map<String, dynamic>;
+                _handleIncomingPayload(ws!, json);
+              } catch (_) {}
+            }
+          },
+          onDone: () {
+            _outgoingConnections.remove(peerIp);
+          },
+          onError: (_) {
+            _outgoingConnections.remove(peerIp);
+          },
+        );
       } catch (_) {
         _outgoingConnections.remove(peerIp);
         return false;

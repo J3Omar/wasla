@@ -56,7 +56,7 @@ class _PeerSession {
 
 /// Manages WebRTC peer connections for chat data channels.
 /// One RTCPeerConnection per unique peer device.
-/// 
+///
 /// Message flow:
 ///   Sender: sendChatMessage() → DataChannel → Receiver gets it in _onDataChannelMessage()
 ///   Receiver: automatically sends ack_delivered → Sender updates to delivered
@@ -84,7 +84,10 @@ class WebRtcChatService {
   Future<void> start() async {
     await _startInviteListener();
     // Retry queued messages every 5 seconds
-    _retryTimer = Timer.periodic(const Duration(seconds: 5), (_) => _flushQueue());
+    _retryTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _flushQueue(),
+    );
   }
 
   /// Start listening for incoming "chat invite" UDP packets.
@@ -139,15 +142,20 @@ class WebRtcChatService {
   bool _sendOnDataChannel(_PeerSession session, ChatMessage message) {
     try {
       final dc = session.dataChannel;
-      if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen) return false;
-      dc.send(RTCDataChannelMessage(jsonEncode({
-        'type': 'msg',
-        'id': message.messageUuid,
-        'senderId': selfUuid,
-        'senderName': selfName ?? 'Unknown',
-        'content': message.content,
-        'ts': message.timestamp.millisecondsSinceEpoch,
-      })));
+      if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen)
+        return false;
+      dc.send(
+        RTCDataChannelMessage(
+          jsonEncode({
+            'type': 'msg',
+            'id': message.messageUuid,
+            'senderId': selfUuid,
+            'senderName': selfName ?? 'Unknown',
+            'content': message.content,
+            'ts': message.timestamp.millisecondsSinceEpoch,
+          }),
+        ),
+      );
       return true;
     } catch (_) {
       return false;
@@ -155,21 +163,32 @@ class WebRtcChatService {
   }
 
   /// Send ack_read for a specific message UUID back to the sender.
-  Future<void> sendAckRead({required String peerIp, required String peerId, required String messageUuid}) async {
+  Future<void> sendAckRead({
+    required String peerIp,
+    required String peerId,
+    required String messageUuid,
+  }) async {
     final session = _sessions[peerId];
     if (session?.isConnected == true && session?.dataChannel != null) {
       try {
-        session!.dataChannel!.send(RTCDataChannelMessage(jsonEncode({
-          'type': 'ack_read',
-          'messageId': messageUuid,
-        })));
+        session!.dataChannel!.send(
+          RTCDataChannelMessage(
+            jsonEncode({'type': 'ack_read', 'messageId': messageUuid}),
+          ),
+        );
       } catch (_) {}
     }
   }
 
   /// Send bulk ack_read_all (when opening chat with unread messages).
-  Future<void> sendAckReadAll({required String peerIp, required String peerId, required int upToTimestamp}) async {
-    final ip = peerIp.isNotEmpty ? peerIp : ChatDatabase.instance.getPeerIp(peerId);
+  Future<void> sendAckReadAll({
+    required String peerIp,
+    required String peerId,
+    required int upToTimestamp,
+  }) async {
+    final ip = peerIp.isNotEmpty
+        ? peerIp
+        : ChatDatabase.instance.getPeerIp(peerId);
     if (ip == null || ip.isEmpty) return; // Cannot connect without an IP
 
     var session = _sessions[peerId];
@@ -180,18 +199,25 @@ class WebRtcChatService {
 
     if (session?.isConnected == true && session?.dataChannel != null) {
       try {
-        session!.dataChannel!.send(RTCDataChannelMessage(jsonEncode({
-          'type': 'ack_read_all',
-          'chatId': peerId,
-          'upToTimestamp': upToTimestamp,
-        })));
+        session!.dataChannel!.send(
+          RTCDataChannelMessage(
+            jsonEncode({
+              'type': 'ack_read_all',
+              'chatId': peerId,
+              'upToTimestamp': upToTimestamp,
+            }),
+          ),
+        );
       } catch (_) {}
     }
   }
 
   // ── WebRTC Connection Initiation (Caller side) ────────────────────────────
 
-  Future<_PeerSession?> _initiateConnection(String peerId, String peerIp) async {
+  Future<_PeerSession?> _initiateConnection(
+    String peerId,
+    String peerIp,
+  ) async {
     // Clean up any stale session
     await _closeSession(peerId);
 
@@ -203,8 +229,11 @@ class WebRtcChatService {
     final sigPort = _randomPort();
     HttpServer? server;
     try {
-      server = await HttpServer.bind(InternetAddress.anyIPv4, sigPort, shared: true)
-          .timeout(const Duration(seconds: 2));
+      server = await HttpServer.bind(
+        InternetAddress.anyIPv4,
+        sigPort,
+        shared: true,
+      ).timeout(const Duration(seconds: 2));
     } catch (_) {
       return null;
     }
@@ -241,7 +270,10 @@ class WebRtcChatService {
     session.pc = pc;
 
     // Create data channel BEFORE offer
-    final dc = await pc.createDataChannel('chat', RTCDataChannelInit()..ordered = true);
+    final dc = await pc.createDataChannel(
+      'chat',
+      RTCDataChannelInit()..ordered = true,
+    );
     session.dataChannel = dc;
     _setupDataChannel(dc, session);
 
@@ -256,29 +288,36 @@ class WebRtcChatService {
         session.isConnected = true;
         if (!connected.isCompleted) connected.complete(true);
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-                 state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         session.isConnected = false;
         if (!connected.isCompleted) connected.complete(false);
       }
     };
 
     // Listen for SDP answer + ICE from callee
-    ws.listen((data) async {
-      try {
-        final msg = jsonDecode(data as String) as Map<String, dynamic>;
-        if (msg['type'] == 'answer') {
-          await pc.setRemoteDescription(RTCSessionDescription(msg['sdp'], 'answer'));
-        } else if (msg['type'] == 'ice') {
-          await pc.addCandidate(RTCIceCandidate(
-            msg['candidate']['candidate'],
-            msg['candidate']['sdpMid'],
-            msg['candidate']['sdpMLineIndex'],
-          ));
-        }
-      } catch (_) {}
-    }, onError: (_) {
-      if (!connected.isCompleted) connected.complete(false);
-    });
+    ws.listen(
+      (data) async {
+        try {
+          final msg = jsonDecode(data as String) as Map<String, dynamic>;
+          if (msg['type'] == 'answer') {
+            await pc.setRemoteDescription(
+              RTCSessionDescription(msg['sdp'], 'answer'),
+            );
+          } else if (msg['type'] == 'ice') {
+            await pc.addCandidate(
+              RTCIceCandidate(
+                msg['candidate']['candidate'],
+                msg['candidate']['sdpMid'],
+                msg['candidate']['sdpMLineIndex'],
+              ),
+            );
+          }
+        } catch (_) {}
+      },
+      onError: (_) {
+        if (!connected.isCompleted) connected.complete(false);
+      },
+    );
 
     // Create and send offer
     try {
@@ -310,8 +349,9 @@ class WebRtcChatService {
     // Connect to the caller's signaling server
     WebSocket ws;
     try {
-      ws = await WebSocket.connect('ws://$sigIp:$sigPort')
-          .timeout(const Duration(seconds: 5));
+      ws = await WebSocket.connect(
+        'ws://$sigIp:$sigPort',
+      ).timeout(const Duration(seconds: 5));
     } catch (_) {
       return;
     }
@@ -334,7 +374,7 @@ class WebRtcChatService {
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         session.isConnected = true;
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-                 state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         session.isConnected = false;
         _sessions.remove(session.peerId);
       }
@@ -349,16 +389,20 @@ class WebRtcChatService {
       try {
         final msg = jsonDecode(data as String) as Map<String, dynamic>;
         if (msg['type'] == 'offer') {
-          await pc.setRemoteDescription(RTCSessionDescription(msg['sdp'], 'offer'));
+          await pc.setRemoteDescription(
+            RTCSessionDescription(msg['sdp'], 'offer'),
+          );
           final answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           ws.add(jsonEncode({'type': 'answer', 'sdp': answer.sdp}));
         } else if (msg['type'] == 'ice') {
-          await pc.addCandidate(RTCIceCandidate(
-            msg['candidate']['candidate'],
-            msg['candidate']['sdpMid'],
-            msg['candidate']['sdpMLineIndex'],
-          ));
+          await pc.addCandidate(
+            RTCIceCandidate(
+              msg['candidate']['candidate'],
+              msg['candidate']['sdpMid'],
+              msg['candidate']['sdpMLineIndex'],
+            ),
+          );
         }
       } catch (_) {}
     }, onError: (_) {});
@@ -371,7 +415,7 @@ class WebRtcChatService {
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         session.isConnected = true;
       } else if (state == RTCDataChannelState.RTCDataChannelClosed ||
-                 state == RTCDataChannelState.RTCDataChannelClosing) {
+          state == RTCDataChannelState.RTCDataChannelClosing) {
         session.isConnected = false;
       }
     };
@@ -400,7 +444,10 @@ class WebRtcChatService {
       case 'ack_delivered':
         final msgId = json['messageId'] as String?;
         if (msgId != null) {
-          ChatDatabase.instance.updateStatusByUuid(msgId, MessageStatus.delivered);
+          ChatDatabase.instance.updateStatusByUuid(
+            msgId,
+            MessageStatus.delivered,
+          );
         }
         break;
 
@@ -430,7 +477,8 @@ class WebRtcChatService {
     final senderId = json['senderId'] as String?;
     final senderName = json['senderName'] as String? ?? 'Unknown';
     final content = json['content'] as String? ?? '';
-    final ts = (json['ts'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
+    final ts =
+        (json['ts'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch;
 
     if (senderId == null || content.isEmpty) return;
 
@@ -454,20 +502,22 @@ class WebRtcChatService {
 
     // Always send delivered ACK
     try {
-      dc.send(RTCDataChannelMessage(jsonEncode({
-        'type': 'ack_delivered',
-        'messageId': msgId,
-      })));
+      dc.send(
+        RTCDataChannelMessage(
+          jsonEncode({'type': 'ack_delivered', 'messageId': msgId}),
+        ),
+      );
     } catch (_) {}
 
     // If user is in this chat, send read ACK immediately
     if (activeChatPeerId == senderId) {
       ChatDatabase.instance.markAllRead(senderId);
       try {
-        dc.send(RTCDataChannelMessage(jsonEncode({
-          'type': 'ack_read',
-          'messageId': msgId,
-        })));
+        dc.send(
+          RTCDataChannelMessage(
+            jsonEncode({'type': 'ack_read', 'messageId': msgId}),
+          ),
+        );
       } catch (_) {}
     }
 
@@ -501,16 +551,23 @@ class WebRtcChatService {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  Future<void> _sendUdpInvite(String peerIp, String selfIp, int sigPort, String peerId) async {
+  Future<void> _sendUdpInvite(
+    String peerIp,
+    String selfIp,
+    int sigPort,
+    String peerId,
+  ) async {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      final payload = utf8.encode(jsonEncode({
-        'type': 'chat_invite',
-        'signalingIp': selfIp,
-        'signalingPort': sigPort,
-        'fromUuid': selfUuid ?? '',
-        'targetUuid': peerId,
-      }));
+      final payload = utf8.encode(
+        jsonEncode({
+          'type': 'chat_invite',
+          'signalingIp': selfIp,
+          'signalingPort': sigPort,
+          'fromUuid': selfUuid ?? '',
+          'targetUuid': peerId,
+        }),
+      );
       socket.send(payload, InternetAddress(peerIp), kChatInviteUdpPort);
       // Send 3 times to reduce UDP packet loss chance
       await Future.delayed(const Duration(milliseconds: 100));
@@ -523,7 +580,9 @@ class WebRtcChatService {
 
   Future<String> _getSelfIp() async {
     try {
-      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           final ip = addr.address;
@@ -538,16 +597,25 @@ class WebRtcChatService {
 
   int _randomPort() {
     final rng = Random();
-    return _kSignalingPortMin + rng.nextInt(_kSignalingPortMax - _kSignalingPortMin);
+    return _kSignalingPortMin +
+        rng.nextInt(_kSignalingPortMax - _kSignalingPortMin);
   }
 
   Future<void> _closeSession(String peerId) async {
     final session = _sessions.remove(peerId);
     if (session == null) return;
-    try { await session.dataChannel?.close(); } catch (_) {}
-    try { await session.pc?.close(); } catch (_) {}
-    try { await session.signalingServer?.close(); } catch (_) {}
-    try { await session.signalingWs?.close(); } catch (_) {}
+    try {
+      await session.dataChannel?.close();
+    } catch (_) {}
+    try {
+      await session.pc?.close();
+    } catch (_) {}
+    try {
+      await session.signalingServer?.close();
+    } catch (_) {}
+    try {
+      await session.signalingWs?.close();
+    } catch (_) {}
     session.isConnected = false;
   }
 

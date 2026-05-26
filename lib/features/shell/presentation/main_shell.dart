@@ -24,11 +24,7 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
 
-  static const _tabs = [
-    HomeScreen(),
-    ChatsListScreen(),
-    ProfileScreen()
-  ];
+  static const _tabs = [HomeScreen(), ChatsListScreen(), ProfileScreen()];
 
   @override
   void initState() {
@@ -44,7 +40,8 @@ class _MainShellState extends ConsumerState<MainShell> {
       const storage = FlutterSecureStorage();
       final service = ref.read(webrtcChatServiceProvider);
       service.selfUuid ??= await storage.read(key: 'wasla_device_uuid') ?? '';
-      service.selfName ??= await storage.read(key: 'wasla_device_name') ?? 'Wasla User';
+      service.selfName ??=
+          await storage.read(key: 'wasla_device_name') ?? 'Wasla User';
       await service.start();
 
       // Wire notification display when a message arrives in background
@@ -94,7 +91,11 @@ class _MainShellState extends ConsumerState<MainShell> {
 // ── Custom Bottom Nav Bar ─────────────────────────────────────────────────────
 
 class _WaslaNavBar extends StatelessWidget {
-  const _WaslaNavBar({required this.currentIndex, required this.onTap, this.totalUnread = 0});
+  const _WaslaNavBar({
+    required this.currentIndex,
+    required this.onTap,
+    this.totalUnread = 0,
+  });
   final int currentIndex;
   final ValueChanged<int> onTap;
   final int totalUnread;
@@ -214,7 +215,10 @@ class _NavButton extends StatelessWidget {
                     top: -6,
                     right: -8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.redAccent,
                         borderRadius: BorderRadius.circular(10),
