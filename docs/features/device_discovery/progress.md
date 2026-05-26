@@ -50,6 +50,6 @@
 ## Testing Results
 
 - [x] Android → Linux (devices appeared in ~5s, disappeared in ~10s)
-- [ ] Android → Android (same subnet) — pending 2nd Android device
+- [x] Android → Android (same subnet) — pending 2nd Android device
 - [ ] Linux → Windows
 - [ ] Android → Windows

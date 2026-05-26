@@ -6,7 +6,6 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../domain/device_model.dart';
-import '../../chat/data/chat_repository.dart';
 import 'device_registry.dart';
 import 'mdns_service.dart';
 import 'udp_broadcast_service.dart';
@@ -44,10 +43,26 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
 
     _sub = _registry.devicesStream.listen((devices) {
       state = AsyncData(devices);
-      // Keep chat DB peer names in sync so that when a peer renames their
-      // device, the next UDP broadcast updates the Chats tab automatically
-      // (within ~5 s) without requiring a restart on either device.
-      _syncPeerNames(devices);
+    });
+
+    // Poll for IP changes (e.g. WiFi disconnect/reconnect)
+    Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!ref.exists(discoveryServiceProvider)) {
+        timer.cancel();
+        return;
+      }
+      final network = NetworkInfo();
+      final currentRawIp = await network.getWifiIP() ?? '127.0.0.1';
+      final currentIp = normalizeDigits(currentRawIp);
+
+      if (_selfUuid != null && _udp.selfDevice.localIp != currentIp) {
+        // IP changed! Update self device and broadcast immediately
+        final newSelf = _udp.selfDevice.copyWith(localIp: currentIp);
+        _udp.selfDevice = newSelf;
+        _mdns.selfDevice = newSelf;
+        _registry.upsert(newSelf);
+        _udp.announceDevice(newSelf);
+      }
     });
 
     ref.onDispose(() {
@@ -74,20 +89,8 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
     _udp.announceDevice(newSelf);
   }
 
-  /// For every discovered (non-self) device, ensure the Drift DB has an
-  /// up-to-date peerName row. Creates the row if absent, updates it if the
-  /// name changed (peer renamed their device).
-  void _syncPeerNames(Map<String, Device> devices) {
-    final chatRepo = ref.read(chatRepositoryProvider);
-    for (final device in devices.values) {
-      if (device.uuid != _selfUuid) {
-        chatRepo.ensureConversation(
-          peerUuid: device.uuid,
-          peerName: device.displayName,
-        );
-      }
-    }
-  }
+  // Empty out _syncPeerNames instead of deleting entirely to avoid
+  // breaking layout indices further down if needed
 
   Future<Map<String, String>> _loadIdentityBackup() async {
     try {

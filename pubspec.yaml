@@ -32,7 +32,9 @@ dependencies:
 
   # --- Local Database (Chat History) ---
   drift: ^2.25.0                    # SQLite wrapper — actively maintained
+  sqlite3: ^2.9.4                   # Direct SQLite access (chat persistence)
   sqlite3_flutter_libs: ^0.5.30     # SQLite native libs for all platforms
+  path: ^1.9.0                      # File path joining
 
   # --- Permissions ---
   permission_handler: ^11.4.0       # Mic + Camera + Storage permissions
@@ -41,10 +43,13 @@ dependencies:
   file_picker: ^8.3.7               # اختيار الملفات للإرسال
   path_provider: ^2.1.5             # مسار حفظ الملفات الواردة
 
+  # --- Notifications ---
+  flutter_local_notifications: ^18.0.1  # Android/iOS/Linux system notifications
+
   # --- State Management ---
   flutter_riverpod: ^2.6.1          # State management
   google_fonts: ^6.2.1              # Hanken Grotesk + Inter + Geist (no .ttf files needed)
-  path: ^1.9.1                      # File path joining for Drift DB
+  intl: ^0.19.0                     # Date/time formatting for chat timestamps
 
 dev_dependencies:
   flutter_test:

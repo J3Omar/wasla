@@ -218,10 +218,12 @@ class _SetupNameScreenState extends ConsumerState<SetupNameScreen> {
                         ),
                         validator: (val) {
                           final v = val?.trim() ?? '';
-                          if (v.length < 2)
+                          if (v.length < 2) {
                             return 'Name must be at least 2 characters';
-                          if (v.length > 30)
+                          }
+                          if (v.length > 30) {
                             return 'Name must be 30 characters or less';
+                          }
                           return null;
                         },
                       ),
