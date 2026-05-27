@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
-import 'package:url_launcher/url_launcher_string.dart';
 import 'dart:io';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/file_size_formatter.dart';
 import '../../../chat/domain/chat_message.dart';
 import '../../domain/file_transfer_state.dart';
 import '../../data/file_transfer_service.dart';
@@ -19,14 +19,6 @@ class FileMessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isSentByMe;
   final String peerIp;
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
-
   @override
   Widget build(BuildContext context) {
     final transfer = message.fileTransfer;
@@ -74,10 +66,58 @@ class FileMessageBubble extends StatelessWidget {
 
           // Body: Progress or Status
           if (status == FileTransferStatus.pendingApproval)
-            Text(
-              isSentByMe ? 'Waiting for approval...' : 'Tap to receive',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-            )
+            if (isSentByMe)
+              const Text(
+                'Waiting for approval...',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+              )
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      if (transfer?.transferId != null) {
+                        FileTransferService.instance.declineTransfer(
+                          transfer!.transferId,
+                          message.peerId,
+                          peerIp,
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger, // red
+                      foregroundColor: AppColors.bgDeep, // white/black text
+                      minimumSize: Size.zero,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Refuse', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (transfer?.transferId != null) {
+                        FileTransferService.instance.acceptTransfer(
+                          transfer!.transferId,
+                          message.peerId,
+                          peerIp,
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.statusOnline, // green
+                      foregroundColor: AppColors.bgDeep,
+                      minimumSize: Size.zero,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Accept', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              )
           else if (status == FileTransferStatus.transferring)
             _buildProgress(progress, fileSize)
           else if (status == FileTransferStatus.completed)
@@ -89,8 +129,8 @@ class FileMessageBubble extends StatelessWidget {
             )
           else if (status == FileTransferStatus.declined)
             const Text(
-              'Declined',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+              'Refused',
+              style: TextStyle(color: AppColors.danger, fontSize: 13),
             )
           else if (status == FileTransferStatus.cancelled)
             const Text(
@@ -99,7 +139,25 @@ class FileMessageBubble extends StatelessWidget {
             ),
 
           // Actions
-          if (status == FileTransferStatus.transferring) ...[
+          if (status == FileTransferStatus.failed || status == FileTransferStatus.declined) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please resend the file from the attachment menu.')));
+                },
+                icon: const Icon(Icons.refresh, size: 14),
+                label: const Text('Retry', style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryCyan,
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+              ),
+            ),
+          ],
+          if (status == FileTransferStatus.transferring || (status == FileTransferStatus.pendingApproval && isSentByMe)) ...[
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -136,7 +194,7 @@ class FileMessageBubble extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '${_formatBytes(bytesTransferred)} / ${_formatBytes(totalSize)}',
+              '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}',
               style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
             Text(
@@ -148,11 +206,23 @@ class FileMessageBubble extends StatelessWidget {
         const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: progress,
-            backgroundColor: AppColors.bgDeep,
-            minHeight: 6,
-            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryCyan),
+          child: Container(
+            height: 6,
+            width: double.infinity,
+            color: AppColors.bgDeep,
+            alignment: Alignment.centerLeft,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Container(
+                  height: 6,
+                  width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -164,7 +234,7 @@ class FileMessageBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${_formatBytes(message.fileSize ?? 0)} • ✓ Received',
+          '${formatFileSize(message.fileSize ?? 0)} • ✓ Received',
           style: const TextStyle(color: AppColors.statusOnline, fontSize: 12),
         ),
         const SizedBox(height: 8),
@@ -189,8 +259,7 @@ class FileMessageBubble extends StatelessWidget {
               onPressed: () {
                 final path = message.fileTransfer?.localFilePath;
                 if (path != null) {
-                  // Fallback generic way to open parent dir
-                  launchUrlString('file://${File(path).parent.path}');
+                  OpenFile.open(File(path).parent.path);
                 }
               },
               style: TextButton.styleFrom(

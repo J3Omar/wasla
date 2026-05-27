@@ -80,6 +80,7 @@ class WebRtcChatService {
   /// Signature: (senderUuid, senderName, content)
   Function(String, String, String)? onMessageReceived;
   Function(String peerId, String peerIp, dynamic data)? onRawDataReceived;
+  Function(String peerId)? onPeerDisconnected;
 
   // ── Startup ──────────────────────────────────────────────────────────────
 
@@ -161,6 +162,15 @@ class WebRtcChatService {
       }
     }
     return false;
+  }
+
+  /// Get the current buffered amount for flow control (backpressure).
+  int getBufferedAmount(String peerId) {
+    final session = _sessions[peerId];
+    if (session?.isConnected == true && session?.dataChannel != null) {
+      return session!.dataChannel!.bufferedAmount ?? 0;
+    }
+    return 0;
   }
 
 
@@ -314,8 +324,10 @@ class WebRtcChatService {
         session.isConnected = true;
         if (!connected.isCompleted) connected.complete(true);
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         session.isConnected = false;
+        onPeerDisconnected?.call(session.peerId);
         if (!connected.isCompleted) connected.complete(false);
       }
     };
@@ -400,8 +412,10 @@ class WebRtcChatService {
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         session.isConnected = true;
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         session.isConnected = false;
+        onPeerDisconnected?.call(session.peerId);
         _sessions.remove(session.peerId);
       }
     };
@@ -443,6 +457,7 @@ class WebRtcChatService {
       } else if (state == RTCDataChannelState.RTCDataChannelClosed ||
           state == RTCDataChannelState.RTCDataChannelClosing) {
         session.isConnected = false;
+        onPeerDisconnected?.call(session.peerId);
       }
     };
 

@@ -5,19 +5,21 @@ import 'dart:typed_data';
 
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
+import 'package:crypto/crypto.dart';
 
 import 'file_storage_service.dart';
 import '../domain/file_transfer_state.dart';
+import '../../../core/utils/digest_sink.dart';
 import '../../chat/data/webrtc_chat_service.dart';
 import '../../chat/data/chat_database.dart';
 import '../../chat/data/chat_notification_service.dart';
 import '../../chat/domain/chat_message.dart';
 
-const _kMaxSingleMessageSize = 16 * 1024 * 1024; // 16MB
 const _kChunkSize = 64 * 1024; // 64KB
 
 class _ActiveTransfer {
   final String transferId;
+  final String peerId;
   final bool isSender;
   final File file;
   final int totalSize;
@@ -25,14 +27,25 @@ class _ActiveTransfer {
   
   // For Receiver (Chunking)
   int totalChunks = 0;
-  List<Uint8List> chunks = [];
+  IOSink? fileSink;
+  String? md5Hash;
+  bool isCancelled = false;
+
+  // For Throttling DB updates
+  int lastDbUpdateMs = 0;
+
+  final DigestSink md5Sink = DigestSink();
+  late final ByteConversionSink md5Input;
 
   _ActiveTransfer({
     required this.transferId,
+    required this.peerId,
     required this.isSender,
     required this.file,
     required this.totalSize,
-  });
+  }) {
+    md5Input = md5.startChunkedConversion(md5Sink);
+  }
 }
 
 class FileTransferService {
@@ -45,6 +58,14 @@ class FileTransferService {
   void init(WebRtcChatService chatService) {
     _chatService = chatService;
     _chatService!.onRawDataReceived = _onRawDataReceived;
+    _chatService!.onPeerDisconnected = _onPeerDisconnected;
+  }
+
+  void _onPeerDisconnected(String peerId) {
+    final transfersToCancel = _activeTransfers.values.where((t) => t.peerId == peerId).toList();
+    for (final transfer in transfersToCancel) {
+      _handleFileCancel(peerId, {'transferId': transfer.transferId});
+    }
   }
 
   // ─── Incoming Data Handler ──────────────────────────────────────────────
@@ -72,6 +93,12 @@ class FileTransferService {
             break;
           case 'file_cancel':
             _handleFileCancel(peerId, json);
+            break;
+          case 'file_failed':
+            _handleFileFailed(peerId, json);
+            break;
+          case 'file_progress':
+            _handleFileProgress(peerId, json);
             break;
         }
       } catch (_) {
@@ -133,6 +160,7 @@ class FileTransferService {
     // 2. Register Active Transfer
     _activeTransfers[transferId] = _ActiveTransfer(
       transferId: transferId,
+      peerId: peerId,
       isSender: true,
       file: file,
       totalSize: fileSize,
@@ -162,51 +190,59 @@ class FileTransferService {
     if (transfer == null) return;
 
     try {
-      ChatDatabase.instance.updateFileTransfer(transferId, status: FileTransferStatus.transferring.name); // Note: Need msg uuid, wait - transferId is unique enough, let's look up msg by transfer_id or we just update all. We'll update the DB by looking up the message.
+      ChatDatabase.instance.updateFileTransfer(transferId, status: FileTransferStatus.transferring.name); 
       
-      final bytes = await transfer.file.readAsBytes();
+      final totalChunks = (transfer.totalSize / _kChunkSize).ceil();
+      
+      await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
+        'type': 'file_chunk_start',
+        'transferId': transferId,
+        'totalChunks': totalChunks,
+      }));
 
-      if (transfer.totalSize <= _kMaxSingleMessageSize) {
-        // Send as single binary message
-        final sent = await _chatService!.sendRawData(peerId, peerIp, bytes);
-        if (sent) {
-           transfer.bytesTransferred = transfer.totalSize;
-        } else {
-           throw Exception('Failed to send binary');
+      final stream = transfer.file.openRead();
+      await for (final chunk in stream) {
+        if (!_activeTransfers.containsKey(transferId) || transfer.isCancelled) return;
+
+        // Flow control: Wait if buffer exceeds 1MB
+        while (_chatService!.getBufferedAmount(peerId) > 1024 * 1024) {
+          if (!_activeTransfers.containsKey(transferId) || transfer.isCancelled) return;
+          await Future.delayed(const Duration(milliseconds: 50));
         }
-      } else {
-        // Chunked transfer
-        final totalChunks = (transfer.totalSize / _kChunkSize).ceil();
+
+        final bytes = chunk as Uint8List? ?? Uint8List.fromList(chunk);
+        transfer.md5Input.add(bytes);
+        await _chatService!.sendRawData(peerId, peerIp, bytes);
         
-        await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
-          'type': 'file_chunk_start',
-          'transferId': transferId,
-          'totalChunks': totalChunks,
-        }));
-
-        for (int i = 0; i < totalChunks; i++) {
-          if (!_activeTransfers.containsKey(transferId)) return; // Cancelled
-
-          final start = i * _kChunkSize;
-          final end = (start + _kChunkSize > transfer.totalSize) ? transfer.totalSize : start + _kChunkSize;
-          final chunk = bytes.sublist(start, end);
-
-          await _chatService!.sendRawData(peerId, peerIp, chunk);
-          
-          transfer.bytesTransferred += chunk.length;
-          
-          // Update progress in DB (throttle in real app, but for now simple)
-          // Wait, we need messageUuid to update. I'll add a helper to ChatDatabase or just pass it around.
+        transfer.bytesTransferred += chunk.length;
+        
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize) {
+          transfer.lastDbUpdateMs = nowMs;
+          final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
+          if (msg != null) {
+            ChatDatabase.instance.updateFileTransfer(
+              msg.messageUuid,
+              progress: transfer.bytesTransferred / transfer.totalSize,
+            );
+          }
         }
-
-        await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
-          'type': 'file_chunk_end',
-          'transferId': transferId,
-        }));
       }
+
+      transfer.md5Input.close();
+      final md5String = transfer.md5Sink.value.toString();
+
+      await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
+        'type': 'file_chunk_end',
+        'transferId': transferId,
+        'md5': md5String,
+      }));
     } catch (e) {
+      final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
+      if (msg != null) {
+        ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.failed.name);
+      }
       _activeTransfers.remove(transferId);
-      // Wait, we need to mark as failed
     }
   }
 
@@ -257,12 +293,14 @@ class FileTransferService {
     
     ChatDatabase.instance.insert(msg);
 
-    // 3. Show Notification or Bottom Sheet
-    ChatNotificationService.instance.showMessageNotification(
-      senderName: 'File Transfer Request',
-      content: 'Incoming file: $fileName',
-      peerId: peerId,
-    );
+    // 3. Show Notification only if not in this chat
+    if (_chatService!.activeChatPeerId != peerId) {
+      ChatNotificationService.instance.showMessageNotification(
+        senderName: 'File Transfer Request',
+        content: 'Incoming file: $fileName',
+        peerId: peerId,
+      );
+    }
   }
 
   Future<void> acceptTransfer(String transferId, String peerId, String peerIp) async {
@@ -273,6 +311,7 @@ class FileTransferService {
     
     _activeTransfers[transferId] = _ActiveTransfer(
       transferId: transferId,
+      peerId: peerId,
       isSender: false,
       file: File(destPath),
       totalSize: msg.fileSize ?? 0,
@@ -322,7 +361,13 @@ class FileTransferService {
     final transfer = _activeTransfers[transferId];
     if (transfer != null && !transfer.isSender) {
       transfer.totalChunks = totalChunks;
-      transfer.chunks = [];
+      
+      final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
+      final destPath = msg?.fileTransfer?.localFilePath;
+      if (destPath != null) {
+        final tempPath = FileStorageService.instance.getTempDestinationPath(destPath);
+        transfer.fileSink = File(tempPath).openWrite(mode: FileMode.write);
+      }
     }
   }
 
@@ -334,26 +379,22 @@ class FileTransferService {
       orElse: () => throw Exception('No active incoming transfer'),
     );
 
+    if (transfer.isCancelled) return;
+
+    transfer.fileSink?.add(data);
+    transfer.md5Input.add(data);
+
     transfer.bytesTransferred += data.length;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    
     final msg = ChatDatabase.instance.getMessageByTransferId(transfer.transferId);
     
-    if (msg != null) {
+    if (msg != null && (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize)) {
+      transfer.lastDbUpdateMs = nowMs;
       ChatDatabase.instance.updateFileTransfer(
         msg.messageUuid,
         progress: transfer.bytesTransferred / transfer.totalSize,
       );
-    }
-
-    if (transfer.totalChunks > 0) {
-      // Chunked mode
-      transfer.chunks.add(data);
-    } else {
-      // Single message mode
-      await transfer.file.writeAsBytes(data);
-      _activeTransfers.remove(transfer.transferId);
-      if (msg != null) {
-        ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.completed.name);
-      }
     }
   }
 
@@ -361,17 +402,53 @@ class FileTransferService {
     final transferId = json['transferId'] as String;
     final transfer = _activeTransfers[transferId];
     if (transfer != null && !transfer.isSender) {
-      // Reassemble
-      final builder = BytesBuilder(copy: false);
-      for (final chunk in transfer.chunks) {
-        builder.add(chunk);
+      await transfer.fileSink?.flush();
+      await transfer.fileSink?.close();
+      transfer.fileSink = null;
+      
+      if (transfer.isCancelled) {
+        _activeTransfers.remove(transferId);
+        return;
       }
-      await transfer.file.writeAsBytes(builder.takeBytes());
-      _activeTransfers.remove(transferId);
+      
+      transfer.md5Input.close();
+      final localMd5 = transfer.md5Sink.value.toString();
+      final expectedMd5 = json['md5'] as String?;
       
       final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
-      if (msg != null) {
-        ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.completed.name);
+      final destPath = msg?.fileTransfer?.localFilePath;
+      if (destPath != null) {
+        final tempPath = FileStorageService.instance.getTempDestinationPath(destPath);
+        
+        // Verify MD5 instantly
+        if (expectedMd5 != null && localMd5 != expectedMd5) {
+            // Checksum mismatch
+            await File(tempPath).delete();
+            _activeTransfers.remove(transferId);
+            ChatDatabase.instance.updateFileTransfer(msg!.messageUuid, status: FileTransferStatus.failed.name);
+            final peerIp = ChatDatabase.instance.getPeerIp(peerId);
+            if (peerIp != null) {
+              await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
+                'type': 'file_failed',
+                'transferId': transferId,
+                'reason': 'checksum_mismatch',
+              }));
+            }
+            return;
+        }
+        
+        await FileStorageService.instance.commitTempFile(tempPath, destPath);
+        _activeTransfers.remove(transferId);
+        ChatDatabase.instance.updateFileTransfer(msg!.messageUuid, status: FileTransferStatus.completed.name);
+        
+        final peerIp = ChatDatabase.instance.getPeerIp(peerId);
+        if (peerIp != null) {
+          await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
+            'type': 'file_complete',
+            'transferId': transferId,
+            'savedPath': destPath,
+          }));
+        }
       }
     }
   }
@@ -392,10 +469,20 @@ class FileTransferService {
       ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.cancelled.name);
     }
 
-    if (transfer != null && !transfer.isSender) {
-      // Clean up partial file
-      if (await transfer.file.exists()) {
-        await transfer.file.delete();
+    if (transfer != null) {
+      transfer.isCancelled = true;
+      if (!transfer.isSender) {
+        await transfer.fileSink?.close();
+        transfer.fileSink = null;
+        final msgLocal = ChatDatabase.instance.getMessageByTransferId(transferId);
+        final destPath = msgLocal?.fileTransfer?.localFilePath;
+        if (destPath != null) {
+           final tempPath = FileStorageService.instance.getTempDestinationPath(destPath);
+           final file = File(tempPath);
+           if (await file.exists()) {
+             await file.delete();
+           }
+        }
       }
     }
 
@@ -415,10 +502,54 @@ class FileTransferService {
       ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.cancelled.name);
     }
 
-    if (transfer != null && !transfer.isSender) {
-      if (await transfer.file.exists()) {
-        await transfer.file.delete();
+    if (transfer != null) {
+      transfer.isCancelled = true;
+      if (!transfer.isSender) {
+        await transfer.fileSink?.close();
+        transfer.fileSink = null;
+        final msgLocal = ChatDatabase.instance.getMessageByTransferId(transferId);
+        final destPath = msgLocal?.fileTransfer?.localFilePath;
+        if (destPath != null) {
+           final tempPath = FileStorageService.instance.getTempDestinationPath(destPath);
+           final file = File(tempPath);
+           if (await file.exists()) {
+             await file.delete();
+           }
+        }
       }
     }
+  }
+
+  void _handleFileFailed(String peerId, Map<String, dynamic> json) async {
+    final transferId = json['transferId'] as String;
+    final transfer = _activeTransfers.remove(transferId);
+    
+    final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
+    if (msg != null) {
+      ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.failed.name);
+    }
+
+    if (transfer != null) {
+      transfer.isCancelled = true;
+      if (!transfer.isSender) {
+        await transfer.fileSink?.close();
+        transfer.fileSink = null;
+        final msgLocal = ChatDatabase.instance.getMessageByTransferId(transferId);
+        final destPath = msgLocal?.fileTransfer?.localFilePath;
+        if (destPath != null) {
+           final tempPath = FileStorageService.instance.getTempDestinationPath(destPath);
+           final file = File(tempPath);
+           if (await file.exists()) {
+             await file.delete();
+           }
+        }
+      }
+    }
+  }
+
+  void _handleFileProgress(String peerId, Map<String, dynamic> json) {
+    // We already compute progress via sent bytes on sender side and received bytes on receiver side,
+    // so we don't necessarily need to update the DB from this message. 
+    // However, if we wanted to enforce receiver-acknowledged progress on the sender side, we could use this.
   }
 }

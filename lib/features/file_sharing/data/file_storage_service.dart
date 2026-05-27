@@ -50,8 +50,13 @@ class FileStorageService {
   Future<String> resolveDestinationPath(String fileName) async {
     final saveDir = await getSavePath();
     final dir = Directory(saveDir);
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
+    try {
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+    } catch (e) {
+      // If we cannot create the directory, likely a permission issue
+      throw FileSystemException('Cannot create save directory. Check storage permissions.', saveDir);
     }
 
     final nameWithoutExt = p.basenameWithoutExtension(fileName);
@@ -68,6 +73,19 @@ class FileStorageService {
     }
 
     return fullPath;
+  }
+
+  /// Returns a temporary path for the file during the transfer.
+  String getTempDestinationPath(String finalPath) {
+    return '$finalPath.wasla_tmp';
+  }
+
+  /// Renames the temporary file to its final destination.
+  Future<void> commitTempFile(String tempPath, String finalPath) async {
+    final tempFile = File(tempPath);
+    if (await tempFile.exists()) {
+      await tempFile.rename(finalPath);
+    }
   }
 
   /// Gets the default platform-specific path for Wasla downloads.

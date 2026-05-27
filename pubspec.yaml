@@ -43,6 +43,7 @@ dependencies:
   file_picker: ^8.3.7               # اختيار الملفات للإرسال
   path_provider: ^2.1.5             # مسار حفظ الملفات الواردة
   disk_space_plus: ^0.2.6           # check free disk space on receiver
+  crypto: ^3.0.3                    # MD5 checksum verification
   mime: ^1.0.5                      # detect file type from extension
   open_file: ^3.3.2                 # open received files
   url_launcher: ^6.3.0              # open links/files
