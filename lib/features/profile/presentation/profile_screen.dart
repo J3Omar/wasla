@@ -11,6 +11,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/string_utils.dart';
 import '../../file_sharing/data/file_storage_service.dart';
+import '../../discovery/data/discovery_service.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
@@ -203,6 +204,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                       onPressed: () async {
                         await context.push(AppRoutes.onboarding);
+                        await ref.read(discoveryServiceProvider.notifier).updateSelfName();
                         _load(); // refresh after edit
                       },
                     ),

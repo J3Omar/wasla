@@ -48,12 +48,14 @@ class UdpBroadcastService {
 
   void _sendAnnounce() {
     if (_socket == null || !_running) return;
-    try {
-      final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
+    final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
 
+    try {
       // Send to global broadcast
       _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
+    } catch (_) {}
 
+    try {
       // Also send to subnet broadcast (fixes Linux routing with Docker/VPNs)
       final ip = selfDevice.localIp;
       if (ip != '127.0.0.1') {
@@ -70,11 +72,13 @@ class UdpBroadcastService {
   /// Send a one-shot announce with an arbitrary [device] payload.
   void announceDevice(Device device) {
     if (_socket == null || !_running) return;
+    final payload = utf8.encode(jsonEncode(device.toJson()));
+
     try {
-      final payload = utf8.encode(jsonEncode(device.toJson()));
-
       _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
+    } catch (_) {}
 
+    try {
       final ip = device.localIp;
       if (ip != '127.0.0.1') {
         final parts = ip.split('.');

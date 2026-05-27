@@ -290,6 +290,9 @@ class ChatDatabase {
       for (final m in msgs) {
         h = h * 31 + m.id;
         h = h * 31 + m.status.index;
+        if (m.fileTransfer != null) {
+          h = h * 31 + m.fileTransfer!.status.index;
+        }
       }
       return h;
     }

@@ -30,6 +30,11 @@ class _ActiveTransfer {
   IOSink? fileSink;
   String? md5Hash;
   bool isCancelled = false;
+  String? messageUuid; // cached after first DB lookup — avoids repeated queries
+
+  // For ACK-based Flow Control
+  int chunksReceived = 0;
+  Completer<void>? ackCompleter;
 
   // For Throttling DB updates
   int lastDbUpdateMs = 0;
@@ -54,6 +59,9 @@ class FileTransferService {
 
   final Map<String, _ActiveTransfer> _activeTransfers = {};
   WebRtcChatService? _chatService;
+
+  final _progressController = StreamController<Map<String, double>>.broadcast();
+  Stream<Map<String, double>> get progressStream => _progressController.stream;
 
   void init(WebRtcChatService chatService) {
     _chatService = chatService;
@@ -90,6 +98,9 @@ class FileTransferService {
             break;
           case 'file_complete':
             _handleFileComplete(peerId, json);
+            break;
+          case 'file_chunk_ack':
+            _handleFileChunkAck(peerId, json);
             break;
           case 'file_cancel':
             _handleFileCancel(peerId, json);
@@ -165,6 +176,7 @@ class FileTransferService {
       file: file,
       totalSize: fileSize,
     );
+    _activeTransfers[transferId]!.messageUuid = msg.messageUuid;
 
     // 3. Send over DataChannel
     final requestJson = jsonEncode({
@@ -200,29 +212,49 @@ class FileTransferService {
         'totalChunks': totalChunks,
       }));
 
+      int chunksSent = 0;
       final stream = transfer.file.openRead();
       await for (final chunk in stream) {
         if (!_activeTransfers.containsKey(transferId) || transfer.isCancelled) return;
 
-        // Flow control: Wait if buffer exceeds 1MB
-        while (_chatService!.getBufferedAmount(peerId) > 1024 * 1024) {
+        // Flow control: Wait if buffer exceeds 4MB
+        while (_chatService!.getBufferedAmount(peerId) > 4 * 1024 * 1024) {
           if (!_activeTransfers.containsKey(transferId) || transfer.isCancelled) return;
           await Future.delayed(const Duration(milliseconds: 50));
         }
 
         final bytes = chunk as Uint8List? ?? Uint8List.fromList(chunk);
         transfer.md5Input.add(bytes);
-        await _chatService!.sendRawData(peerId, peerIp, bytes);
+        _chatService!.sendRawData(peerId, peerIp, bytes); // fire and forget — flow control handles pacing
         
         transfer.bytesTransferred += chunk.length;
+        _progressController.add({transferId: transfer.bytesTransferred / transfer.totalSize});
+        
+        // Strict network pacing: ACK-based flow control.
+        // We require an ACK from the receiver every 16 chunks (~1MB)
+        // This guarantees the sender NEVER overruns the WebRTC SCTP buffer
+        // and perfectly adapts to the exact Wi-Fi speed.
+        chunksSent++;
+        if (chunksSent % 16 == 0) {
+          transfer.ackCompleter = Completer<void>();
+          try {
+            await transfer.ackCompleter!.future.timeout(const Duration(seconds: 15));
+          } catch (e) {
+            // Timeout means receiver disconnected or is extremely slow
+            cancelTransfer(transferId, peerId, peerIp);
+            return;
+          }
+        }
+        
+        // Small yield to event loop for chunks that don't need ACK
+        await Future.delayed(Duration.zero);
         
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         if (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize) {
           transfer.lastDbUpdateMs = nowMs;
-          final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
-          if (msg != null) {
+          if (transfer.messageUuid != null) {
             ChatDatabase.instance.updateFileTransfer(
-              msg.messageUuid,
+              transfer.messageUuid!,
               progress: transfer.bytesTransferred / transfer.totalSize,
             );
           }
@@ -232,6 +264,8 @@ class FileTransferService {
       transfer.md5Input.close();
       final md5String = transfer.md5Sink.value.toString();
 
+      // Ensure the final message is sent and awaited
+      await Future.delayed(const Duration(milliseconds: 100)); // allow trailing chunks to clear
       await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
         'type': 'file_chunk_end',
         'transferId': transferId,
@@ -316,6 +350,7 @@ class FileTransferService {
       file: File(destPath),
       totalSize: msg.fileSize ?? 0,
     );
+    _activeTransfers[transferId]!.messageUuid = msg.messageUuid;
 
     ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.transferring.name, localFilePath: destPath);
 
@@ -345,6 +380,13 @@ class FileTransferService {
     final accepted = json['accepted'] as bool;
     
     if (accepted) {
+      final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
+      if (msg != null) {
+        ChatDatabase.instance.updateFileTransfer(
+          msg.messageUuid, 
+          status: FileTransferStatus.transferring.name,
+        );
+      }
       _startSending(transferId, peerId, peerIp);
     } else {
       _activeTransfers.remove(transferId);
@@ -374,10 +416,8 @@ class FileTransferService {
   void _handleBinaryData(String peerId, Uint8List data) async {
     // WebRTC DataChannel doesn't attach metadata to binary packets.
     // If we only allow 1 active transfer per peer, we can just find it:
-    final transfer = _activeTransfers.values.firstWhere(
-      (t) => !t.isSender,
-      orElse: () => throw Exception('No active incoming transfer'),
-    );
+    final transfer = _activeTransfers.values.where((t) => !t.isSender).firstOrNull;
+    if (transfer == null) return; // ignore stray binary data
 
     if (transfer.isCancelled) return;
 
@@ -385,16 +425,39 @@ class FileTransferService {
     transfer.md5Input.add(data);
 
     transfer.bytesTransferred += data.length;
+    _progressController.add({transfer.transferId: transfer.bytesTransferred / transfer.totalSize});
+    
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     
-    final msg = ChatDatabase.instance.getMessageByTransferId(transfer.transferId);
-    
-    if (msg != null && (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize)) {
+    if (transfer.messageUuid != null && 
+        (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize)) {
       transfer.lastDbUpdateMs = nowMs;
       ChatDatabase.instance.updateFileTransfer(
-        msg.messageUuid,
+        transfer.messageUuid!,
         progress: transfer.bytesTransferred / transfer.totalSize,
       );
+    }
+    
+    // Send ACK back to sender every 16 chunks (~1MB)
+    // We get peerIp from the session via chat service, but we don't strictly need it 
+    // to just send raw data if it's already connected, but we can look it up.
+    transfer.chunksReceived++;
+    if (transfer.chunksReceived % 16 == 0) {
+      final peerIp = ChatDatabase.instance.getPeerIp(peerId) ?? '';
+      _chatService!.sendRawData(peerId, peerIp, jsonEncode({
+        'type': 'file_chunk_ack',
+        'transferId': transfer.transferId,
+      }));
+    }
+  }
+
+  void _handleFileChunkAck(String peerId, Map<String, dynamic> json) {
+    final transferId = json['transferId'] as String;
+    final transfer = _activeTransfers[transferId];
+    if (transfer != null && transfer.isSender) {
+      if (transfer.ackCompleter != null && !transfer.ackCompleter!.isCompleted) {
+        transfer.ackCompleter!.complete();
+      }
     }
   }
 

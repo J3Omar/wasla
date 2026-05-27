@@ -119,44 +119,16 @@ class FileMessageBubble extends StatelessWidget {
                 ],
               )
           else if (status == FileTransferStatus.transferring)
-            _buildProgress(progress, fileSize)
+            _buildProgress(progress, fileSize, transfer?.transferId ?? '')
           else if (status == FileTransferStatus.completed)
             _buildCompleted()
-          else if (status == FileTransferStatus.failed)
-            const Text(
-              'Transfer failed',
-              style: TextStyle(color: AppColors.danger, fontSize: 13),
-            )
-          else if (status == FileTransferStatus.declined)
-            const Text(
-              'Refused',
-              style: TextStyle(color: AppColors.danger, fontSize: 13),
-            )
-          else if (status == FileTransferStatus.cancelled)
+          else if (status == FileTransferStatus.failed || status == FileTransferStatus.declined || status == FileTransferStatus.cancelled)
             const Text(
               'Cancelled',
               style: TextStyle(color: AppColors.textMuted, fontSize: 13),
             ),
 
           // Actions
-          if (status == FileTransferStatus.failed || status == FileTransferStatus.declined) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please resend the file from the attachment menu.')));
-                },
-                icon: const Icon(Icons.refresh, size: 14),
-                label: const Text('Retry', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primaryCyan,
-                  minimumSize: Size.zero,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                ),
-              ),
-            ),
-          ],
           if (status == FileTransferStatus.transferring || (status == FileTransferStatus.pendingApproval && isSentByMe)) ...[
             const SizedBox(height: 8),
             Align(
@@ -185,47 +157,54 @@ class FileMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildProgress(double progress, int totalSize) {
-    final bytesTransferred = (progress * totalSize).round();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildProgress(double initialProgress, int totalSize, String transferId) {
+    return StreamBuilder<Map<String, double>>(
+      stream: FileTransferService.instance.progressStream
+          .where((map) => map.containsKey(transferId)),
+      builder: (context, snapshot) {
+        final progress = snapshot.data?[transferId] ?? initialProgress;
+        final bytesTransferred = (progress * totalSize).round();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                ),
+                Text(
+                  '${(progress * 100).toInt()}%',
+                  style: const TextStyle(color: AppColors.primaryCyan, fontSize: 12),
+                ),
+              ],
             ),
-            Text(
-              '${(progress * 100).toInt()}%',
-              style: const TextStyle(color: AppColors.primaryCyan, fontSize: 12),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                height: 6,
+                width: double.infinity,
+                color: AppColors.bgDeep,
+                alignment: Alignment.centerLeft,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Container(
+                      height: 6,
+                      width: constraints.maxWidth * progress.clamp(0.0, 1.0),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ],
-        ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: Container(
-            height: 6,
-            width: double.infinity,
-            color: AppColors.bgDeep,
-            alignment: Alignment.centerLeft,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Container(
-                  height: 6,
-                  width: constraints.maxWidth * progress.clamp(0.0, 1.0),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -234,43 +213,45 @@ class FileMessageBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${formatFileSize(message.fileSize ?? 0)} • ✓ Received',
+          '${formatFileSize(message.fileSize ?? 0)} • ✓ ${isSentByMe ? 'Sent' : 'Received'}',
           style: const TextStyle(color: AppColors.statusOnline, fontSize: 12),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            TextButton(
-              onPressed: () {
-                final path = message.fileTransfer?.localFilePath;
-                if (path != null && File(path).existsSync()) {
-                  OpenFile.open(path);
-                }
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primaryCyan,
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        if (!isSentByMe) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              TextButton(
+                onPressed: () {
+                  final path = message.fileTransfer?.localFilePath;
+                  if (path != null && File(path).existsSync()) {
+                    OpenFile.open(path);
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryCyan,
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+                child: const Text('Open', style: TextStyle(fontSize: 13)),
               ),
-              child: const Text('Open', style: TextStyle(fontSize: 13)),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: () {
-                final path = message.fileTransfer?.localFilePath;
-                if (path != null) {
-                  OpenFile.open(File(path).parent.path);
-                }
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.textSecondary,
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
+                  final path = message.fileTransfer?.localFilePath;
+                  if (path != null) {
+                    OpenFile.open(File(path).parent.path);
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textSecondary,
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+                child: const Text('Show in folder', style: TextStyle(fontSize: 13)),
               ),
-              child: const Text('Show in folder', style: TextStyle(fontSize: 13)),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }
