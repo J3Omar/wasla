@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../file_sharing/domain/file_transfer_state.dart';
 
 /// Delivery status of a chat message.
 /// Ordinal value matters — DB stores as int, and we only ever upgrade (never downgrade).
@@ -32,6 +33,8 @@ class ChatMessage {
     this.isRead = false,
     this.fileName,
     this.fileSize,
+    this.mimeType,
+    this.fileTransfer,
   });
 
   final int id;
@@ -55,6 +58,10 @@ class ChatMessage {
   /// Only set for file messages.
   final String? fileName;
   final int? fileSize;
+  final String? mimeType;
+  
+  /// Details of the active/completed file transfer.
+  final FileTransfer? fileTransfer;
 
   ChatMessage copyWith({
     int? id,
@@ -68,6 +75,8 @@ class ChatMessage {
     MessageType? type,
     String? fileName,
     int? fileSize,
+    String? mimeType,
+    FileTransfer? fileTransfer,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -75,12 +84,14 @@ class ChatMessage {
       peerId: peerId ?? this.peerId,
       content: content ?? this.content,
       isSent: isSent ?? this.isSent,
-      isRead: isRead ?? this.isRead,
       timestamp: timestamp ?? this.timestamp,
       status: status ?? this.status,
       type: type ?? this.type,
+      isRead: isRead ?? this.isRead,
       fileName: fileName ?? this.fileName,
       fileSize: fileSize ?? this.fileSize,
+      mimeType: mimeType ?? this.mimeType,
+      fileTransfer: fileTransfer ?? this.fileTransfer,
     );
   }
 
@@ -95,6 +106,7 @@ class ChatMessage {
     'type': type.index,
     if (fileName != null) 'fileName': fileName,
     if (fileSize != null) 'fileSize': fileSize,
+    if (mimeType != null) 'mimeType': mimeType,
   };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -111,6 +123,7 @@ class ChatMessage {
       type: MessageType.values[(json['type'] as num?)?.toInt() ?? 0],
       fileName: json['fileName'] as String?,
       fileSize: (json['fileSize'] as num?)?.toInt(),
+      mimeType: json['mimeType'] as String?,
     );
   }
 

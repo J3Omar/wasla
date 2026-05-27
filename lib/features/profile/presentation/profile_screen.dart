@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/string_utils.dart';
+import '../../file_sharing/data/file_storage_service.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
@@ -24,6 +26,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String _name = '';
   String _uuid = '';
   String _localIp = '';
+  String _savePath = '';
   bool _loading = true;
 
   @override
@@ -55,11 +58,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       } catch (_) {}
     }
 
+    final path = await FileStorageService.instance.getSavePath();
+
     if (mounted) {
       setState(() {
         _name = name;
         _uuid = uuid;
         _localIp = normalizeDigits(ip);
+        _savePath = path;
         _loading = false;
       });
     }
@@ -218,6 +224,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                   const SizedBox(height: 36),
 
+                  // ── Settings ───────────────────────────────────────────
+                  _SectionLabel(label: 'SETTINGS'),
+                  const SizedBox(height: 12),
+                  
+                  _InfoCard(
+                    icon: Icons.folder_open_rounded,
+                    label: 'File Save Path',
+                    value: _savePath.isEmpty ? 'Default' : _savePath,
+                    trailing: IconButton(
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: AppColors.primaryCyan,
+                      ),
+                      onPressed: () async {
+                        final path = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select Save Directory');
+                        if (path != null) {
+                          await FileStorageService.instance.setSavePath(path);
+                          if (mounted) {
+                            setState(() => _savePath = path);
+                          }
+                        }
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 36),
+
                   // ── Wasla branding ─────────────────────────────────────
                   Center(
                     child: Column(
@@ -308,7 +342,7 @@ class _InfoCard extends StatelessWidget {
                     fontFamily: label == 'Device UUID' || label == 'Local IP'
                         ? 'JetBrains Mono'
                         : null,
-                    fontSize: label == 'Device UUID' ? 13 : null,
+                    fontSize: label == 'Device UUID' || label == 'File Save Path' ? 13 : null,
                   ),
                 ),
               ],

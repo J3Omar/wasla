@@ -9,6 +9,11 @@ import '../../discovery/data/discovery_service.dart';
 import '../domain/chat_message.dart';
 import '../data/chat_database.dart';
 import 'chat_notifier.dart';
+import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
+import '../../file_sharing/presentation/widgets/file_preview_card.dart';
+import '../../file_sharing/data/file_transfer_service.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.device});
@@ -23,6 +28,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   bool _hasText = false;
+  File? _selectedFile;
 
   bool _isSelectionMode = false;
   final Set<int> _selectedIds = {};
@@ -46,7 +52,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     _inputController.addListener(() {
-      final has = _inputController.text.trim().isNotEmpty;
+      final has = _inputController.text.trim().isNotEmpty || _selectedFile != null;
       if (has != _hasText) setState(() => _hasText = has);
     });
 
@@ -72,12 +78,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _send() async {
+  Future<void> _onSend() async {
     final text = _inputController.text.trim();
-    if (text.isEmpty) return;
-    _inputController.clear();
-    _focusNode.requestFocus();
-    await ref.read(chatProvider(_args).notifier).sendMessage(text);
+    final file = _selectedFile;
+    if (text.isEmpty && file == null) return;
+
+    if (file != null) {
+      final fileSize = await file.length();
+      if (fileSize > 500 * 1024 * 1024) {
+        if (!mounted) return;
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.bgSecondary,
+            title: const Text('الملف كبير جداً', style: TextStyle(color: AppColors.textPrimary)),
+            content: const Text('هذا الملف كبير جداً (+500MB). هل تريد المتابعة؟', style: TextStyle(color: AppColors.textSecondary)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryCyan),
+                child: const Text('متابعة', style: TextStyle(color: AppColors.bgPrimary)),
+              ),
+            ],
+          ),
+        );
+        if (confirm != true) return;
+      }
+
+      try {
+        await FileTransferService.instance.sendFileRequest(
+          peerId: _args.peerId,
+          peerIp: _args.peerIp,
+          filePath: file.path,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+      
+      setState(() {
+        _selectedFile = null;
+        _hasText = _inputController.text.trim().isNotEmpty;
+      });
+    }
+
+    if (text.isNotEmpty) {
+      ref.read(chatProvider(_args).notifier).sendMessage(text);
+      _inputController.clear();
+    }
   }
 
   @override
@@ -151,6 +200,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               if (showDate) _DateDivider(date: msg.timestamp),
                               _MessageBubble(
                                 message: msg,
+                                peerIp: _args.peerIp,
                                 isSelected: _selectedIds.contains(msg.id),
                                 isSelectionMode: _isSelectionMode,
                                 onTap: () {
@@ -158,8 +208,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     setState(() {
                                       if (_selectedIds.contains(msg.id)) {
                                         _selectedIds.remove(msg.id);
-                                        if (_selectedIds.isEmpty)
+                                        if (_selectedIds.isEmpty) {
                                           _isSelectionMode = false;
+                                        }
                                       } else {
                                         _selectedIds.add(msg.id);
                                       }
@@ -190,7 +241,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             focusNode: _focusNode,
             hasText: _hasText,
             peerName: widget.device.displayName,
-            onSend: _send,
+            onSend: _onSend,
+            selectedFile: _selectedFile,
+            onPickFile: () async {
+              final result = await FilePicker.platform.pickFiles();
+              if (result != null && result.files.single.path != null) {
+                setState(() {
+                  _selectedFile = File(result.files.single.path!);
+                  _hasText = true;
+                });
+              }
+            },
+            onCancelFile: () {
+              setState(() {
+                _selectedFile = null;
+                _hasText = _inputController.text.trim().isNotEmpty;
+              });
+            },
           ),
         ],
       ),
@@ -525,6 +592,7 @@ class _DateDivider extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
+    required this.peerIp,
     this.isSelected = false,
     this.isSelectionMode = false,
     this.onTap,
@@ -532,6 +600,7 @@ class _MessageBubble extends StatelessWidget {
   });
 
   final ChatMessage message;
+  final String peerIp;
   final bool isSelected;
   final bool isSelectionMode;
   final VoidCallback? onTap;
@@ -577,9 +646,11 @@ class _MessageBubble extends StatelessWidget {
                         ? CrossAxisAlignment.end
                         : CrossAxisAlignment.start,
                     children: [
-                      message.isSent
-                          ? _SentBubble(message: message)
-                          : _ReceivedBubble(message: message),
+                      message.type == MessageType.file
+                          ? FileMessageBubble(message: message, isSentByMe: message.isSent, peerIp: peerIp)
+                          : message.isSent
+                              ? _SentBubble(message: message)
+                              : _ReceivedBubble(message: message),
                       const SizedBox(height: 3),
                       _Timestamp(message: message),
                     ],
@@ -724,6 +795,9 @@ class _InputBar extends StatelessWidget {
     required this.hasText,
     required this.peerName,
     required this.onSend,
+    this.selectedFile,
+    required this.onPickFile,
+    required this.onCancelFile,
   });
 
   final TextEditingController controller;
@@ -731,6 +805,9 @@ class _InputBar extends StatelessWidget {
   final bool hasText;
   final String peerName;
   final VoidCallback onSend;
+  final File? selectedFile;
+  final VoidCallback onPickFile;
+  final VoidCallback onCancelFile;
 
   @override
   Widget build(BuildContext context) {
@@ -745,18 +822,19 @@ class _InputBar extends StatelessWidget {
         color: AppColors.bgDeep,
         border: Border(top: BorderSide(color: AppColors.borderDefault)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
-            color: AppColors.textMuted,
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('File sharing — coming soon!')),
-              );
-            },
-          ),
+          if (selectedFile != null) FilePreviewCard(file: selectedFile!, onCancel: onCancelFile),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
+                color: AppColors.textMuted,
+                onPressed: onPickFile,
+              ),
           const SizedBox(width: 4),
           Expanded(
             child: Container(
@@ -819,6 +897,8 @@ class _InputBar extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
         ],
       ),
     );

@@ -84,7 +84,6 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final glowSize = math.min(size.width * 0.9, 400.0);
-    final pushHeight = math.max(24.0, (glowSize / 2) - 80 + 24);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
