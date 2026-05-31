@@ -47,6 +47,7 @@ dependencies:
   mime: ^1.0.5                      # detect file type from extension
   open_file: ^3.3.2                 # open received files
   url_launcher: ^6.3.0              # open links/files
+  flutter_background: ^1.2.0        # Android background service
 
   # --- Notifications ---
   flutter_local_notifications: ^18.0.1  # Android/iOS/Linux system notifications

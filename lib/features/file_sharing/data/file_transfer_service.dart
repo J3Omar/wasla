@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter_background/flutter_background.dart';
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
@@ -16,6 +17,20 @@ import '../../chat/data/chat_notification_service.dart';
 import '../../chat/domain/chat_message.dart';
 
 const _kChunkSize = 64 * 1024; // 64KB
+
+class TransferUpdate {
+  final String transferId;
+  final double progress;
+  final int speedBytesPerSec;
+  final Duration eta;
+
+  TransferUpdate({
+    required this.transferId,
+    required this.progress,
+    required this.speedBytesPerSec,
+    required this.eta,
+  });
+}
 
 class _ActiveTransfer {
   final String transferId;
@@ -35,12 +50,33 @@ class _ActiveTransfer {
   // For ACK-based Flow Control
   int chunksReceived = 0;
   Completer<void>? ackCompleter;
-
-  // For Throttling DB updates
+  int unackedChunks = 0;
+  int currentWindowChunks = 32; // Start at 2MB
   int lastDbUpdateMs = 0;
+
+  // For Speed & ETA
+  int lastSpeedCalcMs = DateTime.now().millisecondsSinceEpoch;
+  int lastBytesTransferred = 0;
+  int currentSpeedBytesPerSec = 0;
 
   final DigestSink md5Sink = DigestSink();
   late final ByteConversionSink md5Input;
+
+  void updateSpeed(int nowMs) {
+    if (nowMs - lastSpeedCalcMs > 1000) {
+      final diffBytes = bytesTransferred - lastBytesTransferred;
+      final diffTime = (nowMs - lastSpeedCalcMs) / 1000.0;
+      currentSpeedBytesPerSec = (diffBytes / diffTime).round();
+      lastBytesTransferred = bytesTransferred;
+      lastSpeedCalcMs = nowMs;
+    }
+  }
+
+  Duration get eta {
+    if (currentSpeedBytesPerSec <= 0) return const Duration(hours: 99);
+    final remainingBytes = totalSize - bytesTransferred;
+    return Duration(seconds: remainingBytes ~/ currentSpeedBytesPerSec);
+  }
 
   _ActiveTransfer({
     required this.transferId,
@@ -60,13 +96,57 @@ class FileTransferService {
   final Map<String, _ActiveTransfer> _activeTransfers = {};
   WebRtcChatService? _chatService;
 
-  final _progressController = StreamController<Map<String, double>>.broadcast();
-  Stream<Map<String, double>> get progressStream => _progressController.stream;
+  final _progressController = StreamController<TransferUpdate>.broadcast();
+  Stream<TransferUpdate> get progressStream => _progressController.stream;
 
   void init(WebRtcChatService chatService) {
     _chatService = chatService;
     _chatService!.onRawDataReceived = _onRawDataReceived;
     _chatService!.onPeerDisconnected = _onPeerDisconnected;
+    
+    _initBackgroundService();
+  }
+
+  Future<void> _initBackgroundService() async {
+    if (!Platform.isAndroid) return;
+    
+    const androidConfig = FlutterBackgroundAndroidConfig(
+      notificationTitle: "Wasla File Transfer",
+      notificationText: "Keeping file transfers active in the background.",
+      notificationImportance: AndroidNotificationImportance.normal,
+      notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'), // default flutter icon
+    );
+    await FlutterBackground.initialize(androidConfig: androidConfig);
+  }
+
+  bool _isBackgroundServiceActive = false;
+
+  void _updateBackgroundState() {
+    if (!Platform.isAndroid) return;
+    
+    final hasActiveTransfers = _activeTransfers.isNotEmpty;
+    
+    if (hasActiveTransfers && !_isBackgroundServiceActive) {
+      FlutterBackground.enableBackgroundExecution().then((success) {
+        _isBackgroundServiceActive = success;
+      });
+    } else if (!hasActiveTransfers && _isBackgroundServiceActive) {
+      FlutterBackground.disableBackgroundExecution();
+      _isBackgroundServiceActive = false;
+    }
+  }
+
+  void _addActiveTransfer(String transferId, _ActiveTransfer transfer) {
+    _activeTransfers[transferId] = transfer;
+    _updateBackgroundState();
+  }
+
+  _ActiveTransfer? _removeActiveTransfer(String transferId) {
+    final transfer = _activeTransfers.remove(transferId);
+    if (transfer != null) {
+      _updateBackgroundState();
+    }
+    return transfer;
   }
 
   void _onPeerDisconnected(String peerId) {
@@ -169,13 +249,13 @@ class FileTransferService {
     ChatDatabase.instance.insert(msg);
 
     // 2. Register Active Transfer
-    _activeTransfers[transferId] = _ActiveTransfer(
+    _addActiveTransfer(transferId, _ActiveTransfer(
       transferId: transferId,
       peerId: peerId,
       isSender: true,
       file: file,
       totalSize: fileSize,
-    );
+    ));
     _activeTransfers[transferId]!.messageUuid = msg.messageUuid;
 
     // 3. Send over DataChannel
@@ -192,7 +272,7 @@ class FileTransferService {
     final sent = await _chatService!.sendRawData(peerId, peerIp, requestJson);
     if (!sent) {
       // Peer might be offline, cleanup
-      _activeTransfers.remove(transferId);
+      _removeActiveTransfer(transferId);
       ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.failed.name);
     }
   }
@@ -212,7 +292,6 @@ class FileTransferService {
         'totalChunks': totalChunks,
       }));
 
-      int chunksSent = 0;
       final stream = transfer.file.openRead();
       await for (final chunk in stream) {
         if (!_activeTransfers.containsKey(transferId) || transfer.isCancelled) return;
@@ -228,17 +307,34 @@ class FileTransferService {
         _chatService!.sendRawData(peerId, peerIp, bytes); // fire and forget — flow control handles pacing
         
         transfer.bytesTransferred += chunk.length;
-        _progressController.add({transferId: transfer.bytesTransferred / transfer.totalSize});
         
-        // Strict network pacing: ACK-based flow control.
-        // We require an ACK from the receiver every 16 chunks (~1MB)
-        // This guarantees the sender NEVER overruns the WebRTC SCTP buffer
-        // and perfectly adapts to the exact Wi-Fi speed.
-        chunksSent++;
-        if (chunksSent % 16 == 0) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        transfer.updateSpeed(nowMs);
+        
+        _progressController.add(TransferUpdate(
+          transferId: transferId,
+          progress: transfer.bytesTransferred / transfer.totalSize,
+          speedBytesPerSec: transfer.currentSpeedBytesPerSec,
+          eta: transfer.eta,
+        ));
+        transfer.unackedChunks++;
+        
+        // Sliding window: Wait if we have too many unacked chunks in flight
+        if (transfer.unackedChunks >= transfer.currentWindowChunks) {
           transfer.ackCompleter = Completer<void>();
+          final startTime = DateTime.now().millisecondsSinceEpoch;
           try {
-            await transfer.ackCompleter!.future.timeout(const Duration(seconds: 15));
+            await transfer.ackCompleter!.future.timeout(const Duration(seconds: 20));
+            final rtt = DateTime.now().millisecondsSinceEpoch - startTime;
+            
+            // TCP-like Congestion Control
+            if (rtt < 100) {
+               // Fast ACK, increase window (max 128 chunks = 8MB)
+               transfer.currentWindowChunks = (transfer.currentWindowChunks + 16).clamp(16, 128);
+            } else if (rtt > 500) {
+               // Slow ACK, network congested, halve the window (min 16 chunks = 1MB)
+               transfer.currentWindowChunks = (transfer.currentWindowChunks ~/ 2).clamp(16, 128);
+            }
           } catch (e) {
             // Timeout means receiver disconnected or is extremely slow
             cancelTransfer(transferId, peerId, peerIp);
@@ -249,7 +345,6 @@ class FileTransferService {
         // Small yield to event loop for chunks that don't need ACK
         await Future.delayed(Duration.zero);
         
-        final nowMs = DateTime.now().millisecondsSinceEpoch;
         if (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize) {
           transfer.lastDbUpdateMs = nowMs;
           if (transfer.messageUuid != null) {
@@ -276,7 +371,7 @@ class FileTransferService {
       if (msg != null) {
         ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.failed.name);
       }
-      _activeTransfers.remove(transferId);
+      _removeActiveTransfer(transferId);
     }
   }
 
@@ -343,13 +438,13 @@ class FileTransferService {
 
     final destPath = await FileStorageService.instance.resolveDestinationPath(msg.fileName ?? 'unknown');
     
-    _activeTransfers[transferId] = _ActiveTransfer(
+    _addActiveTransfer(transferId, _ActiveTransfer(
       transferId: transferId,
       peerId: peerId,
       isSender: false,
       file: File(destPath),
       totalSize: msg.fileSize ?? 0,
-    );
+    ));
     _activeTransfers[transferId]!.messageUuid = msg.messageUuid;
 
     ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.transferring.name, localFilePath: destPath);
@@ -389,7 +484,7 @@ class FileTransferService {
       }
       _startSending(transferId, peerId, peerIp);
     } else {
-      _activeTransfers.remove(transferId);
+      _removeActiveTransfer(transferId);
       final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
       if (msg != null) {
         ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.declined.name);
@@ -425,9 +520,16 @@ class FileTransferService {
     transfer.md5Input.add(data);
 
     transfer.bytesTransferred += data.length;
-    _progressController.add({transfer.transferId: transfer.bytesTransferred / transfer.totalSize});
     
     final nowMs = DateTime.now().millisecondsSinceEpoch;
+    transfer.updateSpeed(nowMs);
+
+    _progressController.add(TransferUpdate(
+      transferId: transfer.transferId,
+      progress: transfer.bytesTransferred / transfer.totalSize,
+      speedBytesPerSec: transfer.currentSpeedBytesPerSec,
+      eta: transfer.eta,
+    ));
     
     if (transfer.messageUuid != null && 
         (nowMs - transfer.lastDbUpdateMs > 500 || transfer.bytesTransferred == transfer.totalSize)) {
@@ -438,9 +540,7 @@ class FileTransferService {
       );
     }
     
-    // Send ACK back to sender every 16 chunks (~1MB)
-    // We get peerIp from the session via chat service, but we don't strictly need it 
-    // to just send raw data if it's already connected, but we can look it up.
+    // Send ACK back to sender every 16 chunks (1MB)
     transfer.chunksReceived++;
     if (transfer.chunksReceived % 16 == 0) {
       final peerIp = ChatDatabase.instance.getPeerIp(peerId) ?? '';
@@ -455,6 +555,9 @@ class FileTransferService {
     final transferId = json['transferId'] as String;
     final transfer = _activeTransfers[transferId];
     if (transfer != null && transfer.isSender) {
+      transfer.unackedChunks -= 16;
+      if (transfer.unackedChunks < 0) transfer.unackedChunks = 0;
+      
       if (transfer.ackCompleter != null && !transfer.ackCompleter!.isCompleted) {
         transfer.ackCompleter!.complete();
       }
@@ -470,7 +573,7 @@ class FileTransferService {
       transfer.fileSink = null;
       
       if (transfer.isCancelled) {
-        _activeTransfers.remove(transferId);
+        _removeActiveTransfer(transferId);
         return;
       }
       
@@ -487,7 +590,7 @@ class FileTransferService {
         if (expectedMd5 != null && localMd5 != expectedMd5) {
             // Checksum mismatch
             await File(tempPath).delete();
-            _activeTransfers.remove(transferId);
+            _removeActiveTransfer(transferId);
             ChatDatabase.instance.updateFileTransfer(msg!.messageUuid, status: FileTransferStatus.failed.name);
             final peerIp = ChatDatabase.instance.getPeerIp(peerId);
             if (peerIp != null) {
@@ -501,7 +604,7 @@ class FileTransferService {
         }
         
         await FileStorageService.instance.commitTempFile(tempPath, destPath);
-        _activeTransfers.remove(transferId);
+        _removeActiveTransfer(transferId);
         ChatDatabase.instance.updateFileTransfer(msg!.messageUuid, status: FileTransferStatus.completed.name);
         
         final peerIp = ChatDatabase.instance.getPeerIp(peerId);
@@ -518,7 +621,7 @@ class FileTransferService {
 
   void _handleFileComplete(String peerId, Map<String, dynamic> json) {
     final transferId = json['transferId'] as String;
-    _activeTransfers.remove(transferId);
+    _removeActiveTransfer(transferId);
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg != null) {
       ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.completed.name);
@@ -526,7 +629,7 @@ class FileTransferService {
   }
 
   Future<void> cancelTransfer(String transferId, String peerId, String peerIp) async {
-    final transfer = _activeTransfers.remove(transferId);
+    final transfer = _removeActiveTransfer(transferId);
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg != null) {
       ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.cancelled.name);
@@ -558,7 +661,7 @@ class FileTransferService {
 
   void _handleFileCancel(String peerId, Map<String, dynamic> json) async {
     final transferId = json['transferId'] as String;
-    final transfer = _activeTransfers.remove(transferId);
+    final transfer = _removeActiveTransfer(transferId);
     
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg != null) {
@@ -585,7 +688,7 @@ class FileTransferService {
 
   void _handleFileFailed(String peerId, Map<String, dynamic> json) async {
     final transferId = json['transferId'] as String;
-    final transfer = _activeTransfers.remove(transferId);
+    final transfer = _removeActiveTransfer(transferId);
     
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg != null) {

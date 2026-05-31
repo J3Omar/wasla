@@ -119,7 +119,7 @@ class FileMessageBubble extends StatelessWidget {
                 ],
               )
           else if (status == FileTransferStatus.transferring)
-            _buildProgress(progress, fileSize, transfer?.transferId ?? '')
+            _buildProgress(progress, fileSize, transfer?.transferId ?? '', peerIp)
           else if (status == FileTransferStatus.completed)
             _buildCompleted()
           else if (status == FileTransferStatus.failed || status == FileTransferStatus.declined || status == FileTransferStatus.cancelled)
@@ -129,7 +129,7 @@ class FileMessageBubble extends StatelessWidget {
             ),
 
           // Actions
-          if (status == FileTransferStatus.transferring || (status == FileTransferStatus.pendingApproval && isSentByMe)) ...[
+          if (status == FileTransferStatus.pendingApproval && isSentByMe) ...[
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
@@ -157,26 +157,44 @@ class FileMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildProgress(double initialProgress, int totalSize, String transferId) {
-    return StreamBuilder<Map<String, double>>(
+  Widget _buildProgress(double initialProgress, int totalSize, String transferId, String peerIp) {
+    return StreamBuilder<TransferUpdate>(
       stream: FileTransferService.instance.progressStream
-          .where((map) => map.containsKey(transferId)),
+          .where((update) => update.transferId == transferId),
       builder: (context, snapshot) {
-        final progress = snapshot.data?[transferId] ?? initialProgress;
+        final update = snapshot.data;
+        final progress = update?.progress ?? initialProgress;
         final bytesTransferred = (progress * totalSize).round();
+        
+        String topText = '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}';
+        String bottomText = '';
+        if (update != null && update.speedBytesPerSec > 0 && progress < 1.0) {
+          final speed = '${formatFileSize(update.speedBytesPerSec)}/s';
+          topText += ' • $speed';
+          
+          final m = update.eta.inMinutes;
+          final s = update.eta.inSeconds % 60;
+          bottomText = m > 0 ? '${m}m ${s}s left' : '${s}s left';
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                Expanded(
+                  child: Text(
+                    topText,
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   '${(progress * 100).toInt()}%',
-                  style: const TextStyle(color: AppColors.primaryCyan, fontSize: 12),
+                  style: const TextStyle(color: AppColors.primaryCyan, fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -201,6 +219,31 @@ class FileMessageBubble extends StatelessWidget {
                   },
                 ),
               ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  bottomText,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                ),
+                TextButton(
+                  onPressed: () {
+                    FileTransferService.instance.cancelTransfer(
+                      transferId,
+                      message.peerId,
+                      peerIp,
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textMuted,
+                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 12)),
+                ),
+              ],
             ),
           ],
         );
