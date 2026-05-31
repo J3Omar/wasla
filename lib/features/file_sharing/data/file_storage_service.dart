@@ -3,6 +3,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:disk_space_plus/disk_space_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class FileStorageService {
   FileStorageService._();
@@ -45,7 +47,7 @@ class FileStorageService {
     }
   }
 
-  /// Ensures we don't overwrite existing files. 
+  /// Ensures we don't overwrite existing files and sanitizes the filename.
   /// e.g. "report.pdf" -> "report (1).pdf" -> "report (2).pdf"
   Future<String> resolveDestinationPath(String fileName) async {
     final saveDir = await getSavePath();
@@ -59,11 +61,15 @@ class FileStorageService {
       throw FileSystemException('Cannot create save directory. Check storage permissions.', saveDir);
     }
 
-    final nameWithoutExt = p.basenameWithoutExtension(fileName);
-    final ext = p.extension(fileName);
+    final sanitized = _sanitizeFileName(fileName);
+    
+    // Safely extract name and extension for the collision loop
+    final lastDotIndex = sanitized.lastIndexOf('.');
+    final nameWithoutExt = lastDotIndex <= 0 ? sanitized : sanitized.substring(0, lastDotIndex);
+    final ext = lastDotIndex <= 0 ? '' : sanitized.substring(lastDotIndex);
     
     int counter = 0;
-    String newName = fileName;
+    String newName = sanitized;
     String fullPath = p.join(saveDir, newName);
 
     while (await File(fullPath).exists()) {
@@ -73,6 +79,49 @@ class FileStorageService {
     }
 
     return fullPath;
+  }
+
+  /// Sanitizes filenames to be safe across all operating systems.
+  String _sanitizeFileName(String fileName) {
+    // 1. Replace illegal characters and control characters with '_'
+    // Illegal: \ / : * ? " < > | and ASCII 0-31
+    String sanitized = fileName.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
+
+    // 2. Collapse multiple spaces into one, trim leading/trailing spaces
+    sanitized = sanitized.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    // 3. Extract name and extension safely
+    // If no dot or dot is first char (e.g. ".hidden"), treat as no extension
+    String nameWithoutExt;
+    String ext;
+    final lastDotIndex = sanitized.lastIndexOf('.');
+    if (lastDotIndex <= 0) {
+      nameWithoutExt = sanitized;
+      ext = '';
+    } else {
+      nameWithoutExt = sanitized.substring(0, lastDotIndex);
+      ext = sanitized.substring(lastDotIndex);
+    }
+
+    // 4. If after sanitizing the name becomes empty, default to "wasla_file"
+    if (nameWithoutExt.isEmpty) {
+      nameWithoutExt = 'wasla_file';
+    }
+
+    // 5. Max filename length: 200 characters (truncate name, keep extension)
+    const maxLength = 200;
+    if (nameWithoutExt.length + ext.length > maxLength) {
+      final allowedNameLength = maxLength - ext.length;
+      if (allowedNameLength > 0) {
+        nameWithoutExt = nameWithoutExt.substring(0, allowedNameLength);
+      } else {
+        // Fallback if the extension itself is strangely longer than 200 chars
+        nameWithoutExt = '';
+        ext = ext.substring(0, maxLength);
+      }
+    }
+
+    return '$nameWithoutExt$ext';
   }
 
   /// Returns a temporary path for the file during the transfer.
@@ -93,7 +142,14 @@ class FileStorageService {
     Directory? baseDir;
     
     if (Platform.isAndroid) {
-      baseDir = await getExternalStorageDirectory();
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 30) {
+        // Android 11+ Scoped Storage: use public Downloads folder
+        baseDir = await getDownloadsDirectory();
+      } else {
+        // Android 10 and below
+        baseDir = await getExternalStorageDirectory();
+      }
       baseDir ??= await getApplicationDocumentsDirectory();
     } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       baseDir = await getDownloadsDirectory();
@@ -109,5 +165,23 @@ class FileStorageService {
     }
     
     return waslaDir.path;
+  }
+
+  /// Requests the necessary storage permissions based on Android API level.
+  Future<bool> requestStoragePermission() async {
+    if (!Platform.isAndroid) return true;
+
+    final androidInfo = await DeviceInfoPlugin().androidInfo;
+    if (androidInfo.version.sdkInt >= 33) {
+      // Android 13+ (API 33+) granular media permissions
+      final photos = await Permission.photos.request();
+      final videos = await Permission.videos.request();
+      final audio = await Permission.audio.request();
+      return photos.isGranted && videos.isGranted && audio.isGranted;
+    } else {
+      // Android 12 and below
+      final status = await Permission.storage.request();
+      return status.isGranted;
+    }
   }
 }

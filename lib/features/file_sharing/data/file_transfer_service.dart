@@ -433,6 +433,21 @@ class FileTransferService {
   }
 
   Future<void> acceptTransfer(String transferId, String peerId, String peerIp) async {
+    final hasPermission = await FileStorageService.instance.requestStoragePermission();
+    if (!hasPermission) {
+      final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
+      if (msg != null) {
+        ChatDatabase.instance.updateFileTransfer(msg.messageUuid, status: FileTransferStatus.failed.name);
+      }
+      await _chatService!.sendRawData(peerId, peerIp, jsonEncode({
+        'type': 'file_response',
+        'transferId': transferId,
+        'accepted': false,
+        'rejectReason': 'permission_denied',
+      }));
+      return;
+    }
+
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg == null) return;
 
