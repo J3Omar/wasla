@@ -89,3 +89,15 @@ flutter_launcher_icons:
     generate: true
     image_path: "assets/images/Wasla-logo.png"
     background_color: "#121416"
+
+flutter_to_debian:
+  name: wasla
+  version: 1.0.0
+  description: "Local P2P File Transfer Application."
+  homepage: "https://github.com/J3Omar/wasla"
+  maintainer: "Omar Hamada <omarworknow@gmail.com>"
+  icon: "assets/images/Wasla-logo.png"
+  exec: wasla
+  categories:
+    - Network
+    - FileTransfer

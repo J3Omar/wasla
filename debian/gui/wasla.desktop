@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=0.1.0
+Name=wasla
+GenericName=wasla
+Comment=وصلة — LAN Communication App. Chat, voice & video calls, file sharing on your local network without internet.
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=Flutter;
+Icon=wasla
