@@ -55,7 +55,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     _inputController.addListener(() {
-      final has = _inputController.text.trim().isNotEmpty || _selectedFile != null;
+      final has =
+          _inputController.text.trim().isNotEmpty || _selectedFile != null;
       if (has != _hasText) setState(() => _hasText = has);
     });
 
@@ -94,14 +95,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: AppColors.bgSecondary,
-            title: const Text('File Too Large', style: TextStyle(color: AppColors.textPrimary)),
-            content: const Text('This file is very large (+500MB). Do you want to continue?', style: TextStyle(color: AppColors.textSecondary)),
+            title: const Text(
+              'File Too Large',
+              style: TextStyle(color: AppColors.textPrimary),
+            ),
+            content: const Text(
+              'This file is very large (+500MB). Do you want to continue?',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryCyan),
-                child: const Text('Continue', style: TextStyle(color: AppColors.bgPrimary)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryCyan,
+                ),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(color: AppColors.bgPrimary),
+                ),
               ),
             ],
           ),
@@ -117,9 +132,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
-      
+
       setState(() {
         _selectedFile = null;
         _hasText = _inputController.text.trim().isNotEmpty;
@@ -291,11 +308,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Builder(
             builder: (context) {
               final messages = chatState.value!.messages;
-              final selectedMessages = messages.where((m) => _selectedIds.contains(m.id)).toList();
-              final hasTextSelected = selectedMessages.any((m) => m.type == MessageType.text);
-              
+              final selectedMessages = messages
+                  .where((m) => _selectedIds.contains(m.id))
+                  .toList();
+              final hasTextSelected = selectedMessages.any(
+                (m) => m.type == MessageType.text,
+              );
+
               if (!hasTextSelected) return const SizedBox.shrink();
-              
+
               return IconButton(
                 icon: const Icon(Icons.copy, color: AppColors.textPrimary),
                 tooltip: 'Copy',
@@ -305,18 +326,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       .map((m) => m.content)
                       .join('\n');
                   Clipboard.setData(ClipboardData(text: textOnly));
-                  
+
                   setState(() {
                     _isSelectionMode = false;
                     _selectedIds.clear();
                   });
-                  
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        selectedMessages.length == 1 
-                          ? 'Message copied' 
-                          : '${selectedMessages.where((m) => m.type == MessageType.text).length} messages copied'
+                        selectedMessages.length == 1
+                            ? 'Message copied'
+                            : '${selectedMessages.where((m) => m.type == MessageType.text).length} messages copied',
                       ),
                       duration: const Duration(seconds: 2),
                       backgroundColor: AppColors.bgTertiary,
@@ -324,7 +345,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   );
                 },
               );
-            }
+            },
           ),
         ],
         IconButton(
@@ -690,10 +711,14 @@ class _MessageBubble extends StatelessWidget {
                         : CrossAxisAlignment.start,
                     children: [
                       message.type == MessageType.file
-                          ? FileMessageBubble(message: message, isSentByMe: message.isSent, peerIp: peerIp)
+                          ? FileMessageBubble(
+                              message: message,
+                              isSentByMe: message.isSent,
+                              peerIp: peerIp,
+                            )
                           : message.isSent
-                              ? _SentBubble(message: message)
-                              : _ReceivedBubble(message: message),
+                          ? _SentBubble(message: message)
+                          : _ReceivedBubble(message: message),
                       const SizedBox(height: 3),
                       _Timestamp(message: message),
                     ],
@@ -765,92 +790,106 @@ final _urlRegex = RegExp(
   caseSensitive: false,
 );
 
-Widget _buildMessageText(BuildContext context, String content, {required bool isSent}) {
+Widget _buildMessageText(
+  BuildContext context,
+  String content, {
+  required bool isSent,
+}) {
   final matches = _urlRegex.allMatches(content);
   final defaultStyle = AppTypography.bodyMedium.copyWith(
     color: isSent ? Colors.white : AppColors.textPrimary,
   );
-  
+
   if (matches.isEmpty) {
     // No URLs — plain text as before
     return Text(content, style: defaultStyle);
   }
-  
+
   // Build RichText with clickable URL spans
   final spans = <InlineSpan>[];
   int lastEnd = 0;
-  
+
   for (final match in matches) {
     // Text before URL
     if (match.start > lastEnd) {
-      spans.add(TextSpan(
-        text: content.substring(lastEnd, match.start),
-        style: defaultStyle,
-      ));
+      spans.add(
+        TextSpan(
+          text: content.substring(lastEnd, match.start),
+          style: defaultStyle,
+        ),
+      );
     }
-    
+
     // The URL itself
     final url = match.group(0)!;
-    spans.add(TextSpan(
-      text: url,
-      style: defaultStyle.copyWith(
-        color: isSent ? Colors.white : AppColors.primaryCyan,
-        decoration: TextDecoration.underline,
-        decorationColor: isSent ? Colors.white : AppColors.primaryCyan,
+    spans.add(
+      TextSpan(
+        text: url,
+        style: defaultStyle.copyWith(
+          color: isSent ? Colors.white : AppColors.primaryCyan,
+          decoration: TextDecoration.underline,
+          decorationColor: isSent ? Colors.white : AppColors.primaryCyan,
+        ),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () => _confirmAndOpenUrl(context, url),
       ),
-      recognizer: TapGestureRecognizer()
-        ..onTap = () => _confirmAndOpenUrl(context, url),
-    ));
-    
+    );
+
     lastEnd = match.end;
   }
-  
+
   // Remaining text after last URL
   if (lastEnd < content.length) {
-    spans.add(TextSpan(
-      text: content.substring(lastEnd),
-      style: defaultStyle,
-    ));
+    spans.add(TextSpan(text: content.substring(lastEnd), style: defaultStyle));
   }
-  
+
   return RichText(text: TextSpan(children: spans));
 }
 
 Future<void> _confirmAndOpenUrl(BuildContext context, String rawUrl) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: AppColors.bgSecondary,
-      title: const Text('Open External Link',
-        style: TextStyle(color: AppColors.textPrimary)),
-      content: Text(
-        'You are about to leave Wasla and open your browser.\nDo you want to continue?\n\n$rawUrl',
-        style: const TextStyle(
-          color: AppColors.textSecondary, 
-          fontSize: 12,
+  final confirmed =
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.bgSecondary,
+          title: const Text(
+            'Open External Link',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'You are about to leave Wasla and open your browser.\nDo you want to continue?\n\n$rawUrl',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryCyan,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'Open',
+                style: TextStyle(color: AppColors.bgPrimary),
+              ),
+            ),
+          ],
         ),
-        maxLines: 4,
-        overflow: TextOverflow.ellipsis,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel',
-            style: TextStyle(color: AppColors.textMuted)),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryCyan),
-          onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Open',
-            style: TextStyle(color: AppColors.bgPrimary)),
-        ),
-      ],
-    ),
-  ) ?? false;
-  
+      ) ??
+      false;
+
   if (!confirmed) return;
-  
+
   // Add https:// if missing
   final urlStr = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
   final uri = Uri.tryParse(urlStr);
@@ -963,7 +1002,8 @@ class _InputBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (selectedFile != null) FilePreviewCard(file: selectedFile!, onCancel: onCancelFile),
+          if (selectedFile != null)
+            FilePreviewCard(file: selectedFile!, onCancel: onCancelFile),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -972,70 +1012,72 @@ class _InputBar extends StatelessWidget {
                 color: AppColors.textMuted,
                 onPressed: onPickFile,
               ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 120),
-              decoration: BoxDecoration(
-                color: AppColors.bgTertiary,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.borderDefault),
-              ),
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                style: AppTypography.bodyMedium,
-                maxLines: null,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: 'Write message...',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textMuted,
+              const SizedBox(width: 4),
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgTertiary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.borderDefault),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    style: AppTypography.bodyMedium,
+                    maxLines: null,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: 'Write message...',
+                      hintStyle: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => onSend(),
                   ),
-                  border: InputBorder.none,
-                ),
-                onSubmitted: (_) => onSend(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          AnimatedScale(
-            scale: hasText ? 1.0 : 0.85,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            child: GestureDetector(
-              onTap: onSend,
-              child: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: hasText ? AppColors.primaryCyan : AppColors.bgTertiary,
-                  boxShadow: hasText
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primaryCyan.withValues(
-                              alpha: 0.35,
-                            ),
-                            blurRadius: 12,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Icon(
-                  Icons.arrow_upward_rounded,
-                  color: hasText ? AppColors.bgDeep : AppColors.textMuted,
-                  size: 20,
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              AnimatedScale(
+                scale: hasText ? 1.0 : 0.85,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                child: GestureDetector(
+                  onTap: onSend,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: hasText
+                          ? AppColors.primaryCyan
+                          : AppColors.bgTertiary,
+                      boxShadow: hasText
+                          ? [
+                              BoxShadow(
+                                color: AppColors.primaryCyan.withValues(
+                                  alpha: 0.35,
+                                ),
+                                blurRadius: 12,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Icon(
+                      Icons.arrow_upward_rounded,
+                      color: hasText ? AppColors.bgDeep : AppColors.textMuted,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
         ],
       ),
     );

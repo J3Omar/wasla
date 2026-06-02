@@ -4,7 +4,7 @@ enum FileTransferStatus {
   completed,
   failed,
   declined,
-  cancelled
+  cancelled,
 }
 
 class FileTransfer {

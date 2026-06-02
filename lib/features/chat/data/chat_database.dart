@@ -154,7 +154,8 @@ class ChatDatabase {
   }
 
   /// Updates the file transfer status, progress, and optionally local file path for a message.
-  void updateFileTransfer(String uuid, {
+  void updateFileTransfer(
+    String uuid, {
     String? status,
     double? progress,
     String? localFilePath,
@@ -169,16 +170,16 @@ class ChatDatabase {
     final setClause = updates.keys.map((k) => '$k = ?').join(', ');
     final args = [...updates.values, uuid];
 
-    _db!.execute(
-      'UPDATE messages SET $setClause WHERE message_uuid = ?',
-      args,
-    );
+    _db!.execute('UPDATE messages SET $setClause WHERE message_uuid = ?', args);
     _notifyListeners();
   }
 
   /// Get message by transfer ID
   ChatMessage? getMessageByTransferId(String transferId) {
-    final rs = _db!.select('SELECT * FROM messages WHERE transfer_id = ? LIMIT 1', [transferId]);
+    final rs = _db!.select(
+      'SELECT * FROM messages WHERE transfer_id = ? LIMIT 1',
+      [transferId],
+    );
     if (rs.isEmpty) return null;
     return _rowToMessage(rs.first);
   }
@@ -397,7 +398,7 @@ class ChatDatabase {
   ChatMessage _rowToMessage(Row row) {
     final transferId = row['transfer_id'] as String?;
     FileTransfer? fileTransfer;
-    
+
     if (transferId != null) {
       fileTransfer = FileTransfer(
         transferId: transferId,
@@ -406,7 +407,9 @@ class ChatDatabase {
         fileSize: row['file_size'] as int? ?? 0,
         mimeType: row['mime_type'] as String? ?? 'application/octet-stream',
         localFilePath: row['local_file_path'] as String?,
-        status: FileTransfer.statusFromString(row['transfer_status'] as String? ?? 'failed'),
+        status: FileTransfer.statusFromString(
+          row['transfer_status'] as String? ?? 'failed',
+        ),
         progress: row['transfer_progress'] as double? ?? 0.0,
       );
     }

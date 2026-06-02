@@ -141,13 +141,16 @@ class WebRtcChatService {
     // WebRTC failed — message stays queued, retry timer will retry
     return false;
   }
+
   /// Send raw message (JSON string or binary Uint8List) over DataChannel.
   Future<bool> sendRawData(String peerId, String peerIp, dynamic data) async {
     _PeerSession? session = _sessions[peerId];
-    if (session == null || !session.isConnected || session.dataChannel == null) {
+    if (session == null ||
+        !session.isConnected ||
+        session.dataChannel == null) {
       session = await _initiateConnection(peerId, peerIp);
     }
-    
+
     final dc = session?.dataChannel;
     if (dc != null && dc.state == RTCDataChannelState.RTCDataChannelOpen) {
       try {
@@ -172,7 +175,6 @@ class WebRtcChatService {
     }
     return 0;
   }
-
 
   bool _sendOnDataChannel(_PeerSession session, ChatMessage message) {
     try {
@@ -471,7 +473,13 @@ class WebRtcChatService {
           try {
             final json = jsonDecode(text) as Map<String, dynamic>;
             final type = json['type'] as String?;
-            if (type != null && ['msg', 'ack_delivered', 'ack_read', 'ack_read_all'].contains(type)) {
+            if (type != null &&
+                [
+                  'msg',
+                  'ack_delivered',
+                  'ack_read',
+                  'ack_read_all',
+                ].contains(type)) {
               _handleDataChannelMessage(json, session, dc);
             } else {
               // Pass other JSON (like file_request) to raw handler

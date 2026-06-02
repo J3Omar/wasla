@@ -24,7 +24,9 @@ class FileRequestSheet extends StatelessWidget {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
@@ -78,14 +80,20 @@ class FileRequestSheet extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () {
-                    FileTransferService.instance.declineTransfer(transferId, peerId, peerIp);
+                    FileTransferService.instance.declineTransfer(
+                      transferId,
+                      peerId,
+                      peerIp,
+                    );
                     Navigator.pop(context);
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.danger,
                     side: const BorderSide(color: AppColors.danger),
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: const Text('Decline'),
                 ),
@@ -94,16 +102,26 @@ class FileRequestSheet extends StatelessWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    FileTransferService.instance.acceptTransfer(context, transferId, peerId, peerIp);
+                    FileTransferService.instance.acceptTransfer(
+                      context,
+                      transferId,
+                      peerId,
+                      peerIp,
+                    );
                     Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryCyan,
                     foregroundColor: AppColors.bgPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Accept',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ],

@@ -24,7 +24,7 @@ class FileMessageBubble extends StatelessWidget {
     final transfer = message.fileTransfer;
     final fileName = message.fileName ?? 'Unknown';
     final fileSize = message.fileSize ?? 0;
-    
+
     // Status mapping
     final status = transfer?.status ?? FileTransferStatus.pendingApproval;
     final progress = transfer?.progress ?? 0.0;
@@ -47,7 +47,10 @@ class FileMessageBubble extends StatelessWidget {
           // Header: Icon + Name
           Row(
             children: [
-              Icon(_getFileIcon(message.mimeType), color: AppColors.primaryCyan),
+              Icon(
+                _getFileIcon(message.mimeType),
+                color: AppColors.primaryCyan,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -90,10 +93,21 @@ class FileMessageBubble extends StatelessWidget {
                       foregroundColor: AppColors.bgDeep, // white/black text
                       minimumSize: Size.zero,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    child: const Text('Refuse', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Refuse',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
@@ -110,18 +124,36 @@ class FileMessageBubble extends StatelessWidget {
                       foregroundColor: AppColors.bgDeep,
                       minimumSize: Size.zero,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    child: const Text('Accept', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Accept',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               )
           else if (status == FileTransferStatus.transferring)
-            _buildProgress(progress, fileSize, transfer?.transferId ?? '', peerIp)
+            _buildProgress(
+              progress,
+              fileSize,
+              transfer?.transferId ?? '',
+              peerIp,
+            )
           else if (status == FileTransferStatus.completed)
             _buildCompleted(context)
-          else if (status == FileTransferStatus.failed || status == FileTransferStatus.declined || status == FileTransferStatus.cancelled)
+          else if (status == FileTransferStatus.failed ||
+              status == FileTransferStatus.declined ||
+              status == FileTransferStatus.cancelled)
             const Text(
               'Cancelled',
               style: TextStyle(color: AppColors.textMuted, fontSize: 13),
@@ -145,32 +177,42 @@ class FileMessageBubble extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.textMuted,
                   minimumSize: Size.zero,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                 ),
                 child: const Text('Cancel', style: TextStyle(fontSize: 12)),
               ),
             ),
-          ]
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildProgress(double initialProgress, int totalSize, String transferId, String peerIp) {
+  Widget _buildProgress(
+    double initialProgress,
+    int totalSize,
+    String transferId,
+    String peerIp,
+  ) {
     return StreamBuilder<TransferUpdate>(
-      stream: FileTransferService.instance.progressStream
-          .where((update) => update.transferId == transferId),
+      stream: FileTransferService.instance.progressStream.where(
+        (update) => update.transferId == transferId,
+      ),
       builder: (context, snapshot) {
         final update = snapshot.data;
         final progress = update?.progress ?? initialProgress;
         final bytesTransferred = (progress * totalSize).round();
-        
-        String topText = '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}';
+
+        String topText =
+            '${formatFileSize(bytesTransferred)} / ${formatFileSize(totalSize)}';
         String bottomText = '';
         if (update != null && update.speedBytesPerSec > 0 && progress < 1.0) {
           final speed = '${formatFileSize(update.speedBytesPerSec)}/s';
           topText += ' • $speed';
-          
+
           final m = update.eta.inMinutes;
           final s = update.eta.inSeconds % 60;
           bottomText = m > 0 ? '${m}m ${s}s left' : '${s}s left';
@@ -185,7 +227,10 @@ class FileMessageBubble extends StatelessWidget {
                 Expanded(
                   child: Text(
                     topText,
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -193,7 +238,11 @@ class FileMessageBubble extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${(progress * 100).toInt()}%',
-                  style: const TextStyle(color: AppColors.primaryCyan, fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: AppColors.primaryCyan,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -225,7 +274,10 @@ class FileMessageBubble extends StatelessWidget {
               children: [
                 Text(
                   bottomText,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
                 ),
                 TextButton(
                   onPressed: () {
@@ -238,7 +290,10 @@ class FileMessageBubble extends StatelessWidget {
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.textMuted,
                     minimumSize: Size.zero,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                   ),
                   child: const Text('Cancel', style: TextStyle(fontSize: 12)),
                 ),
@@ -267,27 +322,57 @@ class FileMessageBubble extends StatelessWidget {
                   final path = message.fileTransfer?.localFilePath;
                   if (path != null && File(path).existsSync()) {
                     final ext = path.split('.').last.toLowerCase();
-                    const executables = ['exe', 'bat', 'cmd', 'sh', 'ps1', 'msi', 'dmg', 'apk', 'jar', 'vbs', 'reg', 'com', 'scr', 'pif'];
-                    
+                    const executables = [
+                      'exe',
+                      'bat',
+                      'cmd',
+                      'sh',
+                      'ps1',
+                      'msi',
+                      'dmg',
+                      'apk',
+                      'jar',
+                      'vbs',
+                      'reg',
+                      'com',
+                      'scr',
+                      'pif',
+                    ];
+
                     if (executables.contains(ext)) {
                       final shouldOpen = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: AppColors.bgSecondary,
-                          title: const Text('Warning — Executable File', style: TextStyle(color: AppColors.danger)),
+                          title: const Text(
+                            'Warning — Executable File',
+                            style: TextStyle(color: AppColors.danger),
+                          ),
                           content: const Text(
                             'This file is an executable and could be harmful.\nOpening it may affect your device.\nAre you sure?',
-                            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              height: 1.5,
+                            ),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(color: AppColors.textMuted),
+                              ),
                             ),
                             ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: AppColors.bgPrimary),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.danger,
+                                foregroundColor: AppColors.bgPrimary,
+                              ),
                               onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Open at my own risk', style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text(
+                                'Open at my own risk',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ],
                         ),
@@ -300,7 +385,10 @@ class FileMessageBubble extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.primaryCyan,
                   minimumSize: Size.zero,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                 ),
                 child: const Text('Open', style: TextStyle(fontSize: 13)),
               ),
@@ -315,9 +403,15 @@ class FileMessageBubble extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: AppColors.textSecondary,
                   minimumSize: Size.zero,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                 ),
-                child: const Text('Show in folder', style: TextStyle(fontSize: 13)),
+                child: const Text(
+                  'Show in folder',
+                  style: TextStyle(fontSize: 13),
+                ),
               ),
             ],
           ),

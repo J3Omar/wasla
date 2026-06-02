@@ -59,7 +59,7 @@ class ChatMessage {
   final String? fileName;
   final int? fileSize;
   final String? mimeType;
-  
+
   /// Details of the active/completed file transfer.
   final FileTransfer? fileTransfer;
 

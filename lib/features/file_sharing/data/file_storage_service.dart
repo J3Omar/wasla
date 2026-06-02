@@ -37,10 +37,10 @@ class FileStorageService {
     try {
       final freeSpaceInMB = await DiskSpacePlus().getFreeDiskSpace;
       if (freeSpaceInMB == null) return true; // Fallback if unable to check
-      
+
       // Convert to bytes
       final freeSpaceBytes = freeSpaceInMB * 1024 * 1024;
-      
+
       // Require at least the file size + 50MB buffer
       return freeSpaceBytes > (fileSizeBytes + (50 * 1024 * 1024));
     } catch (e) {
@@ -60,16 +60,21 @@ class FileStorageService {
       }
     } catch (e) {
       // If we cannot create the directory, likely a permission issue
-      throw FileSystemException('Cannot create save directory. Check storage permissions.', saveDir);
+      throw FileSystemException(
+        'Cannot create save directory. Check storage permissions.',
+        saveDir,
+      );
     }
 
     final sanitized = _sanitizeFileName(fileName);
-    
+
     // Safely extract name and extension for the collision loop
     final lastDotIndex = sanitized.lastIndexOf('.');
-    final nameWithoutExt = lastDotIndex <= 0 ? sanitized : sanitized.substring(0, lastDotIndex);
+    final nameWithoutExt = lastDotIndex <= 0
+        ? sanitized
+        : sanitized.substring(0, lastDotIndex);
     final ext = lastDotIndex <= 0 ? '' : sanitized.substring(lastDotIndex);
-    
+
     int counter = 0;
     String newName = sanitized;
     String fullPath = p.join(saveDir, newName);
@@ -87,7 +92,10 @@ class FileStorageService {
   String _sanitizeFileName(String fileName) {
     // 1. Replace illegal characters and control characters with '_'
     // Illegal: \ / : * ? " < > | and ASCII 0-31
-    String sanitized = fileName.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
+    String sanitized = fileName.replaceAll(
+      RegExp(r'[\\/:*?"<>|\x00-\x1F]'),
+      '_',
+    );
 
     // 2. Collapse multiple spaces into one, trim leading/trailing spaces
     sanitized = sanitized.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -142,7 +150,7 @@ class FileStorageService {
   /// Gets the default platform-specific path for Wasla downloads.
   Future<String> _getDefaultPath() async {
     Directory? baseDir;
-    
+
     if (Platform.isAndroid) {
       final androidInfo = await DeviceInfoPlugin().androidInfo;
       if (androidInfo.version.sdkInt >= 30) {
@@ -165,7 +173,7 @@ class FileStorageService {
     if (!await waslaDir.exists()) {
       await waslaDir.create(recursive: true);
     }
-    
+
     return waslaDir.path;
   }
 
@@ -177,20 +185,40 @@ class FileStorageService {
     if (androidInfo.version.sdkInt >= 33) {
       // Android 13+ (API 33+) granular media permissions
       if (!context.mounted) return false;
-      final photos = await SmartPermissionHandler.request(context, Permission.photos, 'Photos', 'to save incoming files');
+      final photos = await SmartPermissionHandler.request(
+        context,
+        Permission.photos,
+        'Photos',
+        'to save incoming files',
+      );
       if (!photos) return false;
-      
+
       if (!context.mounted) return false;
-      final videos = await SmartPermissionHandler.request(context, Permission.videos, 'Videos', 'to save incoming files');
+      final videos = await SmartPermissionHandler.request(
+        context,
+        Permission.videos,
+        'Videos',
+        'to save incoming files',
+      );
       if (!videos) return false;
-      
+
       if (!context.mounted) return false;
-      final audio = await SmartPermissionHandler.request(context, Permission.audio, 'Audio', 'to save incoming files');
+      final audio = await SmartPermissionHandler.request(
+        context,
+        Permission.audio,
+        'Audio',
+        'to save incoming files',
+      );
       return audio;
     } else {
       // Android 12 and below
       if (!context.mounted) return false;
-      return await SmartPermissionHandler.request(context, Permission.storage, 'Storage', 'to save incoming files');
+      return await SmartPermissionHandler.request(
+        context,
+        Permission.storage,
+        'Storage',
+        'to save incoming files',
+      );
     }
   }
 }

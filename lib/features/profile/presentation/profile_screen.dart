@@ -204,7 +204,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                       onPressed: () async {
                         await context.push(AppRoutes.onboarding);
-                        await ref.read(discoveryServiceProvider.notifier).updateSelfName();
+                        await ref
+                            .read(discoveryServiceProvider.notifier)
+                            .updateSelfName();
                         _load(); // refresh after edit
                       },
                     ),
@@ -229,7 +231,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   // ── Settings ───────────────────────────────────────────
                   _SectionLabel(label: 'SETTINGS'),
                   const SizedBox(height: 12),
-                  
+
                   _InfoCard(
                     icon: Icons.folder_open_rounded,
                     label: 'File Save Path',
@@ -241,7 +243,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         color: AppColors.primaryCyan,
                       ),
                       onPressed: () async {
-                        final path = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select Save Directory');
+                        final path = await FilePicker.platform.getDirectoryPath(
+                          dialogTitle: 'Select Save Directory',
+                        );
                         if (path != null) {
                           await FileStorageService.instance.setSavePath(path);
                           if (mounted) {
@@ -344,7 +348,10 @@ class _InfoCard extends StatelessWidget {
                     fontFamily: label == 'Device UUID' || label == 'Local IP'
                         ? 'JetBrains Mono'
                         : null,
-                    fontSize: label == 'Device UUID' || label == 'File Save Path' ? 13 : null,
+                    fontSize:
+                        label == 'Device UUID' || label == 'File Save Path'
+                        ? 13
+                        : null,
                   ),
                 ),
               ],
