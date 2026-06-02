@@ -177,20 +177,20 @@ class FileStorageService {
     if (androidInfo.version.sdkInt >= 33) {
       // Android 13+ (API 33+) granular media permissions
       if (!context.mounted) return false;
-      final photos = await SmartPermissionHandler.request(context, Permission.photos, 'الصور', 'عشان نقدر نحفظ الملفات الواردة');
+      final photos = await SmartPermissionHandler.request(context, Permission.photos, 'Photos', 'to save incoming files');
       if (!photos) return false;
       
       if (!context.mounted) return false;
-      final videos = await SmartPermissionHandler.request(context, Permission.videos, 'الفيديو', 'عشان نقدر نحفظ الملفات الواردة');
+      final videos = await SmartPermissionHandler.request(context, Permission.videos, 'Videos', 'to save incoming files');
       if (!videos) return false;
       
       if (!context.mounted) return false;
-      final audio = await SmartPermissionHandler.request(context, Permission.audio, 'الصوتيات', 'عشان نقدر نحفظ الملفات الواردة');
+      final audio = await SmartPermissionHandler.request(context, Permission.audio, 'Audio', 'to save incoming files');
       return audio;
     } else {
       // Android 12 and below
       if (!context.mounted) return false;
-      return await SmartPermissionHandler.request(context, Permission.storage, 'التخزين', 'عشان نقدر نحفظ الملفات الواردة');
+      return await SmartPermissionHandler.request(context, Permission.storage, 'Storage', 'to save incoming files');
     }
   }
 }

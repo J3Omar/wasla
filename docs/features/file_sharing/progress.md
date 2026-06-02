@@ -27,7 +27,7 @@
 
 - [ ] Windows → Android
 - [ ] Android → Windows
-- [ ] Android → Android
-- [ ] Linux → Android
-- [ ] Large file (> 100MB)
-- [ ] Multiple files at once
+- [x] Android → Android
+- [x] Linux → Android
+- [x] Large file (> 100MB)
+- [x] Multiple files at once

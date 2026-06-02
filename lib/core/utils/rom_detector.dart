@@ -39,21 +39,21 @@ class RomDetector {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgSecondary,
-        title: const Text('خطوة مهمة',
+        title: const Text('Important Step',
           style: TextStyle(color: AppColors.textPrimary)),
         content: Text(
-          'عشان وصلة تشتغل في الخلفية على جهازك ($brand)، '
-          'محتاج تعمل خطوة واحدة بس:\n\n'
-          '١. اضغط "فتح الإعدادات"\n'
-          '٢. دور على "استهلاك البطارية" أو "الإدارة"\n'
-          '٣. اختار "بدون قيود" لتطبيق وصلة\n\n'
-          'ده هيمنع انقطاع نقل الملفات.',
+          'For Wasla to run in the background on your device ($brand), '
+          'you need to do one simple step:\n\n'
+          '1. Tap "Open Settings"\n'
+          '2. Find "Battery Optimization" or "App Management"\n'
+          '3. Choose "No restrictions" for Wasla\n\n'
+          'This will prevent file transfers from disconnecting.',
           style: const TextStyle(color: AppColors.textSecondary, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('لاحقاً',
+            child: const Text('Later',
               style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
@@ -64,7 +64,7 @@ class RomDetector {
               // Open battery settings directly
               AppSettings.openAppSettings(type: AppSettingsType.batteryOptimization);
             },
-            child: const Text('فتح الإعدادات',
+            child: const Text('Open Settings',
               style: TextStyle(color: AppColors.bgPrimary)),
           ),
         ],

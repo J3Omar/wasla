@@ -14,6 +14,9 @@ import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.device});
@@ -91,14 +94,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             backgroundColor: AppColors.bgSecondary,
-            title: const Text('الملف كبير جداً', style: TextStyle(color: AppColors.textPrimary)),
-            content: const Text('هذا الملف كبير جداً (+500MB). هل تريد المتابعة؟', style: TextStyle(color: AppColors.textSecondary)),
+            title: const Text('File Too Large', style: TextStyle(color: AppColors.textPrimary)),
+            content: const Text('This file is very large (+500MB). Do you want to continue?', style: TextStyle(color: AppColors.textSecondary)),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
               ElevatedButton(
                 onPressed: () => Navigator.pop(ctx, true),
                 style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryCyan),
-                child: const Text('متابعة', style: TextStyle(color: AppColors.bgPrimary)),
+                child: const Text('Continue', style: TextStyle(color: AppColors.bgPrimary)),
               ),
             ],
           ),
@@ -284,6 +287,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
       ),
       actions: [
+        if (chatState.hasValue) ...[
+          Builder(
+            builder: (context) {
+              final messages = chatState.value!.messages;
+              final selectedMessages = messages.where((m) => _selectedIds.contains(m.id)).toList();
+              final hasTextSelected = selectedMessages.any((m) => m.type == MessageType.text);
+              
+              if (!hasTextSelected) return const SizedBox.shrink();
+              
+              return IconButton(
+                icon: const Icon(Icons.copy, color: AppColors.textPrimary),
+                tooltip: 'Copy',
+                onPressed: () {
+                  final textOnly = selectedMessages
+                      .where((m) => m.type == MessageType.text)
+                      .map((m) => m.content)
+                      .join('\n');
+                  Clipboard.setData(ClipboardData(text: textOnly));
+                  
+                  setState(() {
+                    _isSelectionMode = false;
+                    _selectedIds.clear();
+                  });
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        selectedMessages.length == 1 
+                          ? 'Message copied' 
+                          : '${selectedMessages.where((m) => m.type == MessageType.text).length} messages copied'
+                      ),
+                      duration: const Duration(seconds: 2),
+                      backgroundColor: AppColors.bgTertiary,
+                    ),
+                  );
+                },
+              );
+            }
+          ),
+        ],
         IconButton(
           icon: const Icon(
             Icons.select_all_rounded,
@@ -689,10 +732,7 @@ class _SentBubble extends StatelessWidget {
           ),
         ],
       ),
-      child: Text(
-        message.content,
-        style: AppTypography.bodyMedium.copyWith(color: Colors.white),
-      ),
+      child: _buildMessageText(context, message.content, isSent: true),
     );
   }
 }
@@ -714,11 +754,108 @@ class _ReceivedBubble extends StatelessWidget {
           bottomRight: Radius.circular(16),
         ),
       ),
-      child: Text(
-        message.content,
-        style: AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary),
-      ),
+      child: _buildMessageText(context, message.content, isSent: false),
     );
+  }
+}
+
+// URL detection regex
+final _urlRegex = RegExp(
+  r'(https?://[^\s]+|www\.[^\s]+)',
+  caseSensitive: false,
+);
+
+Widget _buildMessageText(BuildContext context, String content, {required bool isSent}) {
+  final matches = _urlRegex.allMatches(content);
+  final defaultStyle = AppTypography.bodyMedium.copyWith(
+    color: isSent ? Colors.white : AppColors.textPrimary,
+  );
+  
+  if (matches.isEmpty) {
+    // No URLs — plain text as before
+    return Text(content, style: defaultStyle);
+  }
+  
+  // Build RichText with clickable URL spans
+  final spans = <InlineSpan>[];
+  int lastEnd = 0;
+  
+  for (final match in matches) {
+    // Text before URL
+    if (match.start > lastEnd) {
+      spans.add(TextSpan(
+        text: content.substring(lastEnd, match.start),
+        style: defaultStyle,
+      ));
+    }
+    
+    // The URL itself
+    final url = match.group(0)!;
+    spans.add(TextSpan(
+      text: url,
+      style: defaultStyle.copyWith(
+        color: isSent ? Colors.white : AppColors.primaryCyan,
+        decoration: TextDecoration.underline,
+        decorationColor: isSent ? Colors.white : AppColors.primaryCyan,
+      ),
+      recognizer: TapGestureRecognizer()
+        ..onTap = () => _confirmAndOpenUrl(context, url),
+    ));
+    
+    lastEnd = match.end;
+  }
+  
+  // Remaining text after last URL
+  if (lastEnd < content.length) {
+    spans.add(TextSpan(
+      text: content.substring(lastEnd),
+      style: defaultStyle,
+    ));
+  }
+  
+  return RichText(text: TextSpan(children: spans));
+}
+
+Future<void> _confirmAndOpenUrl(BuildContext context, String rawUrl) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.bgSecondary,
+      title: const Text('Open External Link',
+        style: TextStyle(color: AppColors.textPrimary)),
+      content: Text(
+        'You are about to leave Wasla and open your browser.\nDo you want to continue?\n\n$rawUrl',
+        style: const TextStyle(
+          color: AppColors.textSecondary, 
+          fontSize: 12,
+        ),
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel',
+            style: TextStyle(color: AppColors.textMuted)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryCyan),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Open',
+            style: TextStyle(color: AppColors.bgPrimary)),
+        ),
+      ],
+    ),
+  ) ?? false;
+  
+  if (!confirmed) return;
+  
+  // Add https:// if missing
+  final urlStr = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
+  final uri = Uri.tryParse(urlStr);
+  if (uri != null && await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 

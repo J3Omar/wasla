@@ -56,15 +56,15 @@ class FirewallDetector {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgSecondary,
-        title: const Text('مشكلة في اكتشاف الأجهزة',
+        title: const Text('Device Discovery Issue',
           style: TextStyle(color: AppColors.textPrimary)),
         content: const Text(
-          'الجدار الناري على جهازك بيمنع وصلة من البحث عن الأجهزة.\n\n'
-          'لحل المشكلة:\n'
-          '١. افتح Terminal\n'
-          '٢. انسخ الأمر ده:\n\n'
+          'The firewall on your device is preventing Wasla from finding devices.\n\n'
+          'To fix this:\n'
+          '1. Open Terminal\n'
+          '2. Copy this command:\n\n'
           'sudo ufw allow mdns\n\n'
-          '٣. اعد تشغيل وصلة',
+          '3. Restart Wasla',
           style: TextStyle(color: AppColors.textSecondary, height: 1.5),
         ),
         actions: [
@@ -76,9 +76,9 @@ class FirewallDetector {
                 text: 'sudo ufw allow mdns && sudo ufw allow 5353/udp'));
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم نسخ الأمر ✓')));
+                const SnackBar(content: Text('Command copied ✓')));
             },
-            child: const Text('نسخ الأمر',
+            child: const Text('Copy Command',
               style: TextStyle(color: AppColors.bgPrimary)),
           ),
         ],
@@ -103,17 +103,17 @@ class FirewallDetector {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgSecondary,
-        title: const Text('مشكلة في اكتشاف الأجهزة',
+        title: const Text('Device Discovery Issue',
           style: TextStyle(color: AppColors.textPrimary)),
         content: const Text(
-          'الجدار الناري على Windows بيمنع البحث عن الأجهزة.\n\n'
-          'اضغط "إصلاح تلقائي" وسيطلب منك إذن المسؤول لحل المشكلة.',
+          'Windows Firewall is preventing Wasla from finding devices.\n\n'
+          'Tap "Auto Fix" and grant administrator permissions to resolve this.',
           style: TextStyle(color: AppColors.textSecondary, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء',
+            child: const Text('Cancel',
               style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
@@ -129,7 +129,7 @@ class FirewallDetector {
               ]);
               if (context.mounted) Navigator.pop(ctx);
             },
-            child: const Text('إصلاح تلقائي',
+            child: const Text('Auto Fix',
               style: TextStyle(color: AppColors.bgPrimary)),
           ),
         ],

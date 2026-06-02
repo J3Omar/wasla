@@ -8,8 +8,8 @@ class SmartPermissionHandler {
   static Future<bool> request(
     BuildContext context,
     Permission permission,
-    String permissionName,     // e.g. "الميكروفون"
-    String reasonText,         // e.g. "عشان تقدر تعمل مكالمات صوتية"
+    String permissionName,     // e.g. "Microphone"
+    String reasonText,         // e.g. "so you can make voice calls"
   ) async {
     var status = await permission.status;
     
@@ -22,7 +22,7 @@ class SmartPermissionHandler {
     
     if (status.isPermanentlyDenied || status.isDenied) {
       if (!context.mounted) return false;
-      // Show Arabic dialog with auto-redirect
+      // Show dialog with auto-redirect
       final shouldOpen = await _showSettingsDialog(
         context, 
         permissionName, 
@@ -52,18 +52,18 @@ class SmartPermissionHandler {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgSecondary,
         title: Text(
-          'مطلوب إذن $permissionName',
+          '$permissionName Permission Required',
           style: const TextStyle(color: AppColors.textPrimary),
         ),
         content: Text(
-          'وصلة محتاجة الوصول لـ$permissionName $reasonText.\n\n'
-          'اضغط "فتح الإعدادات" ثم اسمح للتطبيق.',
+          'Wasla needs access to $permissionName $reasonText.\n\n'
+          'Tap "Open Settings" and allow the app.',
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('مش دلوقتي',
+            child: const Text('Not Now',
               style: TextStyle(color: AppColors.textMuted)),
           ),
           ElevatedButton(
@@ -71,7 +71,7 @@ class SmartPermissionHandler {
               backgroundColor: AppColors.primaryCyan,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('فتح الإعدادات',
+            child: const Text('Open Settings',
               style: TextStyle(color: AppColors.bgPrimary)),
           ),
         ],

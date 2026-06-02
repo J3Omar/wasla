@@ -274,20 +274,20 @@ class FileMessageBubble extends StatelessWidget {
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: AppColors.bgSecondary,
-                          title: const Text('تحذير — ملف قابل للتشغيل', style: TextStyle(color: AppColors.danger)),
+                          title: const Text('Warning — Executable File', style: TextStyle(color: AppColors.danger)),
                           content: const Text(
-                            'هذا الملف قابل للتشغيل وقد يكون ضاراً.\nفتحه قد يؤثر على جهازك.\nهل أنت متأكد؟',
+                            'This file is an executable and could be harmful.\nOpening it may affect your device.\nAre you sure?',
                             style: TextStyle(color: AppColors.textSecondary, height: 1.5),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('إلغاء', style: TextStyle(color: AppColors.textMuted)),
+                              child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
                             ),
                             ElevatedButton(
                               style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: AppColors.bgPrimary),
                               onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('فتح على مسؤوليتي', style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text('Open at my own risk', style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
