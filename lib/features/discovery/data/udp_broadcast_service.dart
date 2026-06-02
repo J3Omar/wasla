@@ -4,6 +4,25 @@ import 'dart:io';
 import '../domain/device_model.dart';
 import 'device_registry.dart';
 
+/// Get all valid local IPs (not loopback, not link-local)
+Future<List<String>> getAllLocalIPs() async {
+  final interfaces = await NetworkInterface.list(
+    type: InternetAddressType.IPv4,
+    includeLoopback: false,
+  );
+  
+  final ips = <String>[];
+  for (final interface in interfaces) {
+    for (final addr in interface.addresses) {
+      final ip = addr.address;
+      // Skip loopback and link-local
+      if (ip.startsWith('127.') || ip.startsWith('169.254.')) continue;
+      ips.add(ip);
+    }
+  }
+  return ips;
+}
+
 const int _udpPort = 45678;
 const _broadcastAddress = '255.255.255.255';
 const _announceInterval = Duration(seconds: 5);
@@ -46,7 +65,7 @@ class UdpBroadcastService {
     _announceTimer = Timer.periodic(_announceInterval, (_) => _sendAnnounce());
   }
 
-  void _sendAnnounce() {
+  void _sendAnnounce() async {
     if (_socket == null || !_running) return;
     final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
 
@@ -56,9 +75,9 @@ class UdpBroadcastService {
     } catch (_) {}
 
     try {
-      // Also send to subnet broadcast (fixes Linux routing with Docker/VPNs)
-      final ip = selfDevice.localIp;
-      if (ip != '127.0.0.1') {
+      // Send to all subnet broadcasts to cover Hotspot and WiFi simultaneously
+      final ips = await getAllLocalIPs();
+      for (final ip in ips) {
         final parts = ip.split('.');
         if (parts.length == 4) {
           parts[3] = '255';
@@ -70,7 +89,7 @@ class UdpBroadcastService {
   }
 
   /// Send a one-shot announce with an arbitrary [device] payload.
-  void announceDevice(Device device) {
+  void announceDevice(Device device) async {
     if (_socket == null || !_running) return;
     final payload = utf8.encode(jsonEncode(device.toJson()));
 
@@ -79,8 +98,8 @@ class UdpBroadcastService {
     } catch (_) {}
 
     try {
-      final ip = device.localIp;
-      if (ip != '127.0.0.1') {
+      final ips = await getAllLocalIPs();
+      for (final ip in ips) {
         final parts = ip.split('.');
         if (parts.length == 4) {
           parts[3] = '255';

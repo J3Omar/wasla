@@ -98,13 +98,12 @@ class FileMessageBubble extends StatelessWidget {
                   const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: () {
-                      if (transfer?.transferId != null) {
-                        FileTransferService.instance.acceptTransfer(
-                          transfer!.transferId,
-                          message.peerId,
-                          peerIp,
-                        );
-                      }
+                      FileTransferService.instance.acceptTransfer(
+                        context,
+                        transfer?.transferId ?? '',
+                        message.peerId,
+                        peerIp,
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.statusOnline, // green
@@ -121,7 +120,7 @@ class FileMessageBubble extends StatelessWidget {
           else if (status == FileTransferStatus.transferring)
             _buildProgress(progress, fileSize, transfer?.transferId ?? '', peerIp)
           else if (status == FileTransferStatus.completed)
-            _buildCompleted()
+            _buildCompleted(context)
           else if (status == FileTransferStatus.failed || status == FileTransferStatus.declined || status == FileTransferStatus.cancelled)
             const Text(
               'Cancelled',
@@ -251,7 +250,7 @@ class FileMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildCompleted() {
+  Widget _buildCompleted(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -264,9 +263,37 @@ class FileMessageBubble extends StatelessWidget {
           Row(
             children: [
               TextButton(
-                onPressed: () {
+                onPressed: () async {
                   final path = message.fileTransfer?.localFilePath;
                   if (path != null && File(path).existsSync()) {
+                    final ext = path.split('.').last.toLowerCase();
+                    const executables = ['exe', 'bat', 'cmd', 'sh', 'ps1', 'msi', 'dmg', 'apk', 'jar', 'vbs', 'reg', 'com', 'scr', 'pif'];
+                    
+                    if (executables.contains(ext)) {
+                      final shouldOpen = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: AppColors.bgSecondary,
+                          title: const Text('تحذير — ملف قابل للتشغيل', style: TextStyle(color: AppColors.danger)),
+                          content: const Text(
+                            'هذا الملف قابل للتشغيل وقد يكون ضاراً.\nفتحه قد يؤثر على جهازك.\nهل أنت متأكد؟',
+                            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('إلغاء', style: TextStyle(color: AppColors.textMuted)),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: AppColors.bgPrimary),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('فتح على مسؤوليتي', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (shouldOpen != true) return;
+                    }
                     OpenFile.open(path);
                   }
                 },

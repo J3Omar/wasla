@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:disk_space_plus/disk_space_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/material.dart';
+import '../../../core/utils/smart_permission_handler.dart';
 
 class FileStorageService {
   FileStorageService._();
@@ -168,20 +170,27 @@ class FileStorageService {
   }
 
   /// Requests the necessary storage permissions based on Android API level.
-  Future<bool> requestStoragePermission() async {
+  Future<bool> requestStoragePermission(BuildContext context) async {
     if (!Platform.isAndroid) return true;
 
     final androidInfo = await DeviceInfoPlugin().androidInfo;
     if (androidInfo.version.sdkInt >= 33) {
       // Android 13+ (API 33+) granular media permissions
-      final photos = await Permission.photos.request();
-      final videos = await Permission.videos.request();
-      final audio = await Permission.audio.request();
-      return photos.isGranted && videos.isGranted && audio.isGranted;
+      if (!context.mounted) return false;
+      final photos = await SmartPermissionHandler.request(context, Permission.photos, 'الصور', 'عشان نقدر نحفظ الملفات الواردة');
+      if (!photos) return false;
+      
+      if (!context.mounted) return false;
+      final videos = await SmartPermissionHandler.request(context, Permission.videos, 'الفيديو', 'عشان نقدر نحفظ الملفات الواردة');
+      if (!videos) return false;
+      
+      if (!context.mounted) return false;
+      final audio = await SmartPermissionHandler.request(context, Permission.audio, 'الصوتيات', 'عشان نقدر نحفظ الملفات الواردة');
+      return audio;
     } else {
       // Android 12 and below
-      final status = await Permission.storage.request();
-      return status.isGranted;
+      if (!context.mounted) return false;
+      return await SmartPermissionHandler.request(context, Permission.storage, 'التخزين', 'عشان نقدر نحفظ الملفات الواردة');
     }
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_background/flutter_background.dart';
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
 
 import 'file_storage_service.dart';
 import '../domain/file_transfer_state.dart';
@@ -432,8 +433,8 @@ class FileTransferService {
     }
   }
 
-  Future<void> acceptTransfer(String transferId, String peerId, String peerIp) async {
-    final hasPermission = await FileStorageService.instance.requestStoragePermission();
+  Future<void> acceptTransfer(BuildContext context, String transferId, String peerId, String peerIp) async {
+    final hasPermission = await FileStorageService.instance.requestStoragePermission(context);
     if (!hasPermission) {
       final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
       if (msg != null) {

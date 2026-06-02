@@ -5,12 +5,19 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../data/discovery_service.dart';
 import '../domain/device_model.dart';
+import '../../../core/utils/rom_detector.dart';
+import '../../../core/utils/firewall_detector.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      RomDetector.showGuideIfNeeded(context);
+      FirewallDetector.startCheck(context, ref);
+    });
+
     final discoveryAsync = ref.watch(discoveryServiceProvider);
 
     return Scaffold(

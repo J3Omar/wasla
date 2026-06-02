@@ -94,7 +94,7 @@ class FileRequestSheet extends StatelessWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    FileTransferService.instance.acceptTransfer(transferId, peerId, peerIp);
+                    FileTransferService.instance.acceptTransfer(context, transferId, peerId, peerIp);
                     Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(
