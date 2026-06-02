@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,6 +79,8 @@ class WebRtcChatService {
   /// Called when a new message arrives (for notifications, UI updates).
   /// Signature: (senderUuid, senderName, content)
   Function(String, String, String)? onMessageReceived;
+  Function(String peerId, String peerIp, dynamic data)? onRawDataReceived;
+  Function(String peerId)? onPeerDisconnected;
 
   // ── Startup ──────────────────────────────────────────────────────────────
 
@@ -139,11 +142,46 @@ class WebRtcChatService {
     return false;
   }
 
+  /// Send raw message (JSON string or binary Uint8List) over DataChannel.
+  Future<bool> sendRawData(String peerId, String peerIp, dynamic data) async {
+    _PeerSession? session = _sessions[peerId];
+    if (session == null ||
+        !session.isConnected ||
+        session.dataChannel == null) {
+      session = await _initiateConnection(peerId, peerIp);
+    }
+
+    final dc = session?.dataChannel;
+    if (dc != null && dc.state == RTCDataChannelState.RTCDataChannelOpen) {
+      try {
+        if (data is String) {
+          dc.send(RTCDataChannelMessage(data));
+        } else if (data is Uint8List) {
+          dc.send(RTCDataChannelMessage.fromBinary(data));
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /// Get the current buffered amount for flow control (backpressure).
+  int getBufferedAmount(String peerId) {
+    final session = _sessions[peerId];
+    if (session?.isConnected == true && session?.dataChannel != null) {
+      return session!.dataChannel!.bufferedAmount ?? 0;
+    }
+    return 0;
+  }
+
   bool _sendOnDataChannel(_PeerSession session, ChatMessage message) {
     try {
       final dc = session.dataChannel;
-      if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen)
+      if (dc == null || dc.state != RTCDataChannelState.RTCDataChannelOpen) {
         return false;
+      }
       dc.send(
         RTCDataChannelMessage(
           jsonEncode({
@@ -288,8 +326,10 @@ class WebRtcChatService {
         session.isConnected = true;
         if (!connected.isCompleted) connected.complete(true);
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         session.isConnected = false;
+        onPeerDisconnected?.call(session.peerId);
         if (!connected.isCompleted) connected.complete(false);
       }
     };
@@ -374,8 +414,10 @@ class WebRtcChatService {
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         session.isConnected = true;
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         session.isConnected = false;
+        onPeerDisconnected?.call(session.peerId);
         _sessions.remove(session.peerId);
       }
     };
@@ -417,13 +459,37 @@ class WebRtcChatService {
       } else if (state == RTCDataChannelState.RTCDataChannelClosed ||
           state == RTCDataChannelState.RTCDataChannelClosing) {
         session.isConnected = false;
+        onPeerDisconnected?.call(session.peerId);
       }
     };
 
     dc.onMessage = (msg) {
       try {
-        final json = jsonDecode(msg.text) as Map<String, dynamic>;
-        _handleDataChannelMessage(json, session, dc);
+        if (msg.isBinary) {
+          onRawDataReceived?.call(session.peerId, session.peerIp, msg.binary);
+        } else {
+          final text = msg.text;
+          // Try to handle as standard chat JSON first
+          try {
+            final json = jsonDecode(text) as Map<String, dynamic>;
+            final type = json['type'] as String?;
+            if (type != null &&
+                [
+                  'msg',
+                  'ack_delivered',
+                  'ack_read',
+                  'ack_read_all',
+                ].contains(type)) {
+              _handleDataChannelMessage(json, session, dc);
+            } else {
+              // Pass other JSON (like file_request) to raw handler
+              onRawDataReceived?.call(session.peerId, session.peerIp, text);
+            }
+          } catch (_) {
+            // Not JSON or failed decode
+            onRawDataReceived?.call(session.peerId, session.peerIp, text);
+          }
+        }
       } catch (_) {}
     };
   }

@@ -9,6 +9,14 @@ import '../../discovery/data/discovery_service.dart';
 import '../domain/chat_message.dart';
 import '../data/chat_database.dart';
 import 'chat_notifier.dart';
+import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
+import '../../file_sharing/presentation/widgets/file_preview_card.dart';
+import '../../file_sharing/data/file_transfer_service.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.device});
@@ -23,6 +31,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
   bool _hasText = false;
+  File? _selectedFile;
 
   bool _isSelectionMode = false;
   final Set<int> _selectedIds = {};
@@ -46,7 +55,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     _inputController.addListener(() {
-      final has = _inputController.text.trim().isNotEmpty;
+      final has =
+          _inputController.text.trim().isNotEmpty || _selectedFile != null;
       if (has != _hasText) setState(() => _hasText = has);
     });
 
@@ -72,12 +82,71 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _send() async {
+  Future<void> _onSend() async {
     final text = _inputController.text.trim();
-    if (text.isEmpty) return;
-    _inputController.clear();
-    _focusNode.requestFocus();
-    await ref.read(chatProvider(_args).notifier).sendMessage(text);
+    final file = _selectedFile;
+    if (text.isEmpty && file == null) return;
+
+    if (file != null) {
+      final fileSize = await file.length();
+      if (fileSize > 500 * 1024 * 1024) {
+        if (!mounted) return;
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.bgSecondary,
+            title: const Text(
+              'File Too Large',
+              style: TextStyle(color: AppColors.textPrimary),
+            ),
+            content: const Text(
+              'This file is very large (+500MB). Do you want to continue?',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryCyan,
+                ),
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(color: AppColors.bgPrimary),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (confirm != true) return;
+      }
+
+      try {
+        await FileTransferService.instance.sendFileRequest(
+          peerId: _args.peerId,
+          peerIp: _args.peerIp,
+          filePath: file.path,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+
+      setState(() {
+        _selectedFile = null;
+        _hasText = _inputController.text.trim().isNotEmpty;
+      });
+    }
+
+    if (text.isNotEmpty) {
+      ref.read(chatProvider(_args).notifier).sendMessage(text);
+      _inputController.clear();
+    }
   }
 
   @override
@@ -151,6 +220,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               if (showDate) _DateDivider(date: msg.timestamp),
                               _MessageBubble(
                                 message: msg,
+                                peerIp: _args.peerIp,
                                 isSelected: _selectedIds.contains(msg.id),
                                 isSelectionMode: _isSelectionMode,
                                 onTap: () {
@@ -158,8 +228,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     setState(() {
                                       if (_selectedIds.contains(msg.id)) {
                                         _selectedIds.remove(msg.id);
-                                        if (_selectedIds.isEmpty)
+                                        if (_selectedIds.isEmpty) {
                                           _isSelectionMode = false;
+                                        }
                                       } else {
                                         _selectedIds.add(msg.id);
                                       }
@@ -190,7 +261,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             focusNode: _focusNode,
             hasText: _hasText,
             peerName: widget.device.displayName,
-            onSend: _send,
+            onSend: _onSend,
+            selectedFile: _selectedFile,
+            onPickFile: () async {
+              final result = await FilePicker.platform.pickFiles();
+              if (result != null && result.files.single.path != null) {
+                setState(() {
+                  _selectedFile = File(result.files.single.path!);
+                  _hasText = true;
+                });
+              }
+            },
+            onCancelFile: () {
+              setState(() {
+                _selectedFile = null;
+                _hasText = _inputController.text.trim().isNotEmpty;
+              });
+            },
           ),
         ],
       ),
@@ -217,6 +304,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
       ),
       actions: [
+        if (chatState.hasValue) ...[
+          Builder(
+            builder: (context) {
+              final messages = chatState.value!.messages;
+              final selectedMessages = messages
+                  .where((m) => _selectedIds.contains(m.id))
+                  .toList();
+              final hasTextSelected = selectedMessages.any(
+                (m) => m.type == MessageType.text,
+              );
+
+              if (!hasTextSelected) return const SizedBox.shrink();
+
+              return IconButton(
+                icon: const Icon(Icons.copy, color: AppColors.textPrimary),
+                tooltip: 'Copy',
+                onPressed: () {
+                  final textOnly = selectedMessages
+                      .where((m) => m.type == MessageType.text)
+                      .map((m) => m.content)
+                      .join('\n');
+                  Clipboard.setData(ClipboardData(text: textOnly));
+
+                  setState(() {
+                    _isSelectionMode = false;
+                    _selectedIds.clear();
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        selectedMessages.length == 1
+                            ? 'Message copied'
+                            : '${selectedMessages.where((m) => m.type == MessageType.text).length} messages copied',
+                      ),
+                      duration: const Duration(seconds: 2),
+                      backgroundColor: AppColors.bgTertiary,
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ],
         IconButton(
           icon: const Icon(
             Icons.select_all_rounded,
@@ -525,6 +656,7 @@ class _DateDivider extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
+    required this.peerIp,
     this.isSelected = false,
     this.isSelectionMode = false,
     this.onTap,
@@ -532,6 +664,7 @@ class _MessageBubble extends StatelessWidget {
   });
 
   final ChatMessage message;
+  final String peerIp;
   final bool isSelected;
   final bool isSelectionMode;
   final VoidCallback? onTap;
@@ -577,7 +710,13 @@ class _MessageBubble extends StatelessWidget {
                         ? CrossAxisAlignment.end
                         : CrossAxisAlignment.start,
                     children: [
-                      message.isSent
+                      message.type == MessageType.file
+                          ? FileMessageBubble(
+                              message: message,
+                              isSentByMe: message.isSent,
+                              peerIp: peerIp,
+                            )
+                          : message.isSent
                           ? _SentBubble(message: message)
                           : _ReceivedBubble(message: message),
                       const SizedBox(height: 3),
@@ -618,10 +757,7 @@ class _SentBubble extends StatelessWidget {
           ),
         ],
       ),
-      child: Text(
-        message.content,
-        style: AppTypography.bodyMedium.copyWith(color: Colors.white),
-      ),
+      child: _buildMessageText(context, message.content, isSent: true),
     );
   }
 }
@@ -643,11 +779,122 @@ class _ReceivedBubble extends StatelessWidget {
           bottomRight: Radius.circular(16),
         ),
       ),
-      child: Text(
-        message.content,
-        style: AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary),
+      child: _buildMessageText(context, message.content, isSent: false),
+    );
+  }
+}
+
+// URL detection regex
+final _urlRegex = RegExp(
+  r'(https?://[^\s]+|www\.[^\s]+)',
+  caseSensitive: false,
+);
+
+Widget _buildMessageText(
+  BuildContext context,
+  String content, {
+  required bool isSent,
+}) {
+  final matches = _urlRegex.allMatches(content);
+  final defaultStyle = AppTypography.bodyMedium.copyWith(
+    color: isSent ? Colors.white : AppColors.textPrimary,
+  );
+
+  if (matches.isEmpty) {
+    // No URLs — plain text as before
+    return Text(content, style: defaultStyle);
+  }
+
+  // Build RichText with clickable URL spans
+  final spans = <InlineSpan>[];
+  int lastEnd = 0;
+
+  for (final match in matches) {
+    // Text before URL
+    if (match.start > lastEnd) {
+      spans.add(
+        TextSpan(
+          text: content.substring(lastEnd, match.start),
+          style: defaultStyle,
+        ),
+      );
+    }
+
+    // The URL itself
+    final url = match.group(0)!;
+    spans.add(
+      TextSpan(
+        text: url,
+        style: defaultStyle.copyWith(
+          color: isSent ? Colors.white : AppColors.primaryCyan,
+          decoration: TextDecoration.underline,
+          decorationColor: isSent ? Colors.white : AppColors.primaryCyan,
+        ),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () => _confirmAndOpenUrl(context, url),
       ),
     );
+
+    lastEnd = match.end;
+  }
+
+  // Remaining text after last URL
+  if (lastEnd < content.length) {
+    spans.add(TextSpan(text: content.substring(lastEnd), style: defaultStyle));
+  }
+
+  return RichText(text: TextSpan(children: spans));
+}
+
+Future<void> _confirmAndOpenUrl(BuildContext context, String rawUrl) async {
+  final confirmed =
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.bgSecondary,
+          title: const Text(
+            'Open External Link',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'You are about to leave Wasla and open your browser.\nDo you want to continue?\n\n$rawUrl',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryCyan,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'Open',
+                style: TextStyle(color: AppColors.bgPrimary),
+              ),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  if (!confirmed) return;
+
+  // Add https:// if missing
+  final urlStr = rawUrl.startsWith('http') ? rawUrl : 'https://$rawUrl';
+  final uri = Uri.tryParse(urlStr);
+  if (uri != null && await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
@@ -724,6 +971,9 @@ class _InputBar extends StatelessWidget {
     required this.hasText,
     required this.peerName,
     required this.onSend,
+    this.selectedFile,
+    required this.onPickFile,
+    required this.onCancelFile,
   });
 
   final TextEditingController controller;
@@ -731,6 +981,9 @@ class _InputBar extends StatelessWidget {
   final bool hasText;
   final String peerName;
   final VoidCallback onSend;
+  final File? selectedFile;
+  final VoidCallback onPickFile;
+  final VoidCallback onCancelFile;
 
   @override
   Widget build(BuildContext context) {
@@ -745,79 +998,85 @@ class _InputBar extends StatelessWidget {
         color: AppColors.bgDeep,
         border: Border(top: BorderSide(color: AppColors.borderDefault)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
-            color: AppColors.textMuted,
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('File sharing — coming soon!')),
-              );
-            },
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 120),
-              decoration: BoxDecoration(
-                color: AppColors.bgTertiary,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.borderDefault),
+          if (selectedFile != null)
+            FilePreviewCard(file: selectedFile!, onCancel: onCancelFile),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
+                color: AppColors.textMuted,
+                onPressed: onPickFile,
               ),
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                style: AppTypography.bodyMedium,
-                maxLines: null,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: 'Write message...',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textMuted,
+              const SizedBox(width: 4),
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgTertiary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.borderDefault),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    style: AppTypography.bodyMedium,
+                    maxLines: null,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: 'Write message...',
+                      hintStyle: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => onSend(),
                   ),
-                  border: InputBorder.none,
-                ),
-                onSubmitted: (_) => onSend(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          AnimatedScale(
-            scale: hasText ? 1.0 : 0.85,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            child: GestureDetector(
-              onTap: onSend,
-              child: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: hasText ? AppColors.primaryCyan : AppColors.bgTertiary,
-                  boxShadow: hasText
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primaryCyan.withValues(
-                              alpha: 0.35,
-                            ),
-                            blurRadius: 12,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Icon(
-                  Icons.arrow_upward_rounded,
-                  color: hasText ? AppColors.bgDeep : AppColors.textMuted,
-                  size: 20,
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              AnimatedScale(
+                scale: hasText ? 1.0 : 0.85,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                child: GestureDetector(
+                  onTap: onSend,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: hasText
+                          ? AppColors.primaryCyan
+                          : AppColors.bgTertiary,
+                      boxShadow: hasText
+                          ? [
+                              BoxShadow(
+                                color: AppColors.primaryCyan.withValues(
+                                  alpha: 0.35,
+                                ),
+                                blurRadius: 12,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Icon(
+                      Icons.arrow_upward_rounded,
+                      color: hasText ? AppColors.bgDeep : AppColors.textMuted,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -11,6 +11,7 @@ import '../../chat/presentation/chats_list_screen.dart';
 import '../../chat/data/webrtc_chat_service.dart';
 import '../../chat/data/chat_database.dart';
 import '../../chat/data/chat_notification_service.dart';
+import '../../file_sharing/data/file_transfer_service.dart';
 import '../../profile/presentation/profile_screen.dart';
 
 /// Top-level navigation shell with 3 tabs.
@@ -35,10 +36,13 @@ class _MainShellState extends ConsumerState<MainShell> {
 
       // Initialize notifications
       await ChatNotificationService.instance.initialize();
-
       // Start WebRTC chat service and load identity
       const storage = FlutterSecureStorage();
       final service = ref.read(webrtcChatServiceProvider);
+
+      // Initialize file transfer service
+      FileTransferService.instance.init(service);
+
       service.selfUuid ??= await storage.read(key: 'wasla_device_uuid') ?? '';
       service.selfName ??=
           await storage.read(key: 'wasla_device_name') ?? 'Wasla User';

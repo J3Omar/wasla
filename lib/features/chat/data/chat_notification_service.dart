@@ -69,6 +69,7 @@ class ChatNotificationService {
       priority: Priority.high,
       showWhen: true,
       enableVibration: true,
+      autoCancel: true,
       styleInformation: BigTextStyleInformation(''),
     );
 

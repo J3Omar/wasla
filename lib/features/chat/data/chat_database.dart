@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../domain/chat_message.dart';
+import '../../file_sharing/domain/file_transfer_state.dart';
 
 const _kPageSize = 30;
 
@@ -48,9 +49,14 @@ class ChatDatabase {
         timestamp    INTEGER NOT NULL,
         status       INTEGER NOT NULL DEFAULT 0,
         type         INTEGER NOT NULL DEFAULT 0,
-        file_name    TEXT,
-        file_size    INTEGER,
-        is_read      INTEGER NOT NULL DEFAULT 0
+        file_name         TEXT,
+        file_size         INTEGER,
+        is_read           INTEGER NOT NULL DEFAULT 0,
+        transfer_id       TEXT,
+        mime_type         TEXT,
+        local_file_path   TEXT,
+        transfer_status   TEXT,
+        transfer_progress REAL
       );
     ''');
 
@@ -61,6 +67,11 @@ class ChatDatabase {
     _runSafe(
       'ALTER TABLE messages ADD COLUMN message_uuid TEXT NOT NULL DEFAULT \'\';',
     );
+    _runSafe('ALTER TABLE messages ADD COLUMN transfer_id TEXT;');
+    _runSafe('ALTER TABLE messages ADD COLUMN mime_type TEXT;');
+    _runSafe('ALTER TABLE messages ADD COLUMN local_file_path TEXT;');
+    _runSafe('ALTER TABLE messages ADD COLUMN transfer_status TEXT;');
+    _runSafe('ALTER TABLE messages ADD COLUMN transfer_progress REAL;');
 
     // ── Peers table ─────────────────────────────────────────────────────────
     _db!.execute('''
@@ -95,8 +106,8 @@ class ChatDatabase {
   ChatMessage insert(ChatMessage msg) {
     _db!.execute(
       '''INSERT INTO messages
-         (message_uuid, peer_id, content, is_sent, timestamp, status, type, file_name, file_size)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+         (message_uuid, peer_id, content, is_sent, timestamp, status, type, file_name, file_size, transfer_id, mime_type, local_file_path, transfer_status, transfer_progress)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
       [
         msg.messageUuid,
         msg.peerId,
@@ -107,6 +118,11 @@ class ChatDatabase {
         msg.type.index,
         msg.fileName,
         msg.fileSize,
+        msg.fileTransfer?.transferId,
+        msg.fileTransfer?.mimeType,
+        msg.fileTransfer?.localFilePath,
+        msg.fileTransfer?.status.name,
+        msg.fileTransfer?.progress,
       ],
     );
     final id = _db!.lastInsertRowId;
@@ -135,6 +151,37 @@ class ChatDatabase {
       [status.index, uuid, status.index],
     );
     _notifyListeners();
+  }
+
+  /// Updates the file transfer status, progress, and optionally local file path for a message.
+  void updateFileTransfer(
+    String uuid, {
+    String? status,
+    double? progress,
+    String? localFilePath,
+  }) {
+    final Map<String, dynamic> updates = {};
+    if (status != null) updates['transfer_status'] = status;
+    if (progress != null) updates['transfer_progress'] = progress;
+    if (localFilePath != null) updates['local_file_path'] = localFilePath;
+
+    if (updates.isEmpty) return;
+
+    final setClause = updates.keys.map((k) => '$k = ?').join(', ');
+    final args = [...updates.values, uuid];
+
+    _db!.execute('UPDATE messages SET $setClause WHERE message_uuid = ?', args);
+    _notifyListeners();
+  }
+
+  /// Get message by transfer ID
+  ChatMessage? getMessageByTransferId(String transferId) {
+    final rs = _db!.select(
+      'SELECT * FROM messages WHERE transfer_id = ? LIMIT 1',
+      [transferId],
+    );
+    if (rs.isEmpty) return null;
+    return _rowToMessage(rs.first);
   }
 
   /// Update message status for all sent messages up to this timestamp.
@@ -244,6 +291,9 @@ class ChatDatabase {
       for (final m in msgs) {
         h = h * 31 + m.id;
         h = h * 31 + m.status.index;
+        if (m.fileTransfer != null) {
+          h = h * 31 + m.fileTransfer!.status.index;
+        }
       }
       return h;
     }
@@ -346,6 +396,24 @@ class ChatDatabase {
   // ── HELPERS ───────────────────────────────────────────────────────────────
 
   ChatMessage _rowToMessage(Row row) {
+    final transferId = row['transfer_id'] as String?;
+    FileTransfer? fileTransfer;
+
+    if (transferId != null) {
+      fileTransfer = FileTransfer(
+        transferId: transferId,
+        peerId: row['peer_id'] as String,
+        fileName: row['file_name'] as String? ?? 'unknown',
+        fileSize: row['file_size'] as int? ?? 0,
+        mimeType: row['mime_type'] as String? ?? 'application/octet-stream',
+        localFilePath: row['local_file_path'] as String?,
+        status: FileTransfer.statusFromString(
+          row['transfer_status'] as String? ?? 'failed',
+        ),
+        progress: row['transfer_progress'] as double? ?? 0.0,
+      );
+    }
+
     return ChatMessage(
       id: row['id'] as int,
       messageUuid: row['message_uuid'] as String? ?? '',
@@ -358,6 +426,7 @@ class ChatDatabase {
       type: MessageType.values[row['type'] as int],
       fileName: row['file_name'] as String?,
       fileSize: row['file_size'] as int?,
+      fileTransfer: fileTransfer,
     );
   }
 

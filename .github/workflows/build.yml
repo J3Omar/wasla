@@ -1,0 +1,150 @@
+name: Build All Platforms
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+
+      - name: Set up Java Environment
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93 # v4.0.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Project Dependencies
+        run: flutter pub get
+
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.3.0
+        with:
+          name: wasla-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libsecret-1-dev pkg-config ninja-build
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Project Dependencies
+        run: flutter pub get
+
+      - name: Build Linux Application
+        run: flutter build linux --release
+
+      - name: Package Application as .deb Installer
+        run: |
+          STAGE_DIR="build/debian_package"
+          mkdir -p "$STAGE_DIR/DEBIAN"
+          mkdir -p "$STAGE_DIR/usr/bin"
+          mkdir -p "$STAGE_DIR/usr/lib/wasla"
+          mkdir -p "$STAGE_DIR/usr/share/applications"
+          mkdir -p "$STAGE_DIR/usr/share/pixmaps"
+          
+          # Copy bundled files
+          cp -r build/linux/x64/release/bundle/* "$STAGE_DIR/usr/lib/wasla/"
+          
+          # Create executable script
+          echo -e '#!/bin/bash\n/usr/lib/wasla/wasla "$@"' > "$STAGE_DIR/usr/bin/wasla"
+          chmod +x "$STAGE_DIR/usr/bin/wasla"
+          
+          # Copy app icon
+          if [ -f "assets/images/wasla_logo.png" ]; then
+            cp assets/images/wasla_logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
+          elif [ -f "assets/images/Wasla-logo.png" ]; then
+            cp assets/images/Wasla-logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
+          fi
+          
+          # Create standalone Desktop entry
+          cat << 'EOF' > "$STAGE_DIR/usr/share/applications/wasla.desktop"
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=Wasla
+          Comment=Local P2P File Transfer Application
+          Exec=wasla
+          Icon=wasla
+          Terminal=false
+          Categories=Network;FileTransfer;
+          EOF
+          
+          # Generate control file
+          cat << 'EOF' > "$STAGE_DIR/DEBIAN/control"
+          Package: wasla
+          Version: 1.0.0
+          Architecture: amd64
+          Maintainer: Omar Hamada <omarworknow@gmail.com>
+          Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0
+          Section: net
+          Priority: standard
+          Description: Local P2P File Transfer Application.
+           Wasla is a decentralized, peer-to-peer file transfer and communication
+           application built with Flutter and WebRTC for high-speed local network transfers.
+          EOF
+          
+          chmod 755 "$STAGE_DIR/DEBIAN"
+          chmod 644 "$STAGE_DIR/DEBIAN/control"
+          
+          # Build debian package
+          dpkg-deb --build "$STAGE_DIR" "build/wasla_1.0.0_amd64.deb"
+
+      - name: Upload Linux .deb Package
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.3.0
+        with:
+          name: wasla-linux-deb
+          path: build/wasla_1.0.0_amd64.deb
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Project Dependencies
+        run: flutter pub get
+
+      - name: Build Windows Application
+        run: flutter build windows --release
+
+      - name: Create MSIX Installer Package
+        run: |
+          dart pub global activate msix
+          dart run msix:create
+        shell: bash
+
+      - name: Upload Windows MSIX Package
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.3.0
+        with:
+          name: wasla-windows-msix
+          path: build/windows/x64/runner/Release/*.msix

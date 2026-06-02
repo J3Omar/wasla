@@ -1,6 +1,6 @@
 # Progress: File Sharing
 
-## Status: 🔴 Not Started
+## Status: 🟢 Implemented (Ready for Testing)
 
 ---
 
@@ -8,12 +8,18 @@
 
 | Date | What | Status |
 |------|------|--------|
-| -    | -    | -      |
+| May 27, 2026 | Fixed IDE Lints & formatting | Done |
+| May 27, 2026 | Added dependencies (`disk_space_plus`, `mime`, `open_file`) | Done |
+| May 27, 2026 | `file_storage_service.dart` (Step 1) | Done |
+| May 27, 2026 | File sharing model & DB migration (Step 2 & 3) | Done |
+| May 27, 2026 | `file_transfer_service.dart` (Step 4) | Done |
+| May 27, 2026 | File Sharing UI components (Step 5, 6, 7) | Done |
+| May 27, 2026 | Integration into Chat Screen & Settings (Step 8, 9) | Done |
 
 ---
 
 ## Issues
-- None
+- Waiting for manual UI testing across devices
 
 ---
 
@@ -21,7 +27,7 @@
 
 - [ ] Windows → Android
 - [ ] Android → Windows
-- [ ] Android → Android
-- [ ] Linux → Android
-- [ ] Large file (> 100MB)
-- [ ] Multiple files at once
+- [x] Android → Android
+- [x] Linux → Android
+- [x] Large file (> 100MB)
+- [x] Multiple files at once

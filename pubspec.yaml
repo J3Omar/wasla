@@ -38,10 +38,17 @@ dependencies:
 
   # --- Permissions ---
   permission_handler: ^11.4.0       # Mic + Camera + Storage permissions
+  app_settings: ^5.1.1              # Open specific settings screens
 
   # --- File Sharing ---
   file_picker: ^8.3.7               # اختيار الملفات للإرسال
   path_provider: ^2.1.5             # مسار حفظ الملفات الواردة
+  disk_space_plus: ^0.2.6           # check free disk space on receiver
+  crypto: ^3.0.3                    # MD5 checksum verification
+  mime: ^1.0.5                      # detect file type from extension
+  open_file: ^3.3.2                 # open received files
+  url_launcher: ^6.3.0              # open links/files
+  flutter_background: ^1.2.0        # Android background service
 
   # --- Notifications ---
   flutter_local_notifications: ^18.0.1  # Android/iOS/Linux system notifications
@@ -82,3 +89,15 @@ flutter_launcher_icons:
     generate: true
     image_path: "assets/images/Wasla-logo.png"
     background_color: "#121416"
+
+flutter_to_debian:
+  name: wasla
+  version: 1.0.0
+  description: "Local P2P File Transfer Application."
+  homepage: "https://github.com/J3Omar/wasla"
+  maintainer: "Omar Hamada <omarworknow@gmail.com>"
+  icon: "assets/images/Wasla-logo.png"
+  exec: wasla
+  categories:
+    - Network
+    - FileTransfer
