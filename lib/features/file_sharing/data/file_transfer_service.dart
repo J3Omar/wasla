@@ -323,7 +323,8 @@ class FileTransferService {
 
         // Flow control: Wait if buffer exceeds 4MB
         while (_chatService!.getBufferedAmount(peerId) > 4 * 1024 * 1024) {
-          if (!_activeTransfers.containsKey(transferId) || transfer.isCancelled) {
+          if (!_activeTransfers.containsKey(transferId) ||
+              transfer.isCancelled) {
             return;
           }
           await Future.delayed(const Duration(milliseconds: 50));
