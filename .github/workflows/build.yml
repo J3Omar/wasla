@@ -1,4 +1,4 @@
-name: 🚀 Build Wasla — All Platforms
+name: Build All Platforms
 
 on:
   push:
@@ -6,20 +6,14 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number (e.g. 1.0.0)'
-        required: false
-        default: '1.0.0'
 
 jobs:
   build-android:
-    name: 🤖 Android APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java Environment
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
@@ -31,30 +25,27 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
+      - name: Install Project Dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build Release APK
         run: flutter build apk --release
 
-      - name: Upload APK
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: wasla-android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
 
   build-linux:
-    name: 🐧 Linux .deb
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux build dependencies
+      - name: Install Linux Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libsecret-1-dev \
-            pkg-config ninja-build dpkg-dev
+          sudo apt-get install -y libgtk-3-dev libsecret-1-dev pkg-config ninja-build dpkg-dev
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -62,67 +53,69 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
+      - name: Install Project Dependencies
         run: flutter pub get
 
-      - name: Build Linux app
+      - name: Build Linux Application
         run: flutter build linux --release
 
-      - name: Package as .deb
+      - name: Package Application as .deb Installer
         run: |
-          STAGE="build/debian_package"
-          mkdir -p "$STAGE/DEBIAN"
-          mkdir -p "$STAGE/usr/bin"
-          mkdir -p "$STAGE/usr/lib/wasla"
-          mkdir -p "$STAGE/usr/share/applications"
-          mkdir -p "$STAGE/usr/share/pixmaps"
-
-          cp -r build/linux/x64/release/bundle/* "$STAGE/usr/lib/wasla/"
-
-          printf '#!/bin/bash\n/usr/lib/wasla/wasla "$@"\n' \
-            > "$STAGE/usr/bin/wasla"
-          chmod +x "$STAGE/usr/bin/wasla"
-
-          LOGO=$(find assets/images -name "*.png" | head -1)
-          [ -n "$LOGO" ] && cp "$LOGO" "$STAGE/usr/share/pixmaps/wasla.png"
-
-          cat > "$STAGE/usr/share/applications/wasla.desktop" << 'DESKTOP'
+          STAGE_DIR="build/debian_package"
+          mkdir -p "$STAGE_DIR/DEBIAN"
+          mkdir -p "$STAGE_DIR/usr/bin"
+          mkdir -p "$STAGE_DIR/usr/lib/wasla"
+          mkdir -p "$STAGE_DIR/usr/share/applications"
+          mkdir -p "$STAGE_DIR/usr/share/pixmaps"
+          
+          cp -r build/linux/x64/release/bundle/* "$STAGE_DIR/usr/lib/wasla/"
+          
+          echo -e '#!/bin/bash\n/usr/lib/wasla/wasla "$@"' > "$STAGE_DIR/usr/bin/wasla"
+          chmod +x "$STAGE_DIR/usr/bin/wasla"
+          
+          if [ -f "assets/images/wasla_logo.png" ]; then
+            cp assets/images/wasla_logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
+          elif [ -f "assets/images/Wasla-logo.png" ]; then
+            cp assets/images/Wasla-logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
+          fi
+          
+          cat << 'DESKTOP' > "$STAGE_DIR/usr/share/applications/wasla.desktop"
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=Wasla
-Comment=Local P2P Communication App
+Comment=Local P2P Communication Application
 Exec=wasla
 Icon=wasla
 Terminal=false
 Categories=Network;Chat;
 DESKTOP
-
-          cat > "$STAGE/DEBIAN/control" << 'CONTROL'
+          
+          cat << 'CONTROL' > "$STAGE_DIR/DEBIAN/control"
 Package: wasla
 Version: 1.0.0
 Architecture: amd64
-Maintainer: Omar Hamada <omarworknow@gmail.com>
+Maintainer: Wasla App <wasla@local>
 Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0
 Section: net
 Priority: standard
-Description: Local P2P Communication Application
- Wasla is a decentralized peer-to-peer communication app
+Description: Local P2P Communication Application.
+ Wasla is a decentralized, peer-to-peer communication app
  built with Flutter and WebRTC for local network use.
 CONTROL
+          
+          chmod 755 "$STAGE_DIR/DEBIAN"
+          chmod 644 "$STAGE_DIR/DEBIAN/control"
+          
+          dpkg-deb --build "$STAGE_DIR" "build/wasla_1.0.0_amd64.deb"
 
-          chmod 755 "$STAGE/DEBIAN"
-          chmod 644 "$STAGE/DEBIAN/control"
-          dpkg-deb --build "$STAGE" "build/wasla_1.0.0_amd64.deb"
-
-      - name: Upload .deb
+      - name: Upload Linux .deb Package
         uses: actions/upload-artifact@v4
         with:
           name: wasla-linux-deb
           path: build/wasla_1.0.0_amd64.deb
 
   build-windows:
-    name: 🪟 Windows ZIP
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,10 +126,10 @@ CONTROL
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
+      - name: Install Project Dependencies
         run: flutter pub get
 
-      - name: Build Windows app
+      - name: Build Windows Application
         run: flutter build windows --release
 
       - name: Package as ZIP
@@ -145,7 +138,7 @@ CONTROL
           $src = "build\windows\x64\runner\Release"
           $dst = "build\wasla-windows.zip"
           Compress-Archive -Path "$src\*" -DestinationPath $dst
-          Write-Host "✅ ZIP created at $dst"
+          Write-Host "ZIP created: $dst"
 
       - name: Upload Windows ZIP
         uses: actions/upload-artifact@v4
