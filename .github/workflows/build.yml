@@ -78,30 +78,30 @@ jobs:
             cp assets/images/Wasla-logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
           fi
           
-          cat << 'EOF' > "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          [Desktop Entry]
-          Version=1.0
-          Type=Application
-          Name=Wasla
-          Comment=Local P2P File Transfer Application
-          Exec=wasla
-          Icon=wasla
-          Terminal=false
-          Categories=Network;FileTransfer;
-          EOF
+          cat << 'DESKTOP' > "$STAGE_DIR/usr/share/applications/wasla.desktop"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Wasla
+Comment=Local P2P Communication Application
+Exec=wasla
+Icon=wasla
+Terminal=false
+Categories=Network;Chat;
+DESKTOP
           
-          cat << 'EOF' > "$STAGE_DIR/DEBIAN/control"
-          Package: wasla
-          Version: 1.0.0
-          Architecture: amd64
-          Maintainer: Omar Hamada <omarworknow@gmail.com>
-          Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0
-          Section: net
-          Priority: standard
-          Description: Local P2P File Transfer Application.
-           Wasla is a decentralized, peer-to-peer file transfer and communication
-           application built with Flutter and WebRTC for high-speed local network transfers.
-          EOF
+          cat << 'CONTROL' > "$STAGE_DIR/DEBIAN/control"
+Package: wasla
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Omar Hamada <omarworknow@gmail.com>
+Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0
+Section: net
+Priority: standard
+Description: Local P2P Communication Application.
+ Wasla is a decentralized, peer-to-peer communication app
+ built with Flutter and WebRTC for local network use.
+CONTROL
           
           chmod 755 "$STAGE_DIR/DEBIAN"
           chmod 644 "$STAGE_DIR/DEBIAN/control"
@@ -131,14 +131,16 @@ jobs:
       - name: Build Windows Application
         run: flutter build windows --release
 
-      - name: Create MSIX Installer Package
+      - name: Package as ZIP
+        shell: pwsh
         run: |
-          dart pub global activate msix
-          dart pub global run msix:create
-        shell: bash
+          $src = "build\windows\x64\runner\Release"
+          $dst = "build\wasla-windows.zip"
+          Compress-Archive -Path "$src\*" -DestinationPath $dst
+          Write-Host "ZIP created: $dst"
 
-      - name: Upload Windows MSIX Package
+      - name: Upload Windows ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: wasla-windows-msix
-          path: build/windows/x64/runner/Release/*.msix
+          name: wasla-windows-zip
+          path: build/wasla-windows.zip
