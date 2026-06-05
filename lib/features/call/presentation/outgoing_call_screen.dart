@@ -1,0 +1,172 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../domain/call_provider.dart';
+import '../domain/call_state.dart';
+
+/// Shown on the caller's device while ringing ("Calling...").
+class OutgoingCallScreen extends ConsumerWidget {
+  const OutgoingCallScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final callState =
+        ref.watch(callProvider).valueOrNull ?? CallSession.idle;
+
+    // Auto-navigate when call becomes active or ends
+    ref.listen(callProvider, (_, next) {
+      final s = next.valueOrNull;
+      if (s == null) return;
+      if (s.state == CallState.active) {
+        if (context.mounted) {
+          context.pushReplacement('/call/active');
+        }
+      } else if (s.state == CallState.ended) {
+        if (context.mounted) context.pop();
+      }
+    });
+
+    return Scaffold(
+      backgroundColor: AppColors.bgPrimary,
+      body: Stack(
+        children: [
+          // Radial gradient background
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.topCenter,
+                radius: 1.4,
+                colors: [
+                  AppColors.primaryCyan.withValues(alpha: 0.15),
+                  AppColors.bgPrimary,
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                const Spacer(),
+                // Pulsing avatar
+                _PulsingAvatar(name: callState.peerName),
+                const SizedBox(height: 24),
+                Text(
+                  callState.peerName,
+                  style: AppTypography.heading2
+                      .copyWith(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Calling...',
+                  style: AppTypography.bodyMedium
+                      .copyWith(color: AppColors.textMuted),
+                ),
+                const Spacer(),
+                // End call button
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 60),
+                  child: GestureDetector(
+                    onTap: () {
+                      ref.read(callProvider.notifier).endCall();
+                      context.pop();
+                    },
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.call_end_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Pulsing Avatar ────────────────────────────────────────────────────────────
+
+class _PulsingAvatar extends StatefulWidget {
+  const _PulsingAvatar({required this.name});
+  final String name;
+
+  @override
+  State<_PulsingAvatar> createState() => _PulsingAvatarState();
+}
+
+class _PulsingAvatarState extends State<_PulsingAvatar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _scale = Tween(begin: 1.0, end: 1.12).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = widget.name.isNotEmpty
+        ? widget.name.trim().split(' ').map((w) => w[0]).take(2).join()
+        : '?';
+    return AnimatedBuilder(
+      animation: _scale,
+      builder: (context, child) => Transform.scale(
+        scale: _scale.value,
+        child: child,
+      ),
+      child: Container(
+        width: 110,
+        height: 110,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            colors: [AppColors.primaryCyan, AppColors.primaryPurple],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryCyan.withValues(alpha: 0.35),
+              blurRadius: 28,
+              spreadRadius: 4,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            initials.toUpperCase(),
+            style: AppTypography.heading2
+                .copyWith(color: Colors.white, fontSize: 36),
+          ),
+        ),
+      ),
+    );
+  }
+}

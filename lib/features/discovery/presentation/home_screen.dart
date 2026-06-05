@@ -7,6 +7,7 @@ import '../data/discovery_service.dart';
 import '../domain/device_model.dart';
 import '../../../core/utils/rom_detector.dart';
 import '../../../core/utils/firewall_detector.dart';
+import '../../call/domain/call_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -132,14 +133,14 @@ class _DeviceListView extends StatelessWidget {
   }
 }
 
-// ── Device Card ──────────────────────────────────────────────────────────────
+// ── Device Card ─────────────────────────────────────────────────────────────
 
-class _DeviceCard extends StatelessWidget {
+class _DeviceCard extends ConsumerWidget {
   const _DeviceCard({required this.device});
   final Device device;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor(device.status);
 
     return AnimatedContainer(
@@ -227,7 +228,18 @@ class _DeviceCard extends StatelessWidget {
                           icon: Icons.call_outlined,
                           label: 'Call',
                           color: AppColors.statusOnline,
-                          onTap: () {},
+                          onTap: () async {
+                            await ref
+                                .read(callProvider.notifier)
+                                .startCall(
+                                  peerId: device.uuid,
+                                  peerName: device.displayName,
+                                  peerIp: device.localIp,
+                                );
+                            if (context.mounted) {
+                              context.push('/call/outgoing');
+                            }
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),

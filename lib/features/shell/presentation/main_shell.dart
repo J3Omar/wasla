@@ -13,6 +13,7 @@ import '../../chat/data/chat_database.dart';
 import '../../chat/data/chat_notification_service.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../call/domain/call_provider.dart';
 
 /// Top-level navigation shell with 3 tabs.
 class MainShell extends ConsumerStatefulWidget {
@@ -73,6 +74,22 @@ class _MainShellState extends ConsumerState<MainShell> {
           lastSeen: DateTime.now(),
         );
         context.push('/chat/$peerId', extra: targetDevice);
+      };
+
+      // Start call provider (spins up UDP invite listener on port 45680)
+      final callNotifier = ref.read(callProvider.notifier);
+      // Wire incoming call → navigate to IncomingCallScreen
+      callNotifier.onIncomingCall = (info) {
+        if (!mounted) return;
+        context.push(
+          '/call/incoming',
+          extra: {
+            'callerId': info['peerId'] as String,
+            'callerName': info['peerName'] as String,
+            'callerIp': info['callerIp'] as String,
+            'signalingPort': info['signalingPort'] as int,
+          },
+        );
       };
     });
   }

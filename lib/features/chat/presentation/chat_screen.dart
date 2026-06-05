@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/theme/app_colors.dart';
@@ -13,6 +14,7 @@ import 'chat_notifier.dart';
 import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
 import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
+import '../../call/domain/call_provider.dart';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
@@ -536,10 +538,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         IconButton(
           icon: const Icon(
             Icons.phone_rounded,
-            color: AppColors.textSecondary,
+            color: AppColors.statusOnline,
             size: 20,
           ),
-          onPressed: () => _showComingSoon(context, 'Voice call'),
+          tooltip: 'Voice call',
+          onPressed: () async {
+            final peerIp = _bestPeerIp();
+            await ref.read(callProvider.notifier).startCall(
+                  peerId: widget.device.uuid,
+                  peerName: widget.device.displayName,
+                  peerIp: peerIp,
+                );
+            if (context.mounted) {
+              context.push('/call/outgoing');
+            }
+          },
         ),
         IconButton(
           icon: const Icon(
@@ -554,10 +567,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           color: AppColors.bgSecondary,
           onSelected: (value) {
             if (value == 'delete') {
-              setState(() {
-                _isSelectionMode = true;
-                _selectedIds.clear();
-              });
+              _selectedIds.value = {};
+              _isSelectionMode.value = true;
             }
           },
           itemBuilder: (_) => [
