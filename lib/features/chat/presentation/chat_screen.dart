@@ -549,7 +549,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   peerName: widget.device.displayName,
                   peerIp: peerIp,
                 );
-            if (context.mounted) {
+            if (mounted) {
               context.push('/call/outgoing');
             }
           },
