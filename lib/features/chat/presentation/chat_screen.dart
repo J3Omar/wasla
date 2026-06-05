@@ -178,14 +178,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // The message list lives inside a Consumer so it rebuilds independently.
     // Do NOT watch here just to pass to _InputBar — that caused per-keystroke
     // full-tree rebuilds. _InputBar manages its own hasText state now.
-    final chatState = _isSelectionMode
+    final AsyncValue<ChatPageState>? chatState = _isSelectionMode
         ? ref.watch(chatProvider(_args))
-        : const AsyncData(null);
+        : null;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
       appBar: _isSelectionMode
-          ? _buildSelectionAppBar(chatState)
+          ? _buildSelectionAppBar(chatState!)
           : _buildAppBar(),
       body: Column(
         children: [
