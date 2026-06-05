@@ -35,16 +35,19 @@ class FileStorageService {
   /// Checks if there is enough free disk space for the incoming file (plus 50MB buffer).
   Future<bool> hasEnoughSpace(int fileSizeBytes) async {
     try {
+      // disk_space_plus may return null on Android 15+
       final freeSpaceInMB = await DiskSpacePlus().getFreeDiskSpace;
-      if (freeSpaceInMB == null) return true; // Fallback if unable to check
 
-      // Convert to bytes
-      final freeSpaceBytes = freeSpaceInMB * 1024 * 1024;
+      if (freeSpaceInMB == null) {
+        // Cannot determine space — allow transfer but warn
+        // Do NOT auto-cancel just because we can't check
+        return true;
+      }
 
-      // Require at least the file size + 50MB buffer
+      final freeSpaceBytes = (freeSpaceInMB * 1024 * 1024).toInt();
       return freeSpaceBytes > (fileSizeBytes + (50 * 1024 * 1024));
     } catch (e) {
-      // If plugin fails (e.g. unsupported platform), default to allowing transfer
+      // Any exception → assume enough space, don't auto-cancel
       return true;
     }
   }
@@ -182,34 +185,56 @@ class FileStorageService {
     if (!Platform.isAndroid) return true;
 
     final androidInfo = await DeviceInfoPlugin().androidInfo;
-    if (androidInfo.version.sdkInt >= 33) {
-      // Android 13+ (API 33+) granular media permissions
+    final sdk = androidInfo.version.sdkInt;
+
+    if (sdk >= 35) {
+      // Android 15+ — request all 3 individually, grant if ANY is granted
+      // (user might only have photos but not video — still allow transfer)
       if (!context.mounted) return false;
       final photos = await SmartPermissionHandler.request(
         context,
         Permission.photos,
-        'Photos',
-        'to save incoming files',
+        'Storage',
+        'to save received files',
       );
-      if (!photos) return false;
 
       if (!context.mounted) return false;
       final videos = await SmartPermissionHandler.request(
         context,
         Permission.videos,
-        'Videos',
-        'to save incoming files',
+        'Storage',
+        'to save received files',
       );
-      if (!videos) return false;
 
       if (!context.mounted) return false;
       final audio = await SmartPermissionHandler.request(
         context,
         Permission.audio,
-        'Audio',
-        'to save incoming files',
+        'Storage',
+        'to save received files',
       );
-      return audio;
+
+      // Grant if at least one is granted (not all required)
+      return photos || videos || audio;
+    } else if (sdk >= 33) {
+      // Android 13-14
+      if (!context.mounted) return false;
+      final photos = await SmartPermissionHandler.request(
+        context,
+        Permission.photos,
+        'Storage',
+        'to save received files',
+      );
+
+      if (!context.mounted) return false;
+      final videos = await SmartPermissionHandler.request(
+        context,
+        Permission.videos,
+        'Storage',
+        'to save received files',
+      );
+
+      return photos && videos;
     } else {
       // Android 12 and below
       if (!context.mounted) return false;
@@ -217,7 +242,7 @@ class FileStorageService {
         context,
         Permission.storage,
         'Storage',
-        'to save incoming files',
+        'to save received files',
       );
     }
   }

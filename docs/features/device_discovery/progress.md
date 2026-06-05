@@ -52,4 +52,4 @@
 - [x] Android → Linux (devices appeared in ~5s, disappeared in ~10s)
 - [x] Android → Android (same subnet) — pending 2nd Android device
 - [ ] Linux → Windows
-- [ ] Android → Windows
+- [x] Android → Windows

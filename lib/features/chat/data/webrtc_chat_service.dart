@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' hide MessageType;
 
+import '../../../core/network/network_utils.dart';
 import '../domain/chat_message.dart';
 import 'chat_database.dart';
 
@@ -91,6 +92,16 @@ class WebRtcChatService {
       const Duration(seconds: 5),
       (_) => _flushQueue(),
     );
+  }
+
+  /// Proactively warm up a WebRTC connection to a peer in the background.
+  /// Called when a chat screen opens so the first message sends near-instantly.
+  void warmupConnection({required String peerId, required String peerIp}) {
+    // Skip if there's already a live connected session
+    if (_sessions[peerId]?.isConnected == true) return;
+    if (peerIp.isEmpty) return;
+    // Fire-and-forget — intentionally not awaited
+    _initiateConnection(peerId, peerIp);
   }
 
   /// Start listening for incoming "chat invite" UDP packets.
@@ -287,7 +298,7 @@ class WebRtcChatService {
     });
 
     // 3. Send UDP invite to tell the peer to connect to our signaling server
-    final selfIp = await _getSelfIp();
+    final selfIp = await getBestLocalIpFor(peerIp);
     await _sendUdpInvite(peerIp, selfIp, sigPort, peerId);
 
     // 4. Wait up to 8 seconds for connection
@@ -335,29 +346,33 @@ class WebRtcChatService {
     };
 
     // Listen for SDP answer + ICE from callee
-    ws.listen(
-      (data) async {
-        try {
-          final msg = jsonDecode(data as String) as Map<String, dynamic>;
-          if (msg['type'] == 'answer') {
-            await pc.setRemoteDescription(
-              RTCSessionDescription(msg['sdp'], 'answer'),
-            );
-          } else if (msg['type'] == 'ice') {
-            await pc.addCandidate(
-              RTCIceCandidate(
-                msg['candidate']['candidate'],
-                msg['candidate']['sdpMid'],
-                msg['candidate']['sdpMLineIndex'],
-              ),
-            );
-          }
-        } catch (_) {}
-      },
-      onError: (_) {
-        if (!connected.isCompleted) connected.complete(false);
-      },
-    );
+    try {
+      ws.listen(
+        (data) async {
+          try {
+            final msg = jsonDecode(data as String) as Map<String, dynamic>;
+            if (msg['type'] == 'answer') {
+              await pc.setRemoteDescription(
+                RTCSessionDescription(msg['sdp'], 'answer'),
+              );
+            } else if (msg['type'] == 'ice') {
+              await pc.addCandidate(
+                RTCIceCandidate(
+                  msg['candidate']['candidate'],
+                  msg['candidate']['sdpMid'],
+                  msg['candidate']['sdpMLineIndex'],
+                ),
+              );
+            }
+          } catch (_) {}
+        },
+        onError: (_) {
+          if (!connected.isCompleted) connected.complete(false);
+        },
+      );
+    } catch (_) {
+      if (!connected.isCompleted) connected.complete(false);
+    }
 
     // Create and send offer
     try {
@@ -427,27 +442,29 @@ class WebRtcChatService {
       _setupDataChannel(dc, session);
     };
 
-    ws.listen((data) async {
-      try {
-        final msg = jsonDecode(data as String) as Map<String, dynamic>;
-        if (msg['type'] == 'offer') {
-          await pc.setRemoteDescription(
-            RTCSessionDescription(msg['sdp'], 'offer'),
-          );
-          final answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          ws.add(jsonEncode({'type': 'answer', 'sdp': answer.sdp}));
-        } else if (msg['type'] == 'ice') {
-          await pc.addCandidate(
-            RTCIceCandidate(
-              msg['candidate']['candidate'],
-              msg['candidate']['sdpMid'],
-              msg['candidate']['sdpMLineIndex'],
-            ),
-          );
-        }
-      } catch (_) {}
-    }, onError: (_) {});
+    try {
+      ws.listen((data) async {
+        try {
+          final msg = jsonDecode(data as String) as Map<String, dynamic>;
+          if (msg['type'] == 'offer') {
+            await pc.setRemoteDescription(
+              RTCSessionDescription(msg['sdp'], 'offer'),
+            );
+            final answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.add(jsonEncode({'type': 'answer', 'sdp': answer.sdp}));
+          } else if (msg['type'] == 'ice') {
+            await pc.addCandidate(
+              RTCIceCandidate(
+                msg['candidate']['candidate'],
+                msg['candidate']['sdpMid'],
+                msg['candidate']['sdpMLineIndex'],
+              ),
+            );
+          }
+        } catch (_) {}
+      }, onError: (_) {});
+    } catch (_) {}
   }
 
   // ── Data Channel Message Handling ────────────────────────────────────────
@@ -642,23 +659,6 @@ class WebRtcChatService {
       socket.send(payload, InternetAddress(peerIp), kChatInviteUdpPort);
       socket.close();
     } catch (_) {}
-  }
-
-  Future<String> _getSelfIp() async {
-    try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-      );
-      for (final iface in interfaces) {
-        for (final addr in iface.addresses) {
-          final ip = addr.address;
-          if (!ip.startsWith('127.') && !ip.startsWith('169.254')) {
-            return ip;
-          }
-        }
-      }
-    } catch (_) {}
-    return '127.0.0.1';
   }
 
   int _randomPort() {
