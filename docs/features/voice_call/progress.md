@@ -19,6 +19,10 @@
 | 2026-06-05 | `main_shell.dart` — callProvider wired, incoming call overlay | ✅ Done |
 | 2026-06-05 | `home_screen.dart` — Call button on device card wired | ✅ Done |
 | 2026-06-05 | `chat_screen.dart` — Call button in AppBar wired | ✅ Done |
+| 2026-06-05 | 30s outgoing call timeout → auto-end + "No answer" status text | ✅ Done |
+| 2026-06-05 | Incoming call system notification (background) via `ChatNotificationService` | ✅ Done |
+| 2026-06-05 | `getBestLocalIpFor()` in UDP invite payload — fixes hotspot signaling IP | ✅ Done |
+| 2026-06-05 | Speaker/Earpiece toggle UI — icon + label both reflect current audio output | ✅ Done |
 
 ---
 
