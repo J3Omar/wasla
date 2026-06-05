@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -166,12 +167,15 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                         .copyWith(color: AppColors.primaryCyan),
                   ),
                 const Spacer(),
-                // ── Glassmorphism controls pill ───────────────────────────
+                // ── Controls pill ──────────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.only(bottom: 60),
                   child: _ControlsPill(
                     isMuted: callState.isMuted,
                     isSpeakerOn: callState.isSpeakerOn,
+                    // Speaker/earpiece toggle is meaningful only on mobile
+                    showSpeakerToggle:
+                        Platform.isAndroid || Platform.isIOS,
                     onMute: () =>
                         ref.read(callProvider.notifier).toggleMute(),
                     onSpeaker: () =>
@@ -197,6 +201,7 @@ class _ControlsPill extends StatelessWidget {
   const _ControlsPill({
     required this.isMuted,
     required this.isSpeakerOn,
+    required this.showSpeakerToggle,
     required this.onMute,
     required this.onSpeaker,
     required this.onEnd,
@@ -204,6 +209,8 @@ class _ControlsPill extends StatelessWidget {
 
   final bool isMuted;
   final bool isSpeakerOn;
+  /// Show speaker/earpiece toggle — true on Android/iOS only.
+  final bool showSpeakerToggle;
   final VoidCallback onMute;
   final VoidCallback onSpeaker;
   final VoidCallback onEnd;
@@ -230,25 +237,26 @@ class _ControlsPill extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Mute
+          // Mute toggle — always shown
           _PillButton(
             icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
             label: isMuted ? 'Unmute' : 'Mute',
             color: isMuted ? Colors.redAccent : AppColors.textSecondary,
             onTap: onMute,
           ),
-          // Speaker / Earpiece toggle
-          _PillButton(
-            icon: isSpeakerOn
-                ? Icons.volume_up_rounded
-                : Icons.hearing_rounded,
-            label: isSpeakerOn ? 'Speaker' : 'Earpiece',
-            color: isSpeakerOn
-                ? AppColors.primaryCyan
-                : AppColors.textSecondary,
-            onTap: onSpeaker,
-          ),
-          // End call (large red button)
+          // Speaker / Earpiece — mobile only
+          if (showSpeakerToggle)
+            _PillButton(
+              icon: isSpeakerOn
+                  ? Icons.volume_up_rounded
+                  : Icons.hearing_rounded,
+              label: isSpeakerOn ? 'Speaker' : 'Earpiece',
+              color: isSpeakerOn
+                  ? AppColors.primaryCyan
+                  : AppColors.textSecondary,
+              onTap: onSpeaker,
+            ),
+          // End call — always shown
           GestureDetector(
             onTap: onEnd,
             child: Container(

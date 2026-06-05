@@ -226,6 +226,8 @@ class CallManager {
     _signalingServer = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _signalingServer!.transform(WebSocketTransformer()).listen((ws) async {
       _signalingWs = ws;
+      // Callee just connected (= accepted the call) — cancel no-answer timeout
+      _cancelTimeout();
       if (isInitiator) {
         await _initiateOffer();
       }
