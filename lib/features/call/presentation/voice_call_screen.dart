@@ -20,10 +20,16 @@ class VoiceCallScreen extends ConsumerStatefulWidget {
 class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
   Timer? _timer;
   Duration _elapsed = Duration.zero;
+  bool _isActive = false; // true once WebRTC connects
 
   @override
   void initState() {
     super.initState();
+    // Don't start timer yet — start when WebRTC becomes active
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
@@ -47,12 +53,21 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
     final callState =
         ref.watch(callProvider).valueOrNull ?? CallSession.idle;
 
-    // Pop when call ends
-    ref.listen(callProvider, (_, next) {
-      if (next.valueOrNull?.state == CallState.ended) {
-        if (context.mounted) context.pop();
+    ref.listen(callProvider, (prev, next) {
+      final s = next.valueOrNull;
+      if (s == null) return;
+      if (s.state == CallState.active && !_isActive) {
+        // WebRTC just connected — start the call timer
+        setState(() => _isActive = true);
+        _startTimer();
+      }
+      if (s.state == CallState.ended) {
+        if (mounted) context.pop();
       }
     });
+
+    final isConnecting = callState.state == CallState.connecting ||
+        callState.state == CallState.incoming;
 
     final initials = callState.peerName.isNotEmpty
         ? callState.peerName
@@ -137,12 +152,19 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                       .copyWith(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
-                // Timer
-                Text(
-                  _formatDuration(_elapsed),
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.primaryCyan),
-                ),
+                // Show "Connecting…" until WebRTC is active, then show timer
+                if (isConnecting)
+                  Text(
+                    'Connecting…',
+                    style: AppTypography.bodyMedium
+                        .copyWith(color: AppColors.primaryCyan),
+                  )
+                else
+                  Text(
+                    _formatDuration(_elapsed),
+                    style: AppTypography.bodyMedium
+                        .copyWith(color: AppColors.primaryCyan),
+                  ),
                 const Spacer(),
                 // ── Glassmorphism controls pill ───────────────────────────
                 Padding(

@@ -103,7 +103,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                                 if (mounted) context.pop();
                               },
                       ),
-                      // Accept
+                      // Accept — navigate immediately; WebRTC connects in background
                       _CallButton(
                         icon: Icons.call_rounded,
                         color: AppColors.statusOnline,
@@ -112,14 +112,17 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                             ? null
                             : () {
                                 setState(() => _isProcessing = true);
+                                // Start WebRTC in background
                                 ref.read(callProvider.notifier).acceptCall(
                                       callerIp: widget.callerIp,
                                       signalingPort: widget.signalingPort,
                                       callerId: widget.callerId,
                                       callerName: widget.callerName,
                                     );
-                                // Navigation to /call/active is handled by
-                                // ref.listen when state becomes active
+                                // Navigate immediately — don't wait for WebRTC
+                                if (mounted) {
+                                  context.pushReplacement('/call/active');
+                                }
                               },
                       ),
                     ],

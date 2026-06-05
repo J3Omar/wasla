@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,11 +10,25 @@ import '../domain/call_provider.dart';
 import '../domain/call_state.dart';
 
 /// Shown on the caller's device while ringing ("Calling...").
-class OutgoingCallScreen extends ConsumerWidget {
+class OutgoingCallScreen extends ConsumerStatefulWidget {
   const OutgoingCallScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OutgoingCallScreen> createState() => _OutgoingCallScreenState();
+}
+
+class _OutgoingCallScreenState extends ConsumerState<OutgoingCallScreen> {
+  // Prevent double-pop from Future.delayed + immediate pop race
+  bool _didPop = false;
+
+  void _safePop() {
+    if (_didPop) return;
+    _didPop = true;
+    if (mounted) context.pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final callState =
         ref.watch(callProvider).valueOrNull ?? CallSession.idle;
 
@@ -21,12 +37,10 @@ class OutgoingCallScreen extends ConsumerWidget {
       final s = next.valueOrNull;
       if (s == null) return;
       if (s.state == CallState.active) {
-        if (context.mounted) context.pushReplacement('/call/active');
+        if (mounted) context.pushReplacement('/call/active');
       } else if (s.state == CallState.ended) {
-        // Brief pause so "No answer" / "Declined" text is readable
-        Future.delayed(const Duration(seconds: 2), () {
-          if (context.mounted) context.pop();
-        });
+        // Brief pause so "No answer" / "Call declined" text is visible, then pop
+        Future.delayed(const Duration(seconds: 2), _safePop);
       }
     });
 
@@ -74,6 +88,7 @@ class OutgoingCallScreen extends ConsumerWidget {
           ),
           SafeArea(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Spacer(),
                 // Pulsing avatar
@@ -91,14 +106,14 @@ class OutgoingCallScreen extends ConsumerWidget {
                       .copyWith(color: statusColor),
                 ),
                 const Spacer(),
-                // End call button — explicitly centered
+                // End call button — centered
                 Center(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 60),
                     child: GestureDetector(
                       onTap: () {
                         ref.read(callProvider.notifier).endCall();
-                        context.pop();
+                        _safePop();
                       },
                       child: Container(
                         width: 72,

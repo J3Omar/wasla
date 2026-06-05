@@ -188,6 +188,22 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               ));
             }
           }
+
+          // ── Callee declined (via UDP) — notify caller ─────────────────────
+          else if (json['type'] == 'call_declined') {
+            if (json['from'] == _selfUuid) return;
+            final current = state.valueOrNull;
+            // Only react if we are the caller and are in outgoing state
+            if (current?.state == CallState.outgoing) {
+              final count = (current?.declineCount ?? 0) + 1;
+              state = AsyncData(current!.copyWith(
+                state: CallState.ended,
+                endReason:
+                    count >= 3 ? CallEndReason.busy : CallEndReason.declined,
+                declineCount: count,
+              ));
+            }
+          }
         } catch (_) {}
       });
     } catch (_) {

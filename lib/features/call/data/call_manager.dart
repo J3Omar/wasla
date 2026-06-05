@@ -102,16 +102,23 @@ class CallManager {
     await _connectToSignalingServer(callerIp, signalingPort);
   }
 
-  /// Decline an incoming call — sends a decline packet back to caller.
+  /// Decline an incoming call.
+  /// Sends UDP decline packet (reliable — no WS needed before acceptance)
+  /// and also attempts WS signal as fallback for mid-connecting state.
   Future<void> declineCall({
     required String callerIp,
     required int signalingPort,
   }) async {
-    await _sendSignal(
-      callerIp,
-      signalingPort,
-      jsonEncode({'type': 'call_declined', 'from': selfUuid}),
-    );
+    // Primary: UDP packet — works even before callee has opened WS
+    await _sendDeclineUdp(peerIp: callerIp);
+    // Fallback: WS signal in case WS is already open (mid-connect)
+    try {
+      await _sendSignal(
+        callerIp,
+        signalingPort,
+        jsonEncode({'type': 'call_declined', 'from': selfUuid}),
+      );
+    } catch (_) {}
     _session = _session.copyWith(
       state: CallState.ended,
       endReason: CallEndReason.declined,
@@ -358,6 +365,20 @@ class CallManager {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       final payload = utf8.encode(jsonEncode({
         'type': 'call_cancelled',
+        'from': selfUuid,
+      }));
+      socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
+      socket.close();
+    } catch (_) {}
+  }
+
+  /// Sends a UDP packet telling the caller the call was declined.
+  /// Primary path for decline — doesn't need a WS connection.
+  Future<void> _sendDeclineUdp({required String peerIp}) async {
+    try {
+      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final payload = utf8.encode(jsonEncode({
+        'type': 'call_declined',
         'from': selfUuid,
       }));
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
