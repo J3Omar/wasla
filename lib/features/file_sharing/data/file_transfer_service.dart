@@ -526,8 +526,9 @@ class FileTransferService {
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg == null) return;
 
-    final hasSpace = await FileStorageService.instance
-        .hasEnoughSpace(msg.fileSize ?? 0);
+    final hasSpace = await FileStorageService.instance.hasEnoughSpace(
+      msg.fileSize ?? 0,
+    );
 
     debugPrint('[FileTransfer] hasSpace = $hasSpace');
 

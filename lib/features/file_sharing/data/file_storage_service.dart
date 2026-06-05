@@ -192,18 +192,27 @@ class FileStorageService {
       // (user might only have photos but not video — still allow transfer)
       if (!context.mounted) return false;
       final photos = await SmartPermissionHandler.request(
-        context, Permission.photos, 
-        'Storage', 'to save received files');
+        context,
+        Permission.photos,
+        'Storage',
+        'to save received files',
+      );
 
       if (!context.mounted) return false;
       final videos = await SmartPermissionHandler.request(
-        context, Permission.videos,
-        'Storage', 'to save received files');
+        context,
+        Permission.videos,
+        'Storage',
+        'to save received files',
+      );
 
       if (!context.mounted) return false;
       final audio = await SmartPermissionHandler.request(
-        context, Permission.audio,
-        'Storage', 'to save received files');
+        context,
+        Permission.audio,
+        'Storage',
+        'to save received files',
+      );
 
       // Grant if at least one is granted (not all required)
       return photos || videos || audio;
@@ -211,21 +220,30 @@ class FileStorageService {
       // Android 13-14
       if (!context.mounted) return false;
       final photos = await SmartPermissionHandler.request(
-        context, Permission.photos, 
-        'Storage', 'to save received files');
+        context,
+        Permission.photos,
+        'Storage',
+        'to save received files',
+      );
 
       if (!context.mounted) return false;
       final videos = await SmartPermissionHandler.request(
-        context, Permission.videos,
-        'Storage', 'to save received files');
+        context,
+        Permission.videos,
+        'Storage',
+        'to save received files',
+      );
 
       return photos && videos;
     } else {
       // Android 12 and below
       if (!context.mounted) return false;
       return await SmartPermissionHandler.request(
-        context, Permission.storage,
-        'Storage', 'to save received files');
+        context,
+        Permission.storage,
+        'Storage',
+        'to save received files',
+      );
     }
   }
 }

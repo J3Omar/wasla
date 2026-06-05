@@ -61,10 +61,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Fire-and-forget: runs in background while user types.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(webrtcChatServiceProvider).warmupConnection(
-        peerId: widget.device.uuid,
-        peerIp: _bestPeerIp(),
-      );
+      ref
+          .read(webrtcChatServiceProvider)
+          .warmupConnection(peerId: widget.device.uuid, peerIp: _bestPeerIp());
     });
   }
 
@@ -196,8 +195,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 final state = ref.watch(chatProvider(_args));
                 return state.when(
                   loading: () => const Center(
-                    child:
-                        CircularProgressIndicator(color: AppColors.primaryCyan),
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryCyan,
+                    ),
                   ),
                   error: (e, _) => Center(
                     child: Text('Error: $e', style: AppTypography.bodySmall),
@@ -221,8 +221,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               messages.length + (pageState.hasMore ? 1 : 0),
                           itemBuilder: (context, index) {
                             // Loading indicator at top (last item in reversed list)
-                            if (pageState.hasMore &&
-                                index == messages.length) {
+                            if (pageState.hasMore && index == messages.length) {
                               return Center(
                                 child: Padding(
                                   padding: const EdgeInsets.all(12),
@@ -246,7 +245,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final prev = reversedIndex > 0
                                 ? messages[reversedIndex - 1]
                                 : null;
-                            final showDate = prev == null ||
+                            final showDate =
+                                prev == null ||
                                 !_sameDay(msg.timestamp, prev.timestamp);
 
                             return RepaintBoundary(
@@ -1040,8 +1040,8 @@ class _InputBarState extends State<_InputBar> {
   }
 
   void _onTextChanged() {
-    final has = widget.controller.text.trim().isNotEmpty ||
-        widget.selectedFile != null;
+    final has =
+        widget.controller.text.trim().isNotEmpty || widget.selectedFile != null;
     if (has != _hasText) setState(() => _hasText = has);
   }
 
@@ -1050,7 +1050,8 @@ class _InputBarState extends State<_InputBar> {
     super.didUpdateWidget(oldWidget);
     // selectedFile changed from parent — re-evaluate hasText
     if (oldWidget.selectedFile != widget.selectedFile) {
-      final has = widget.controller.text.trim().isNotEmpty ||
+      final has =
+          widget.controller.text.trim().isNotEmpty ||
           widget.selectedFile != null;
       if (has != _hasText) setState(() => _hasText = has);
     }
@@ -1081,13 +1082,14 @@ class _InputBarState extends State<_InputBar> {
         children: [
           if (widget.selectedFile != null)
             FilePreviewCard(
-                file: widget.selectedFile!, onCancel: widget.onCancelFile),
+              file: widget.selectedFile!,
+              onCancel: widget.onCancelFile,
+            ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               IconButton(
-                icon:
-                    const Icon(Icons.add_circle_outline_rounded, size: 24),
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
                 color: AppColors.textMuted,
                 onPressed: widget.onPickFile,
               ),
@@ -1149,9 +1151,7 @@ class _InputBarState extends State<_InputBar> {
                     ),
                     child: Icon(
                       Icons.arrow_upward_rounded,
-                      color: _hasText
-                          ? AppColors.bgDeep
-                          : AppColors.textMuted,
+                      color: _hasText ? AppColors.bgDeep : AppColors.textMuted,
                       size: 20,
                     ),
                   ),
