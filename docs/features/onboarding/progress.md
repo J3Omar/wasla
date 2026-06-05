@@ -43,5 +43,5 @@
 ## Testing Results
 
 - [x] Android
-- [ ] Windows
+- [x] Windows
 - [x] Linux

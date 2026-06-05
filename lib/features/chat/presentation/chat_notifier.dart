@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../data/chat_database.dart';
 import '../data/webrtc_chat_service.dart';
+import '../data/chat_notification_service.dart';
 import '../domain/chat_message.dart';
 
 const _kNameKey = 'wasla_device_name';
@@ -86,6 +87,10 @@ class ChatNotifier
     // Mark this peer as the active chat (so incoming messages get read ACK)
     service.activeChatPeerId = arg.peerId;
 
+    // Dismiss any pending notification for this peer — covers both tapping
+    // the notification AND navigating to the chat manually.
+    ChatNotificationService.instance.cancelNotification(arg.peerId);
+
     // Load identity so WebRTC service can sign messages
     const storage = FlutterSecureStorage();
     service.selfUuid ??= await storage.read(key: _kUuidKey) ?? '';
@@ -155,11 +160,21 @@ class ChatNotifier
   }
 
   /// Send a text message to the peer.
-  Future<void> sendMessage(String text) async {
+  /// [freshPeerIp] — pass the latest known IP from the device registry so
+  /// the hotspot host's correct interface IP is always used.
+  Future<void> sendMessage(String text, {String? freshPeerIp}) async {
     if (text.trim().isEmpty) return;
 
     final now = DateTime.now();
     final service = ref.read(webrtcChatServiceProvider);
+
+    // Use the freshest known IP, update the DB so the retry queue benefits too
+    final peerIp = (freshPeerIp != null && freshPeerIp.isNotEmpty)
+        ? freshPeerIp
+        : arg.peerIp;
+    if (freshPeerIp != null && freshPeerIp.isNotEmpty) {
+      ChatDatabase.instance.upsertPeer(arg.peerId, arg.peerName, freshPeerIp);
+    }
 
     // Create draft with a stable UUID
     final draft = ChatMessage(
@@ -179,7 +194,7 @@ class ChatNotifier
     // Try to send via WebRTC
     final sent = await service.sendChatMessage(
       peerId: arg.peerId,
-      peerIp: arg.peerIp,
+      peerIp: peerIp,
       message: saved,
     );
 
@@ -215,11 +230,13 @@ class ChatNotifier
   }
 
   /// Merge new messages from the DB stream with the currently displayed list.
-  /// Keeps all already-displayed messages, appends any new ones.
+  /// Handles both new incoming messages (appends) and deletions (removes).
   List<ChatMessage> _mergeMessages(
     List<ChatMessage> current,
     List<ChatMessage> all,
   ) {
+    // If the DB says there are no messages at all, trust it (bulk delete case)
+    if (all.isEmpty) return [];
     if (current.isEmpty) return all;
     // Get the timestamp of the oldest loaded message to know our lower bound
     final oldestLoaded = current.first.timestamp;
@@ -227,7 +244,8 @@ class ChatNotifier
     final filtered = all
         .where((m) => !m.timestamp.isBefore(oldestLoaded))
         .toList();
-    if (filtered.isEmpty) return current;
-    return filtered;
+    // If filtered is empty but 'all' is not, the remaining messages are older
+    // than our page window — show all (handles partial deletions near page boundary)
+    return filtered.isEmpty ? all : filtered;
   }
 }

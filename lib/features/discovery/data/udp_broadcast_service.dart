@@ -117,8 +117,14 @@ class UdpBroadcastService {
     try {
       final raw = utf8.decode(dg.data);
       final json = jsonDecode(raw) as Map<String, dynamic>;
-      final device = Device.fromJson(json);
+      var device = Device.fromJson(json);
       if (device.uuid != selfDevice.uuid) {
+        // Use the actual UDP source address — this is always reachable from us,
+        // even when the sender is a hotspot host announcing a different interface IP.
+        final sourceIp = dg.address.address;
+        if (sourceIp != device.localIp && !sourceIp.startsWith('127.')) {
+          device = device.copyWith(localIp: sourceIp);
+        }
         registry.upsert(device);
       }
     } catch (_) {}

@@ -8,6 +8,7 @@ import '../../discovery/domain/device_model.dart';
 import '../../discovery/data/discovery_service.dart';
 import '../domain/chat_message.dart';
 import '../data/chat_database.dart';
+import '../data/webrtc_chat_service.dart';
 import 'chat_notifier.dart';
 import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
 import '../../file_sharing/presentation/widgets/file_preview_card.dart';
@@ -30,7 +31,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
   final _focusNode = FocusNode();
-  bool _hasText = false;
   File? _selectedFile;
 
   bool _isSelectionMode = false;
@@ -54,14 +54,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       widget.device.displayName,
     );
 
-    _inputController.addListener(() {
-      final has =
-          _inputController.text.trim().isNotEmpty || _selectedFile != null;
-      if (has != _hasText) setState(() => _hasText = has);
-    });
-
     // Listen for scroll-to-top to trigger pagination
     _scrollController.addListener(_onScroll);
+
+    // Proactively warm up the WebRTC connection so the first message is fast.
+    // Fire-and-forget: runs in background while user types.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(webrtcChatServiceProvider).warmupConnection(
+        peerId: widget.device.uuid,
+        peerIp: _bestPeerIp(),
+      );
+    });
   }
 
   void _onScroll() {
@@ -82,10 +86,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
+  /// Get the best known IP for the peer — looks up the registry first so we
+  /// always use the most recently discovered (and reachable) IP, not the
+  /// stale one captured at initState.
+  String _bestPeerIp() {
+    final devicesState = ref.read(discoveryServiceProvider);
+    if (devicesState is AsyncData<Map<String, Device>>) {
+      final live = devicesState.value[widget.device.uuid];
+      if (live != null && live.localIp.isNotEmpty) return live.localIp;
+    }
+    // Fall back to the IP stored in the chat database
+    return ChatDatabase.instance.getPeerIp(widget.device.uuid) ??
+        widget.device.localIp;
+  }
+
   Future<void> _onSend() async {
     final text = _inputController.text.trim();
     final file = _selectedFile;
     if (text.isEmpty && file == null) return;
+
+    // Always resolve the freshest peerIp — covers hotspot IP changes
+    final peerIp = _bestPeerIp();
 
     if (file != null) {
       final fileSize = await file.length();
@@ -127,7 +148,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       try {
         await FileTransferService.instance.sendFileRequest(
           peerId: _args.peerId,
-          peerIp: _args.peerIp,
+          peerIp: peerIp,
           filePath: file.path,
         );
       } catch (e) {
@@ -139,19 +160,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       setState(() {
         _selectedFile = null;
-        _hasText = _inputController.text.trim().isNotEmpty;
       });
     }
 
     if (text.isNotEmpty) {
-      ref.read(chatProvider(_args).notifier).sendMessage(text);
+      // Pass freshest IP so the notifier routes the message to the right interface
+      ref
+          .read(chatProvider(_args).notifier)
+          .sendMessage(text, freshPeerIp: peerIp);
       _inputController.clear();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final chatState = ref.watch(chatProvider(_args));
+    // chatState is only watched here for the selection-mode AppBar.
+    // The message list lives inside a Consumer so it rebuilds independently.
+    // Do NOT watch here just to pass to _InputBar — that caused per-keystroke
+    // full-tree rebuilds. _InputBar manages its own hasText state now.
+    final chatState = _isSelectionMode
+        ? ref.watch(chatProvider(_args))
+        : const AsyncData(null);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -161,97 +190,106 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: chatState.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: AppColors.primaryCyan),
-              ),
-              error: (e, _) => Center(
-                child: Text('Error: $e', style: AppTypography.bodySmall),
-              ),
-              data: (pageState) {
-                final messages = pageState.messages;
-                if (messages.isEmpty) {
-                  return _EmptyConversation(device: widget.device);
-                }
-                return Stack(
-                  children: [
-                    // reverse: true means index 0 = newest, auto-anchors to bottom
-                    ListView.builder(
-                      controller: _scrollController,
-                      reverse: true,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      itemCount: messages.length + (pageState.hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        // Loading indicator at top (last item in reversed list)
-                        if (pageState.hasMore && index == messages.length) {
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: pageState.isLoadingMore
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.primaryCyan,
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          );
-                        }
-
-                        // reversed: index 0 = last message (newest)
-                        final reversedIndex = messages.length - 1 - index;
-                        final msg = messages[reversedIndex];
-                        final prev = reversedIndex > 0
-                            ? messages[reversedIndex - 1]
-                            : null;
-                        final showDate =
-                            prev == null ||
-                            !_sameDay(msg.timestamp, prev.timestamp);
-
-                        return RepaintBoundary(
-                          child: Column(
-                            children: [
-                              if (showDate) _DateDivider(date: msg.timestamp),
-                              _MessageBubble(
-                                message: msg,
-                                peerIp: _args.peerIp,
-                                isSelected: _selectedIds.contains(msg.id),
-                                isSelectionMode: _isSelectionMode,
-                                onTap: () {
-                                  if (_isSelectionMode) {
-                                    setState(() {
-                                      if (_selectedIds.contains(msg.id)) {
-                                        _selectedIds.remove(msg.id);
-                                        if (_selectedIds.isEmpty) {
-                                          _isSelectionMode = false;
-                                        }
-                                      } else {
-                                        _selectedIds.add(msg.id);
-                                      }
-                                    });
-                                  }
-                                },
-                                onLongPress: () {
-                                  if (!_isSelectionMode) {
-                                    setState(() {
-                                      _isSelectionMode = true;
-                                      _selectedIds.add(msg.id);
-                                    });
-                                  }
-                                },
-                              ),
-                            ],
+            // Consumer isolates rebuilds to the message list only
+            child: Consumer(
+              builder: (context, ref, _) {
+                final state = ref.watch(chatProvider(_args));
+                return state.when(
+                  loading: () => const Center(
+                    child:
+                        CircularProgressIndicator(color: AppColors.primaryCyan),
+                  ),
+                  error: (e, _) => Center(
+                    child: Text('Error: $e', style: AppTypography.bodySmall),
+                  ),
+                  data: (pageState) {
+                    final messages = pageState.messages;
+                    if (messages.isEmpty) {
+                      return _EmptyConversation(device: widget.device);
+                    }
+                    return Stack(
+                      children: [
+                        // reverse:true → index 0 = newest, auto-anchors to bottom
+                        ListView.builder(
+                          controller: _scrollController,
+                          reverse: true,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
-                        );
-                      },
-                    ),
-                  ],
+                          itemCount:
+                              messages.length + (pageState.hasMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            // Loading indicator at top (last item in reversed list)
+                            if (pageState.hasMore &&
+                                index == messages.length) {
+                              return Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: pageState.isLoadingMore
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.primaryCyan,
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              );
+                            }
+
+                            // reversed: index 0 = last message (newest)
+                            final reversedIndex = messages.length - 1 - index;
+                            final msg = messages[reversedIndex];
+                            final prev = reversedIndex > 0
+                                ? messages[reversedIndex - 1]
+                                : null;
+                            final showDate = prev == null ||
+                                !_sameDay(msg.timestamp, prev.timestamp);
+
+                            return RepaintBoundary(
+                              child: Column(
+                                children: [
+                                  if (showDate)
+                                    _DateDivider(date: msg.timestamp),
+                                  _MessageBubble(
+                                    message: msg,
+                                    peerIp: _args.peerIp,
+                                    isSelected: _selectedIds.contains(msg.id),
+                                    isSelectionMode: _isSelectionMode,
+                                    onTap: () {
+                                      if (_isSelectionMode) {
+                                        setState(() {
+                                          if (_selectedIds.contains(msg.id)) {
+                                            _selectedIds.remove(msg.id);
+                                            if (_selectedIds.isEmpty) {
+                                              _isSelectionMode = false;
+                                            }
+                                          } else {
+                                            _selectedIds.add(msg.id);
+                                          }
+                                        });
+                                      }
+                                    },
+                                    onLongPress: () {
+                                      if (!_isSelectionMode) {
+                                        setState(() {
+                                          _isSelectionMode = true;
+                                          _selectedIds.add(msg.id);
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -259,7 +297,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _InputBar(
             controller: _inputController,
             focusNode: _focusNode,
-            hasText: _hasText,
             peerName: widget.device.displayName,
             onSend: _onSend,
             selectedFile: _selectedFile,
@@ -268,14 +305,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (result != null && result.files.single.path != null) {
                 setState(() {
                   _selectedFile = File(result.files.single.path!);
-                  _hasText = true;
                 });
               }
             },
             onCancelFile: () {
               setState(() {
                 _selectedFile = null;
-                _hasText = _inputController.text.trim().isNotEmpty;
               });
             },
           ),
@@ -413,6 +448,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 _isSelectionMode = false;
                 _selectedIds.clear();
               });
+              // If all messages in the conversation are gone, go back
+              final remaining = ChatDatabase.instance.countMessages(
+                widget.device.uuid,
+              );
+              if (remaining == 0 && mounted) {
+                Navigator.of(context).pop();
+              }
             }
           },
         ),
@@ -964,11 +1006,10 @@ class _StatusIcon extends StatelessWidget {
 // Input Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _InputBar extends StatelessWidget {
+class _InputBar extends StatefulWidget {
   const _InputBar({
     required this.controller,
     required this.focusNode,
-    required this.hasText,
     required this.peerName,
     required this.onSend,
     this.selectedFile,
@@ -978,12 +1019,48 @@ class _InputBar extends StatelessWidget {
 
   final TextEditingController controller;
   final FocusNode focusNode;
-  final bool hasText;
   final String peerName;
   final VoidCallback onSend;
   final File? selectedFile;
   final VoidCallback onPickFile;
   final VoidCallback onCancelFile;
+
+  @override
+  State<_InputBar> createState() => _InputBarState();
+}
+
+class _InputBarState extends State<_InputBar> {
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen locally — setState only rebuilds _InputBar, not the whole screen
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final has = widget.controller.text.trim().isNotEmpty ||
+        widget.selectedFile != null;
+    if (has != _hasText) setState(() => _hasText = has);
+  }
+
+  @override
+  void didUpdateWidget(_InputBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // selectedFile changed from parent — re-evaluate hasText
+    if (oldWidget.selectedFile != widget.selectedFile) {
+      final has = widget.controller.text.trim().isNotEmpty ||
+          widget.selectedFile != null;
+      if (has != _hasText) setState(() => _hasText = has);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1002,15 +1079,17 @@ class _InputBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (selectedFile != null)
-            FilePreviewCard(file: selectedFile!, onCancel: onCancelFile),
+          if (widget.selectedFile != null)
+            FilePreviewCard(
+                file: widget.selectedFile!, onCancel: widget.onCancelFile),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               IconButton(
-                icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
+                icon:
+                    const Icon(Icons.add_circle_outline_rounded, size: 24),
                 color: AppColors.textMuted,
-                onPressed: onPickFile,
+                onPressed: widget.onPickFile,
               ),
               const SizedBox(width: 4),
               Expanded(
@@ -1022,8 +1101,8 @@ class _InputBar extends StatelessWidget {
                     border: Border.all(color: AppColors.borderDefault),
                   ),
                   child: TextField(
-                    controller: controller,
-                    focusNode: focusNode,
+                    controller: widget.controller,
+                    focusNode: widget.focusNode,
                     style: AppTypography.bodyMedium,
                     maxLines: null,
                     textInputAction: TextInputAction.newline,
@@ -1038,26 +1117,26 @@ class _InputBar extends StatelessWidget {
                       ),
                       border: InputBorder.none,
                     ),
-                    onSubmitted: (_) => onSend(),
+                    onSubmitted: (_) => widget.onSend(),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               AnimatedScale(
-                scale: hasText ? 1.0 : 0.85,
+                scale: _hasText ? 1.0 : 0.85,
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
                 child: GestureDetector(
-                  onTap: onSend,
+                  onTap: widget.onSend,
                   child: Container(
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: hasText
+                      color: _hasText
                           ? AppColors.primaryCyan
                           : AppColors.bgTertiary,
-                      boxShadow: hasText
+                      boxShadow: _hasText
                           ? [
                               BoxShadow(
                                 color: AppColors.primaryCyan.withValues(
@@ -1070,7 +1149,9 @@ class _InputBar extends StatelessWidget {
                     ),
                     child: Icon(
                       Icons.arrow_upward_rounded,
-                      color: hasText ? AppColors.bgDeep : AppColors.textMuted,
+                      color: _hasText
+                          ? AppColors.bgDeep
+                          : AppColors.textMuted,
                       size: 20,
                     ),
                   ),
