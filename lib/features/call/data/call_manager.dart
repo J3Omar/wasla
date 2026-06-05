@@ -41,6 +41,12 @@ class CallManager {
   WebSocket? _signalingWs;
   Timer? _timeoutTimer; // 30s no-answer auto-end
 
+  // Fix 2D — ICE candidate queue.
+  // Remote candidates that arrive before setRemoteDescription completes are
+  // stored here, then flushed immediately after the remote desc is applied.
+  final List<RTCIceCandidate> _pendingCandidates = [];
+  bool _remoteDescSet = false;
+
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
 
@@ -195,9 +201,16 @@ class CallManager {
       } catch (_) {}
     };
 
+    // Fix 2B+2C — when WebRTC connects, close the signaling server to free
+    // the port. The WS client socket stays open so endCall() can still send
+    // call_ended. _onWsClosed will NOT kill the call once state is active.
     pc.onConnectionState = (state) {
+      debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _cancelTimeout(); // no longer need the 30s timeout
+        _cancelTimeout();
+        // Free the listening port — no more SDP/ICE needed
+        _signalingServer?.close().catchError((_) {});
+        _signalingServer = null;
         _session = _session.copyWith(
           state: CallState.active,
           startedAt: DateTime.now(),
@@ -213,6 +226,17 @@ class CallManager {
         onStateChanged(_session);
         dispose();
       }
+    };
+
+    // Fix 2C — debug logging so we can track exactly which state it stalls at
+    pc.onIceConnectionState = (state) {
+      debugPrint('[Call] ICE connection state: $state');
+    };
+    pc.onIceGatheringState = (state) {
+      debugPrint('[Call] ICE gathering state: $state');
+    };
+    pc.onSignalingState = (state) {
+      debugPrint('[Call] Signaling state: $state');
     };
 
     pc.onTrack = (event) {
@@ -273,6 +297,14 @@ class CallManager {
             signal['sdp']['type'] as String,
           ),
         );
+        // Fix 2D — remote desc is now set; flush any ICE candidates that
+        // arrived while the offer was being processed.
+        _remoteDescSet = true;
+        for (final c in _pendingCandidates) {
+          await _pc?.addCandidate(c);
+        }
+        _pendingCandidates.clear();
+
         final answer = await _pc!.createAnswer();
         await _pc!.setLocalDescription(answer);
         _signalingWs?.add(jsonEncode({'type': 'answer', 'sdp': answer.toMap()}));
@@ -285,17 +317,27 @@ class CallManager {
             signal['sdp']['type'] as String,
           ),
         );
+        // Fix 2D — remote desc is now set on the caller side too; flush queue.
+        _remoteDescSet = true;
+        for (final c in _pendingCandidates) {
+          await _pc?.addCandidate(c);
+        }
+        _pendingCandidates.clear();
         break;
 
       case 'ice':
         final c = signal['candidate'];
-        await _pc?.addCandidate(
-          RTCIceCandidate(
-            c['candidate'] as String,
-            c['sdpMid'] as String?,
-            c['sdpMLineIndex'] as int?,
-          ),
+        final candidate = RTCIceCandidate(
+          c['candidate'] as String,
+          c['sdpMid'] as String?,
+          c['sdpMLineIndex'] as int?,
         );
+        if (!_remoteDescSet) {
+          // Queue it — setRemoteDescription hasn't finished yet
+          _pendingCandidates.add(candidate);
+        } else {
+          await _pc?.addCandidate(candidate);
+        }
         break;
 
       case 'call_declined':
@@ -321,8 +363,12 @@ class CallManager {
   }
 
   void _onWsClosed() {
-    if (_session.state == CallState.active ||
-        _session.state == CallState.connecting) {
+    // Fix 2B — if WebRTC is already active, the WS closing is expected
+    // (we closed _signalingServer above). Do NOT kill the live call.
+    if (_session.state == CallState.active) return;
+
+    // WS died during negotiation (connecting) — treat as network loss
+    if (_session.state == CallState.connecting) {
       _session = _session.copyWith(
         state: CallState.ended,
         endReason: CallEndReason.networkLoss,

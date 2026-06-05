@@ -216,8 +216,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             ListView.builder(
                               controller: _scrollController,
                               reverse: true,
-                              // We manage RepaintBoundaries manually via ValueKey
-                              addRepaintBoundaries: false,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                                 vertical: 12,
