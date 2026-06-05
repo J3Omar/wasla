@@ -495,12 +495,12 @@ class FileTransferService {
     String peerIp,
   ) async {
     debugPrint('[FileTransfer] acceptTransfer called for $transferId');
-    
+
     final hasPermission = await FileStorageService.instance
         .requestStoragePermission(context);
-        
+
     debugPrint('[FileTransfer] hasPermission = $hasPermission');
-        
+
     if (!hasPermission) {
       debugPrint('[FileTransfer] CANCELLED: permission denied');
       final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
@@ -525,12 +525,12 @@ class FileTransferService {
 
     final msg = ChatDatabase.instance.getMessageByTransferId(transferId);
     if (msg == null) return;
-    
+
     final hasSpace = await FileStorageService.instance
         .hasEnoughSpace(msg.fileSize ?? 0);
-        
+
     debugPrint('[FileTransfer] hasSpace = $hasSpace');
-    
+
     if (!hasSpace) {
       debugPrint('[FileTransfer] CANCELLED: not enough space');
       ChatDatabase.instance.updateFileTransfer(
