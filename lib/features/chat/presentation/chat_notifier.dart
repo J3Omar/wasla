@@ -11,7 +11,7 @@ import '../domain/chat_message.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
-const _kPageSize = 30;
+const _kPageSize = 20;
 const _uuid = Uuid();
 
 // ── Chat Page State ───────────────────────────────────────────────────────────
@@ -71,6 +71,7 @@ class ChatArgs {
 class ChatNotifier
     extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArgs> {
   StreamSubscription<List<ChatMessage>>? _dbSub;
+  Timer? _debounceTimer; // collapses rapid DB changes into one rebuild
   int _loadedCount = _kPageSize;
 
   @override
@@ -96,19 +97,23 @@ class ChatNotifier
     service.selfUuid ??= await storage.read(key: _kUuidKey) ?? '';
     service.selfName ??= await storage.read(key: _kNameKey) ?? 'Wasla User';
 
-    // Subscribe to DB changes — only rebuild if message list changes
+    // Subscribe to DB changes with a 50ms debounce to prevent double-rebuilds
+    // (e.g. insert + status update both trigger the stream within milliseconds).
     _dbSub = ChatDatabase.instance.watchMessages(arg.peerId).listen((msgs) {
-      if (state.hasValue) {
-        final current = state.value!;
-        // Merge new messages into current paginated list
-        // New messages are appended; already-loaded older messages keep pagination
-        state = AsyncData(
-          current.copyWith(messages: _mergeMessages(current.messages, msgs)),
-        );
-      }
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 50), () {
+        if (state.hasValue) {
+          final current = state.value!;
+          state = AsyncData(
+            current.copyWith(
+                messages: _mergeMessages(current.messages, msgs)),
+          );
+        }
+      });
     });
 
     ref.onDispose(() {
+      _debounceTimer?.cancel();
       _dbSub?.cancel();
       if (service.activeChatPeerId == arg.peerId) {
         service.activeChatPeerId = null;

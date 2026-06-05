@@ -8,7 +8,7 @@ import 'package:sqlite3/sqlite3.dart';
 import '../domain/chat_message.dart';
 import '../../file_sharing/domain/file_transfer_state.dart';
 
-const _kPageSize = 30;
+const _kPageSize = 20;
 
 /// Local SQLite persistence for chat messages using the sqlite3 package.
 /// No code generation required.
