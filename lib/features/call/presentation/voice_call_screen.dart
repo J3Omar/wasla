@@ -215,12 +215,12 @@ class _ControlsPill extends StatelessWidget {
             color: isMuted ? Colors.redAccent : AppColors.textSecondary,
             onTap: onMute,
           ),
-          // Speaker
+          // Speaker / Earpiece toggle
           _PillButton(
             icon: isSpeakerOn
                 ? Icons.volume_up_rounded
-                : Icons.volume_off_rounded,
-            label: 'Speaker',
+                : Icons.hearing_rounded,
+            label: isSpeakerOn ? 'Speaker' : 'Earpiece',
             color: isSpeakerOn
                 ? AppColors.primaryCyan
                 : AppColors.textSecondary,

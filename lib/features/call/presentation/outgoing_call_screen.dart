@@ -21,13 +21,39 @@ class OutgoingCallScreen extends ConsumerWidget {
       final s = next.valueOrNull;
       if (s == null) return;
       if (s.state == CallState.active) {
-        if (context.mounted) {
-          context.pushReplacement('/call/active');
-        }
+        if (context.mounted) context.pushReplacement('/call/active');
       } else if (s.state == CallState.ended) {
-        if (context.mounted) context.pop();
+        // Brief pause so "No answer" / "Declined" text is readable
+        Future.delayed(const Duration(seconds: 2), () {
+          if (context.mounted) context.pop();
+        });
       }
     });
+
+    // Status text driven by call state
+    final String statusText;
+    final Color statusColor;
+    switch (callState.state) {
+      case CallState.ended when callState.endReason == CallEndReason.missed:
+        statusText = 'No answer';
+        statusColor = Colors.orangeAccent;
+        break;
+      case CallState.ended when callState.endReason == CallEndReason.declined:
+        statusText = 'Call declined';
+        statusColor = Colors.redAccent;
+        break;
+      case CallState.ended when callState.endReason == CallEndReason.busy:
+        statusText = 'Device busy';
+        statusColor = Colors.redAccent;
+        break;
+      case CallState.connecting:
+        statusText = 'Connecting…';
+        statusColor = AppColors.primaryCyan;
+        break;
+      default:
+        statusText = 'Calling…';
+        statusColor = AppColors.textMuted;
+    }
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -60,9 +86,9 @@ class OutgoingCallScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Calling...',
+                  statusText,
                   style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.textMuted),
+                      .copyWith(color: statusColor),
                 ),
                 const Spacer(),
                 // End call button

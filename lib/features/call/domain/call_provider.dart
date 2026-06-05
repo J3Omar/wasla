@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/call_manager.dart';
 import '../domain/call_state.dart';
+import '../../chat/data/chat_notification_service.dart';
 
 const _kUuidKey = 'wasla_device_uuid';
 const _kNameKey = 'wasla_device_name';
@@ -70,6 +71,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String callerId,
     required String callerName,
   }) async {
+    // Cancel the heads-up notification now that the user has responded
+    await ChatNotificationService.instance.cancelCallNotification();
     _manager?.dispose();
     _manager = CallManager(
       selfUuid: _selfUuid,
@@ -92,6 +95,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String callerIp,
     required int signalingPort,
   }) async {
+    // Cancel the heads-up notification now that the user has responded
+    await ChatNotificationService.instance.cancelCallNotification();
     _manager?.dispose();
     _manager = CallManager(
       selfUuid: _selfUuid,
@@ -132,11 +137,28 @@ class CallNotifier extends AsyncNotifier<CallSession> {
           if (json['type'] == 'call_invite') {
             // Don't answer our own broadcasts
             if (json['from'] == _selfUuid) return;
+
+            final peerId = json['from'] as String;
+            final peerName = json['fromName'] as String? ?? 'Unknown';
+            // Prefer the embedded callerIp (set via getBestLocalIpFor) over
+            // UDP source address — critical for hotspot hosts
+            final callerIp = (json['callerIp'] as String?)?.isNotEmpty == true
+                ? json['callerIp'] as String
+                : dg.address.address;
+            final signalingPort = json['signalingPort'] as int;
+
+            // Show system notification so the user sees the call even when
+            // the app is in the background
+            ChatNotificationService.instance.showCallNotification(
+              callerName: peerName,
+              callerId: peerId,
+            );
+
             onIncomingCall?.call({
-              'peerId': json['from'] as String,
-              'peerName': json['fromName'] as String? ?? 'Unknown',
-              'callerIp': dg.address.address,
-              'signalingPort': json['signalingPort'] as int,
+              'peerId': peerId,
+              'peerName': peerName,
+              'callerIp': callerIp,
+              'signalingPort': signalingPort,
             });
           }
         } catch (_) {}

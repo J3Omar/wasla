@@ -97,4 +97,58 @@ class ChatNotificationService {
     if (!_initialized) return;
     await _plugin.cancelAll();
   }
+
+  // ── Voice Call Notifications ───────────────────────────────────────────────
+
+  static const _kCallNotifId = 99999;
+
+  /// Show a heads-up (or full-screen on Android) notification for an incoming
+  /// voice call. Used when the app is in background/killed so the user still
+  /// sees the call. Reuses the [flutter_local_notifications] plugin already
+  /// initialized in [initialize()].
+  Future<void> showCallNotification({
+    required String callerName,
+    required String callerId,
+  }) async {
+    if (!_initialized) return;
+
+    const androidDetails = AndroidNotificationDetails(
+      'wasla_calls',
+      'Voice Calls',
+      channelDescription: 'Incoming voice calls from LAN devices',
+      importance: Importance.max,
+      priority: Priority.max,
+      // fullScreenIntent shows the incoming-call UI even on lock screen
+      fullScreenIntent: true,
+      showWhen: false,
+      enableVibration: true,
+      playSound: true,
+      autoCancel: false,
+      ongoing: true, // stays visible until explicitly cancelled
+      category: AndroidNotificationCategory.call,
+    );
+
+    const linuxDetails = LinuxNotificationDetails(
+      urgency: LinuxNotificationUrgency.critical,
+    );
+
+    const details = NotificationDetails(
+      android: androidDetails,
+      linux: linuxDetails,
+    );
+
+    await _plugin.show(
+      _kCallNotifId,
+      '📞 Incoming call',
+      '$callerName is calling…',
+      details,
+      payload: callerId,
+    );
+  }
+
+  /// Dismiss the incoming call notification (when accepted or declined).
+  Future<void> cancelCallNotification() async {
+    if (!_initialized) return;
+    await _plugin.cancel(_kCallNotifId);
+  }
 }

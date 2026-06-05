@@ -7,6 +7,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 
 import '../domain/call_state.dart';
+import '../../../core/network/network_utils.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ class CallManager {
   MediaStream? _localStream;
   HttpServer? _signalingServer;
   WebSocket? _signalingWs;
+  Timer? _timeoutTimer; // 30s no-answer auto-end
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -72,6 +74,18 @@ class CallManager {
       peerId: peerId,
       peerName: peerName,
     );
+
+    // 30-second no-answer timeout → auto-end with "missed" reason
+    _timeoutTimer = Timer(const Duration(seconds: 30), () {
+      if (_session.state == CallState.outgoing) {
+        _session = _session.copyWith(
+          state: CallState.ended,
+          endReason: CallEndReason.missed,
+        );
+        onStateChanged(_session);
+        dispose();
+      }
+    });
   }
 
   // ── Incoming call (callee side) ───────────────────────────────────────────
@@ -106,7 +120,11 @@ class CallManager {
     await dispose();
   }
 
-  // ── Controls ─────────────────────────────────────────────────────────────
+  // Cancel timeout when call goes active (connection established)
+  void _cancelTimeout() {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+  }
 
   void toggleMute() {
     final tracks = _localStream?.getAudioTracks() ?? [];
@@ -167,6 +185,7 @@ class CallManager {
 
     pc.onConnectionState = (state) {
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _cancelTimeout(); // no longer need the 30s timeout
         _session = _session.copyWith(
           state: CallState.active,
           startedAt: DateTime.now(),
@@ -306,12 +325,17 @@ class CallManager {
     required String peerName,
   }) async {
     try {
+      // Use getBestLocalIpFor so hotspot hosts embed the correct interface IP
+      final localIp = await getBestLocalIpFor(peerIp);
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       final payload = utf8.encode(jsonEncode({
         'type': 'call_invite',
         'from': selfUuid,
         'fromName': selfName,
         'signalingPort': signalingPort,
+        // callerIp lets the callee use the correct interface IP explicitly;
+        // falls back to UDP source address if missing
+        'callerIp': localIp,
       }));
       socket.send(
         payload,
@@ -331,6 +355,8 @@ class CallManager {
   }
 
   Future<void> dispose() async {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
