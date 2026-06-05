@@ -9,7 +9,7 @@ import '../domain/call_state.dart';
 
 /// Shown when another device is calling this device.
 /// Passes [callerId], [callerName], [callerIp], [signalingPort] via extra.
-class IncomingCallScreen extends ConsumerWidget {
+class IncomingCallScreen extends ConsumerStatefulWidget {
   const IncomingCallScreen({
     super.key,
     required this.callerId,
@@ -24,15 +24,24 @@ class IncomingCallScreen extends ConsumerWidget {
   final int signalingPort;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Auto-navigate when call connects or is ended
+  ConsumerState<IncomingCallScreen> createState() => _IncomingCallScreenState();
+}
+
+class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
+  // Bug fix: prevent multiple rapid taps from triggering accept/decline twice
+  bool _isProcessing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Auto-navigate when call connects, or auto-dismiss when caller cancels
     ref.listen(callProvider, (_, next) {
       final s = next.valueOrNull;
       if (s == null) return;
       if (s.state == CallState.active) {
-        if (context.mounted) context.pushReplacement('/call/active');
+        if (mounted) context.pushReplacement('/call/active');
       } else if (s.state == CallState.ended) {
-        if (context.mounted) context.pop();
+        // Caller cancelled before we answered — pop immediately
+        if (mounted) context.pop();
       }
     });
 
@@ -58,10 +67,10 @@ class IncomingCallScreen extends ConsumerWidget {
               children: [
                 const Spacer(),
                 // Avatar
-                _IncomingAvatar(name: callerName),
+                _IncomingAvatar(name: widget.callerName),
                 const SizedBox(height: 24),
                 Text(
-                  callerName,
+                  widget.callerName,
                   style: AppTypography.heading2
                       .copyWith(color: AppColors.textPrimary),
                 ),
@@ -72,7 +81,7 @@ class IncomingCallScreen extends ConsumerWidget {
                       .copyWith(color: AppColors.textMuted),
                 ),
                 const Spacer(),
-                // Accept / Decline row
+                // Accept / Decline row — centered with equal spacing
                 Padding(
                   padding: const EdgeInsets.only(bottom: 60),
                   child: Row(
@@ -83,27 +92,35 @@ class IncomingCallScreen extends ConsumerWidget {
                         icon: Icons.call_end_rounded,
                         color: Colors.redAccent,
                         label: 'Decline',
-                        onTap: () {
-                          ref.read(callProvider.notifier).declineCall(
-                                callerIp: callerIp,
-                                signalingPort: signalingPort,
-                              );
-                          context.pop();
-                        },
+                        onTap: _isProcessing
+                            ? null
+                            : () {
+                                setState(() => _isProcessing = true);
+                                ref.read(callProvider.notifier).declineCall(
+                                      callerIp: widget.callerIp,
+                                      signalingPort: widget.signalingPort,
+                                    );
+                                if (mounted) context.pop();
+                              },
                       ),
                       // Accept
                       _CallButton(
                         icon: Icons.call_rounded,
                         color: AppColors.statusOnline,
                         label: 'Accept',
-                        onTap: () {
-                          ref.read(callProvider.notifier).acceptCall(
-                                callerIp: callerIp,
-                                signalingPort: signalingPort,
-                                callerId: callerId,
-                                callerName: callerName,
-                              );
-                        },
+                        onTap: _isProcessing
+                            ? null
+                            : () {
+                                setState(() => _isProcessing = true);
+                                ref.read(callProvider.notifier).acceptCall(
+                                      callerIp: widget.callerIp,
+                                      signalingPort: widget.signalingPort,
+                                      callerId: widget.callerId,
+                                      callerName: widget.callerName,
+                                    );
+                                // Navigation to /call/active is handled by
+                                // ref.listen when state becomes active
+                              },
                       ),
                     ],
                   ),
@@ -225,20 +242,26 @@ class _CallButton extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String label;
-  final VoidCallback onTap;
+  /// Null disables the button (processing guard).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = onTap == null;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
           onTap: onTap,
-          child: Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 32),
+          child: AnimatedOpacity(
+            opacity: isDisabled ? 0.5 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white, size: 32),
+            ),
           ),
         ),
         const SizedBox(height: 10),

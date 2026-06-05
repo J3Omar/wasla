@@ -91,25 +91,27 @@ class OutgoingCallScreen extends ConsumerWidget {
                       .copyWith(color: statusColor),
                 ),
                 const Spacer(),
-                // End call button
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 60),
-                  child: GestureDetector(
-                    onTap: () {
-                      ref.read(callProvider.notifier).endCall();
-                      context.pop();
-                    },
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.call_end_rounded,
-                        color: Colors.white,
-                        size: 32,
+                // End call button — explicitly centered
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 60),
+                    child: GestureDetector(
+                      onTap: () {
+                        ref.read(callProvider.notifier).endCall();
+                        context.pop();
+                      },
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.call_end_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
                       ),
                     ),
                   ),

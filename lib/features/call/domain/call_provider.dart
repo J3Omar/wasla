@@ -134,6 +134,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         try {
           final json =
               jsonDecode(utf8.decode(dg.data)) as Map<String, dynamic>;
+
+          // ── Incoming call invite ──────────────────────────────────────────
           if (json['type'] == 'call_invite') {
             // Don't answer our own broadcasts
             if (json['from'] == _selfUuid) return;
@@ -146,6 +148,16 @@ class CallNotifier extends AsyncNotifier<CallSession> {
                 ? json['callerIp'] as String
                 : dg.address.address;
             final signalingPort = json['signalingPort'] as int;
+
+            // Mark callee provider as 'incoming' so ref.listen on
+            // IncomingCallScreen can react to any future state change
+            // (e.g. caller cancels → state becomes ended → screen pops)
+            state = AsyncData(CallSession(
+              state: CallState.incoming,
+              peerId: peerId,
+              peerName: peerName,
+              peerIp: callerIp,
+            ));
 
             // Show system notification so the user sees the call even when
             // the app is in the background
@@ -160,6 +172,21 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               'callerIp': callerIp,
               'signalingPort': signalingPort,
             });
+          }
+
+          // ── Caller cancelled before callee answered ───────────────────────
+          else if (json['type'] == 'call_cancelled') {
+            if (json['from'] == _selfUuid) return;
+            // Only dismiss if we are currently in incoming state for this peer
+            final current = state.valueOrNull;
+            if (current?.state == CallState.incoming &&
+                current?.peerId == json['from']) {
+              ChatNotificationService.instance.cancelCallNotification();
+              state = AsyncData(current!.copyWith(
+                state: CallState.ended,
+                endReason: CallEndReason.normal,
+              ));
+            }
           }
         } catch (_) {}
       });

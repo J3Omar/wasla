@@ -143,15 +143,20 @@ class CallManager {
   }
 
   Future<void> endCall() async {
+    // If still ringing (WS not yet established), notify via UDP cancel packet
+    if (_session.state == CallState.outgoing && _session.peerIp.isNotEmpty) {
+      await _sendCancelInvite(peerIp: _session.peerIp);
+    } else {
+      // Active/connecting — notify remote peer via existing WS
+      try {
+        _signalingWs?.add(jsonEncode({'type': 'call_ended', 'from': selfUuid}));
+      } catch (_) {}
+    }
     _session = _session.copyWith(
       state: CallState.ended,
       endReason: CallEndReason.normal,
     );
     onStateChanged(_session);
-    // Notify remote peer
-    try {
-      _signalingWs?.add(jsonEncode({'type': 'call_ended', 'from': selfUuid}));
-    } catch (_) {}
     await dispose();
   }
 
@@ -342,6 +347,20 @@ class CallManager {
         InternetAddress(peerIp),
         kCallInviteUdpPort,
       );
+      socket.close();
+    } catch (_) {}
+  }
+
+  /// Sends a UDP packet telling the callee the call was cancelled
+  /// (used when caller hangs up before callee accepts).
+  Future<void> _sendCancelInvite({required String peerIp}) async {
+    try {
+      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final payload = utf8.encode(jsonEncode({
+        'type': 'call_cancelled',
+        'from': selfUuid,
+      }));
+      socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
       socket.close();
     } catch (_) {}
   }
