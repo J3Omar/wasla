@@ -243,7 +243,7 @@ class _DeviceCard extends ConsumerWidget {
                               );
                               debugPrint('[HomeScreen] Microphone permission granted: $granted');
                               if (!granted) return;
-                              await ref
+                              final success = await ref
                                   .read(callProvider.notifier)
                                   .startCall(
                                     peerId: device.uuid,
@@ -252,7 +252,11 @@ class _DeviceCard extends ConsumerWidget {
                                   );
                               debugPrint('[HomeScreen] startCall completed, navigating to outgoing...');
                               if (context.mounted) {
-                                context.push('/call/outgoing');
+                                if (success) {
+                                  context.push('/call/outgoing');
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot place call right now.')));
+                                }
                               }
                             } catch (e, stack) {
                               debugPrint('[HomeScreen] Error initiating call: $e\n$stack');

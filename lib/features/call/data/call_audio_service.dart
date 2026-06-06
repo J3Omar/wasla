@@ -41,11 +41,9 @@ class CallAudioService {
           stayAwake: false,
         ),
         iOS: AudioContextIOS(
-          category: (androidUsage == AndroidUsageType.voiceCommunication)
-              ? AVAudioSessionCategory.playback
-              : AVAudioSessionCategory.playback,
+          category: AVAudioSessionCategory.playAndRecord,
           options: const {
-            AVAudioSessionOptions.duckOthers,
+            AVAudioSessionOptions.defaultToSpeaker,
             AVAudioSessionOptions.allowBluetooth,
           },
         ),
@@ -137,6 +135,34 @@ class CallAudioService {
       await _notifPlayer.play(AssetSource('audio/notification.mp3'));
     } catch (e) {
       debugPrint('[CallAudio] playNotification error: $e');
+    }
+  }
+
+  /// Play a short sound when the user successfully sends a chat message.
+  /// Uses [AndroidUsageType.notification] → respects notification volume.
+  Future<void> playMessageSent() async {
+    if (!_isAudioEnabled) return;
+    try {
+      await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      await _notifPlayer.setReleaseMode(ReleaseMode.stop);
+      await _notifPlayer.stop(); // Clean cut off for rapid fire
+      await _notifPlayer.play(AssetSource('audio/sent.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playMessageSent error: $e');
+    }
+  }
+
+  /// Play a short sound when a new chat message is received while in-app.
+  /// Uses [AndroidUsageType.notification] → respects notification volume.
+  Future<void> playMessageReceived() async {
+    if (!_isAudioEnabled) return;
+    try {
+      await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      await _notifPlayer.setReleaseMode(ReleaseMode.stop);
+      await _notifPlayer.stop(); // Clean cut off for rapid fire
+      await _notifPlayer.play(AssetSource('audio/received.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playMessageReceived error: $e');
     }
   }
 

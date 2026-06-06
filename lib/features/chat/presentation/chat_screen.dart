@@ -15,6 +15,7 @@ import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
 import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../call/domain/call_provider.dart';
+import '../../call/data/call_audio_service.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/utils/smart_permission_handler.dart';
@@ -190,11 +191,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .read(chatProvider(_args).notifier)
           .sendMessage(text, freshPeerIp: peerIp);
       _inputController.clear();
+      // Play sent sound (fire-and-forget — never blocks the UI)
+      CallAudioService.instance.playMessageSent();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Listen for new incoming messages to play WhatsApp-style received sound
+    ref.listen(chatProvider(_args), (previous, next) {
+      final prevList = previous?.valueOrNull?.messages;
+      final nextList = next.valueOrNull?.messages;
+      if (prevList != null && nextList != null && nextList.isNotEmpty) {
+        final newest = nextList.first;
+        // If the newest message is different, and it's NOT from us, play sound!
+        if (prevList.isEmpty || newest.id != prevList.first.id) {
+          if (!newest.isSent) {
+            CallAudioService.instance.playMessageReceived();
+          }
+        }
+      }
+    });
+
     // Outer build() is now nearly static — only rebuilds when _selectedFile
     // changes (file pick/cancel). All message & selection rendering is isolated.
     return ValueListenableBuilder(
@@ -486,8 +504,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       currentDevice = devicesState.value[_args.peerId];
     }
 
-    final displayDevice =
-        currentDevice ?? widget.device ?? _resolvedDevice?.copyWith(status: DeviceStatus.offline);
+    final displayDevice = currentDevice ?? 
+        widget.device?.copyWith(status: DeviceStatus.offline) ?? 
+        _resolvedDevice?.copyWith(status: DeviceStatus.offline);
 
     if (displayDevice == null) {
       return AppBar();
@@ -574,14 +593,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               debugPrint('[ChatScreen] Microphone permission granted: $granted');
               if (!granted) return;
               final peerIp = _bestPeerIp();
-              await ref.read(callProvider.notifier).startCall(
+              final success = await ref.read(callProvider.notifier).startCall(
                     peerId: _args.peerId,
                     peerName: _args.peerName,
                     peerIp: peerIp,
                   );
               debugPrint('[ChatScreen] startCall completed, navigating...');
               if (mounted) {
-                context.push('/call/outgoing');
+                if (success) {
+                  context.push('/call/outgoing');
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot place call. You are currently in another call.')));
+                }
               }
             } catch (e, stack) {
               debugPrint('[ChatScreen] Error initiating call: $e\n$stack');

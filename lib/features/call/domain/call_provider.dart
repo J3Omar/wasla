@@ -53,21 +53,37 @@ class CallNotifier extends AsyncNotifier<CallSession> {
   // ── Public API ────────────────────────────────────────────────────────────
 
   /// Initiate an outgoing call to a peer.
-  Future<void> startCall({
+  Future<bool> startCall({
     required String peerId,
     required String peerName,
     required String peerIp,
   }) async {
+    final currentState = state.valueOrNull?.state ?? CallState.idle;
+    if (currentState != CallState.idle && currentState != CallState.ended) {
+      debugPrint('[CallProvider] Cannot start a new call while in $currentState state.');
+      return false; // Prevent navigation
+    }
+
     _manager?.dispose();
     // Bug 2: mark self as busy so peer devices stop showing us as available
     ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.busy);
     _manager = CallManager(
       selfUuid: _selfUuid,
       selfName: _selfName,
-      onStateChanged: (s) => state = AsyncData(s),
+      onStateChanged: (s) {
+        state = AsyncData(s);
+        if (s.state == CallState.active) {
+          // Cancel our custom notification — flutter_background owns the ongoing foreground one
+          ChatNotificationService.instance.cancelCallNotification();
+        } else if (s.state == CallState.ended || s.state == CallState.idle) {
+          ChatNotificationService.instance.cancelCallNotification();
+          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
+        }
+      },
     );
     await _manager!.startCall(
         peerId: peerId, peerName: peerName, peerIp: peerIp);
+    return true;
   }
 
   /// Accept an incoming call after user taps "Accept".
@@ -77,8 +93,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String callerId,
     required String callerName,
   }) async {
-    // Cancel the heads-up notification and stop ringtone
-    await ChatNotificationService.instance.cancelCallNotification();
+    // Remove cancelCallNotification from here, handled cleanly in onStateChanged
     await CallAudioService.instance.stopAll();
     _manager?.dispose();
     // Bug 2: mark self as busy so peer devices stop showing us as available
@@ -86,7 +101,16 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     _manager = CallManager(
       selfUuid: _selfUuid,
       selfName: _selfName,
-      onStateChanged: (s) => state = AsyncData(s),
+      onStateChanged: (s) {
+        state = AsyncData(s);
+        if (s.state == CallState.active) {
+          // Cancel our custom notification — flutter_background owns the ongoing foreground one
+          ChatNotificationService.instance.cancelCallNotification();
+        } else if (s.state == CallState.ended || s.state == CallState.idle) {
+          ChatNotificationService.instance.cancelCallNotification();
+          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
+        }
+      },
     );
     // Pre-set session so screens show peer name immediately
     state = AsyncData(CallSession(
@@ -126,8 +150,6 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     await _manager?.endCall();
     _manager = null;
     state = const AsyncData(CallSession.idle);
-    // Bug 2: call ended — revert to available so peers can call again
-    ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
   }
 
   // ── UDP invite listener ───────────────────────────────────────────────────
@@ -164,28 +186,26 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             final currentState = state.valueOrNull?.state ?? CallState.idle;
             if (currentState != CallState.idle && currentState != CallState.ended) {
               if (currentState == CallState.outgoing) {
-                // Glare Resolution: Higher UUID wins
-                if (_selfUuid.compareTo(peerId) > 0) {
-                  debugPrint('[Call] Glare resolved: My UUID is higher. Ignoring incoming invite.');
-                  return;
-                } else {
-                  debugPrint('[Call] Glare resolved: Peer UUID is higher. Canceling my call and accepting theirs.');
-                  _manager?.dispose();
-                }
+                 debugPrint('[Call] Glare detected (Simultaneous Call). Dropping incoming invite gracefully.');
+                 // Send call_rejected so the other side doesn't wait indefinitely
+                 try {
+                   RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((socket) {
+                     final payload = utf8.encode(jsonEncode({'type': 'call_rejected', 'from': _selfUuid}));
+                     socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
+                     socket.close();
+                   });
+                 } catch (_) {}
+                 return;
               } else {
-                // I am already in an active call with someone else
-                // Send UDP "call_rejected" (busy) back to the caller
-                try {
-                  RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((socket) {
-                    final payload = utf8.encode(jsonEncode({
-                      'type': 'call_rejected',
-                      'from': _selfUuid,
-                    }));
-                    socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
-                    socket.close();
-                  });
-                } catch (_) {}
-                return;
+                 // Already in an active call with someone else
+                 try {
+                   RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((socket) {
+                     final payload = utf8.encode(jsonEncode({'type': 'call_rejected', 'from': _selfUuid}));
+                     socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
+                     socket.close();
+                   });
+                 } catch (_) {}
+                 return;
               }
             }
 

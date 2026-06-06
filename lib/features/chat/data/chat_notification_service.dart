@@ -62,13 +62,15 @@ class ChatNotificationService {
     final notifId = peerId.hashCode.abs() % 100000;
 
     const androidDetails = AndroidNotificationDetails(
-      'wasla_messages',
+      'wasla_messages_v2',
       'Messages',
       channelDescription: 'New chat messages from LAN devices',
       importance: Importance.high,
       priority: Priority.high,
       showWhen: true,
       enableVibration: true,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound('notification'),
       autoCancel: true,
       styleInformation: BigTextStyleInformation(''),
     );
@@ -113,7 +115,7 @@ class ChatNotificationService {
     if (!_initialized) return;
 
     const androidDetails = AndroidNotificationDetails(
-      'wasla_calls',
+      'wasla_calls_v2',
       'Voice Calls',
       channelDescription: 'Incoming voice calls from LAN devices',
       importance: Importance.max,
@@ -122,7 +124,7 @@ class ChatNotificationService {
       fullScreenIntent: true,
       showWhen: false,
       enableVibration: true,
-      playSound: true,
+      playSound: false, // Mute system notification to avoid double-audio
       autoCancel: false,
       ongoing: true, // stays visible until explicitly cancelled
       category: AndroidNotificationCategory.call,
@@ -150,5 +152,23 @@ class ChatNotificationService {
   Future<void> cancelCallNotification() async {
     if (!_initialized) return;
     await _plugin.cancel(_kCallNotifId);
+  }
+
+  Future<void> updateToOngoingCall({required String peerName}) async {
+    if (!_initialized) return;
+    const androidDetails = AndroidNotificationDetails(
+      'wasla_calls_v2',
+      'Voice Calls',
+      ongoing: true,
+      playSound: false,
+      autoCancel: false,
+      importance: Importance.low, // Lower importance so it stays quiet in status bar
+    );
+    await _plugin.show(
+      _kCallNotifId,
+      'Ongoing Call',
+      'Talking to $peerName',
+      const NotificationDetails(android: androidDetails),
+    );
   }
 }

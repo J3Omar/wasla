@@ -45,13 +45,9 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
     final isConnecting = callState.state == CallState.connecting ||
         callState.state == CallState.incoming;
 
-    final initials = callState.peerName.isNotEmpty
-        ? callState.peerName
-            .trim()
-            .split(' ')
-            .map((w) => w[0])
-            .take(2)
-            .join()
+    final String cleanName = callState.peerName.trim();
+    final String initials = cleanName.isNotEmpty
+        ? cleanName.split(RegExp(r'\s+')).take(2).map((w) => w.isNotEmpty ? w[0].toUpperCase() : '').join()
         : '?';
 
     return Scaffold(
@@ -153,7 +149,6 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                         ref.read(callProvider.notifier).toggleSpeaker(),
                     onEnd: () {
                       ref.read(callProvider.notifier).endCall();
-                      context.pop();
                     },
                   ),
                 ),

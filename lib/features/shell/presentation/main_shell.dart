@@ -13,7 +13,10 @@ import '../../chat/data/chat_database.dart';
 import '../../chat/data/chat_notification_service.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../profile/presentation/profile_screen.dart';
+import 'dart:io';
 import '../../call/domain/call_provider.dart';
+import '../../call/data/call_audio_service.dart';
+import '../../discovery/data/discovery_service.dart';
 
 /// Top-level navigation shell with 3 tabs.
 class MainShell extends ConsumerStatefulWidget {
@@ -28,9 +31,17 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   static const _tabs = [HomeScreen(), ChatsListScreen(), ProfileScreen()];
 
+  late final AppLifecycleListener _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
+    _lifecycleListener = AppLifecycleListener(
+      onDetach: () {
+        // Best-effort offline broadcast before process dies
+        ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.offline);
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Open database
       await ChatDatabase.instance.open();
@@ -51,13 +62,17 @@ class _MainShellState extends ConsumerState<MainShell> {
 
       // Wire notification display when a message arrives in background
       service.onMessageReceived = (peerId, senderName, content) {
-        // Only show notification if user is NOT in this specific chat
+        // Only show OS notification if user is NOT in this specific chat
         if (service.activeChatPeerId != peerId) {
           ChatNotificationService.instance.showMessageNotification(
             senderName: senderName,
             content: content,
             peerId: peerId,
           );
+          // Desktop fallback: flutter_local_notifications won't play mp3s on Linux/Windows
+          if (!Platform.isAndroid && !Platform.isIOS) {
+            CallAudioService.instance.playMessageReceived();
+          }
         }
       };
 
@@ -92,6 +107,12 @@ class _MainShellState extends ConsumerState<MainShell> {
         );
       };
     });
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
   }
 
   @override

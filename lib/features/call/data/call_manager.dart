@@ -158,6 +158,9 @@ class CallManager {
     _timeoutTimer = Timer(const Duration(seconds: 30), () {
       if (_session.state == CallState.outgoing) {
         CallAudioService.instance.stopAll(); // stop ringback
+        // Tell the callee to stop ringing before we dispose
+        _sendCancelInvite(peerIp: _session.peerIp);
+        
         _session = _session.copyWith(
           state: CallState.ended,
           endReason: CallEndReason.missed,
@@ -193,7 +196,9 @@ class CallManager {
       await _connectToSignalingServer(callerIp, signalingPort);
       debugPrint('[CallManager] acceptCall: Connected to signaling server successfully.');
     } catch (e, stack) {
-      debugPrint('[CallManager] acceptCall error in _connectToSignalingServer: $e\n$stack');
+      debugPrint('[CallManager] SocketException: Could not connect to signaling server: $e\n$stack');
+      await endCall();
+      return;
     }
   }
 
@@ -265,7 +270,10 @@ class CallManager {
       try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
     }
     await CallAudioService.instance.stopAll();
-    if (wasActive) await CallAudioService.instance.playEndSound();
+    if (wasActive) {
+      // DO NOT AWAIT — fire-and-forget so the chime plays while WebRTC disposes
+      CallAudioService.instance.playEndSound();
+    }
     await dispose();
   }
 
@@ -329,11 +337,13 @@ class CallManager {
           }));
         } catch (_) {}
 
-        // Free the listening port — no more SDP/ICE needed
-        _signalingServer?.close().catchError((_) {});
-        _signalingServer = null;
+
+        if (!kIsWeb && Platform.isAndroid) {
+          try { await Helper.setSpeakerphoneOn(false); } catch (_) {}
+        }
         _session = _session.copyWith(
           state: CallState.active,
+          isSpeakerOn: false,
           startedAt: DateTime.now().toUtc(),
         );
         onStateChanged(_session);
@@ -614,7 +624,6 @@ class CallManager {
     if (!kIsWeb && Platform.isAndroid) {
       try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
     }
-    await CallAudioService.instance.stopAll(); // safety net — idempotent
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
     try {

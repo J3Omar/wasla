@@ -128,16 +128,22 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                                   setState(() => _isProcessing = true);
                                   // Start WebRTC in background
                                   debugPrint('[IncomingCallScreen] Calling acceptCall...');
-                                  ref.read(callProvider.notifier).acceptCall(
+                                  await ref.read(callProvider.notifier).acceptCall(
                                         callerIp: widget.callerIp,
                                         signalingPort: widget.signalingPort,
                                         callerId: widget.callerId,
                                         callerName: widget.callerName,
                                       );
                                   debugPrint('[IncomingCallScreen] acceptCall returned, navigating...');
-                                  // Navigate immediately — don't wait for WebRTC
+                                  // Only navigate if the state didn't instantly revert to ended (due to socket failure)
                                   if (context.mounted) {
-                                    context.pushReplacement('/call/active');
+                                     final currentState = ref.read(callProvider).valueOrNull?.state;
+                                     if (currentState != CallState.ended && currentState != CallState.idle) {
+                                       context.pushReplacement('/call/active');
+                                     } else {
+                                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connection failed.')));
+                                       context.pop();
+                                     }
                                   }
                                 } catch (e, stack) {
                                   debugPrint('[IncomingCallScreen] Error accepting call: $e\n$stack');
