@@ -19,34 +19,14 @@ class VoiceCallScreen extends ConsumerStatefulWidget {
 }
 
 class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
-  Timer? _timer;
-  Duration _elapsed = Duration.zero;
-  bool _isActive = false; // true once WebRTC connects
-
   @override
   void initState() {
     super.initState();
-    // Don't start timer yet — start when WebRTC becomes active
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
-    });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     super.dispose();
-  }
-
-  String _formatDuration(Duration d) {
-    final h = d.inHours.toString().padLeft(2, '0');
-    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
-    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return d.inHours > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
   @override
@@ -57,11 +37,6 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
     ref.listen(callProvider, (prev, next) {
       final s = next.valueOrNull;
       if (s == null) return;
-      if (s.state == CallState.active && !_isActive) {
-        // WebRTC just connected — start the call timer
-        setState(() => _isActive = true);
-        _startTimer();
-      }
       if (s.state == CallState.ended) {
         if (mounted) context.pop();
       }
@@ -161,11 +136,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                         .copyWith(color: AppColors.primaryCyan),
                   )
                 else
-                  Text(
-                    _formatDuration(_elapsed),
-                    style: AppTypography.bodyMedium
-                        .copyWith(color: AppColors.primaryCyan),
-                  ),
+                  CallTimerWidget(startedAt: callState.startedAt),
                 const Spacer(),
                 // ── Controls pill ──────────────────────────────────────────────────
                 Padding(
@@ -316,6 +287,39 @@ class _PillButton extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class CallTimerWidget extends StatelessWidget {
+  const CallTimerWidget({super.key, this.startedAt});
+  final DateTime? startedAt;
+
+  String _formatDuration(Duration d) {
+    final h = d.inHours.toString().padLeft(2, '0');
+    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (startedAt == null) {
+      return Text(
+        '00:00:00',
+        style: AppTypography.bodyMedium.copyWith(color: AppColors.primaryCyan),
+      );
+    }
+
+    return StreamBuilder(
+      stream: Stream.periodic(const Duration(seconds: 1)),
+      builder: (context, snapshot) {
+        final elapsed = DateTime.now().difference(startedAt!);
+        return Text(
+          _formatDuration(elapsed),
+          style: AppTypography.bodyMedium.copyWith(color: AppColors.primaryCyan),
+        );
+      },
     );
   }
 }

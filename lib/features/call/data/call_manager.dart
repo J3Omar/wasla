@@ -52,6 +52,9 @@ class CallManager {
   // Fix 2F — Android foreground service state.
   bool _backgroundActive = false;
 
+  // Bug 3: ICE restart guard
+  bool _iceRestartAttempted = false;
+
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
 
@@ -257,6 +260,10 @@ class CallManager {
       endReason: CallEndReason.normal,
     );
     onStateChanged(_session);
+    // Strict teardown: WebRTC releases AudioManager first, then audio plays
+    if (!kIsWeb && Platform.isAndroid) {
+      try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+    }
     await CallAudioService.instance.stopAll();
     if (wasActive) await CallAudioService.instance.playEndSound();
     await dispose();
@@ -268,14 +275,25 @@ class CallManager {
   static const _kMaxPort = 46200;
 
   Future<MediaStream> _getLocalAudioStream() async {
-    return await navigator.mediaDevices.getUserMedia({
+    final Map<String, dynamic> mediaConstraints = {
       'audio': {
-        'echoCancellation': true,
-        'noiseSuppression': true,
-        'autoGainControl': true,
+        'mandatory': {
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+          'googEchoCancellation': true,
+          'googAutoGainControl': true,
+          'googNoiseSuppression': true,
+          'googHighpassFilter': true,
+          'googTypingNoiseDetection': true,
+          'googAudioMirroring': false,
+          'googEchoCancellationMobile': true,
+        },
+        'optional': [],
       },
       'video': false,
-    });
+    };
+    return await navigator.mediaDevices.getUserMedia(mediaConstraints);
   }
 
   Future<RTCPeerConnection> _createPeerConnection() async {
@@ -296,25 +314,44 @@ class CallManager {
     pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _iceRestartAttempted = false; // Reset on success
         _cancelTimeout();
-        await CallAudioService.instance.stopAll(); // stop ringback
+        // Safety net only — audio handoff already happened before getUserMedia
+        await CallAudioService.instance.stopAll();
+
+        // Phase 2 — Caller broadcasts authoritative UTC start time to Callee
+        // so both timers begin from the exact same origin.
+        final nowIso = DateTime.now().toUtc().toIso8601String();
+        try {
+          _signalingWs?.add(jsonEncode({
+            'type': 'call_start_sync',
+            'startedAt': nowIso,
+          }));
+        } catch (_) {}
+
         // Free the listening port — no more SDP/ICE needed
         _signalingServer?.close().catchError((_) {});
         _signalingServer = null;
         _session = _session.copyWith(
           state: CallState.active,
-          startedAt: DateTime.now(),
+          startedAt: DateTime.now().toUtc(),
         );
         onStateChanged(_session);
-      } else if (state ==
-              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        _session = _session.copyWith(
-          state: CallState.ended,
-          endReason: CallEndReason.networkLoss,
-        );
-        onStateChanged(_session);
-        dispose();
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+                 state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        
+        if (!_iceRestartAttempted) {
+           _iceRestartAttempted = true;
+           debugPrint('[Call] Attempting ICE restart due to Disconnected/Failed state...');
+           await _pc?.restartIce();
+           
+           // Fallback terminator: If it doesn't recover within 10 seconds, end it cleanly
+           Future.delayed(const Duration(seconds: 10), () async {
+             if (_pc?.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+               await endCall();
+             }
+           });
+        }
       }
     };
 
@@ -363,6 +400,13 @@ class CallManager {
   }
 
   Future<void> _initiateOffer() async {
+    // Strict audio handoff sequence (Phase 1 Fix):
+    // Stop looping audio → release AudioFocus → WebRTC takes over AudioManager
+    await CallAudioService.instance.stopAll();
+    await CallAudioService.instance.releaseAudioFocus();
+    if (!kIsWeb && Platform.isAndroid) {
+      try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication); } catch (_) {}
+    }
     _localStream = await _getLocalAudioStream();
     _pc = await _createPeerConnection();
     for (final track in _localStream!.getAudioTracks()) {
@@ -376,6 +420,13 @@ class CallManager {
   void _handleSignal(Map<String, dynamic> signal) async {
     switch (signal['type']) {
       case 'offer':
+        // Strict audio handoff sequence (Phase 1 Fix):
+        // Stop looping audio → release AudioFocus → WebRTC takes over AudioManager
+        await CallAudioService.instance.stopAll();
+        await CallAudioService.instance.releaseAudioFocus();
+        if (!kIsWeb && Platform.isAndroid) {
+          try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication); } catch (_) {}
+        }
         _localStream = await _getLocalAudioStream();
         _pc = await _createPeerConnection();
         for (final track in _localStream!.getAudioTracks()) {
@@ -415,6 +466,21 @@ class CallManager {
         _pendingCandidates.clear();
         break;
 
+      case 'call_start_sync':
+        // Phase 2 — Callee receives the Caller's authoritative UTC start time.
+        // Parsing it and storing in _session means the UI timer on both devices
+        // computes elapsed from the same shared origin — no drift.
+        final raw = signal['startedAt'] as String?;
+        if (raw != null) {
+          final callerStart = DateTime.parse(raw).toLocal();
+          _session = _session.copyWith(
+            state: CallState.active,
+            startedAt: callerStart,
+          );
+          onStateChanged(_session);
+        }
+        break;
+
       case 'ice':
         final c = signal['candidate'];
         final candidate = RTCIceCandidate(
@@ -438,6 +504,9 @@ class CallManager {
           declineCount: count,
         );
         onStateChanged(_session);
+        if (!kIsWeb && Platform.isAndroid) {
+          try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+        }
         await CallAudioService.instance.stopAll();
         await CallAudioService.instance.playEndSound();
         await dispose();
@@ -449,6 +518,9 @@ class CallManager {
           endReason: CallEndReason.normal,
         );
         onStateChanged(_session);
+        if (!kIsWeb && Platform.isAndroid) {
+          try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+        }
         await CallAudioService.instance.stopAll();
         await CallAudioService.instance.playEndSound();
         await dispose();
@@ -538,6 +610,10 @@ class CallManager {
 
   Future<void> dispose() async {
     _disableBackground(); // Fix 2F — release foreground service in ALL cases
+    // Safety net: release WebRTC AudioManager in case dispose() fires directly
+    if (!kIsWeb && Platform.isAndroid) {
+      try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+    }
     await CallAudioService.instance.stopAll(); // safety net — idempotent
     _timeoutTimer?.cancel();
     _timeoutTimer = null;

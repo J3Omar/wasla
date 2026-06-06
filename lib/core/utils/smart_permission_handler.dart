@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_colors.dart'; // Ensure AppColors is imported
@@ -10,6 +11,9 @@ class SmartPermissionHandler {
     String permissionName, // e.g. "Microphone"
     String reasonText, // e.g. "so you can make voice calls"
   ) async {
+    // Bypass on desktop platforms (permission_handler doesn't support Linux properly)
+    if (!Platform.isAndroid && !Platform.isIOS) return true;
+
     var status = await permission.status;
 
     if (status.isGranted) return true;

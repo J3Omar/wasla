@@ -53,9 +53,13 @@ class CallAudioService {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
+  // Set to false to bypass all audio (used during WebRTC crash isolation testing)
+  final bool _isAudioEnabled = true;
+
   /// Loop the incoming ringtone.
   /// Uses [AndroidUsageType.notificationRingtone] → respects silent/vibrate.
   Future<void> playRingtone() async {
+    if (!_isAudioEnabled) return;
     debugPrint('[CallAudioService] playRingtone invoked');
     try {
       await _callPlayer.setAudioContext(
@@ -72,6 +76,7 @@ class CallAudioService {
   /// Loop the outgoing ringback tone.
   /// Uses [AndroidUsageType.voiceCommunication] → voice call volume stream.
   Future<void> playRingback() async {
+    if (!_isAudioEnabled) return;
     debugPrint('[CallAudioService] playRingback invoked');
     try {
       await _callPlayer
@@ -88,14 +93,26 @@ class CallAudioService {
   /// Stop all looping call audio immediately.
   /// Idempotent — safe to call multiple times.
   Future<void> stopAll() async {
+    if (!_isAudioEnabled) return;
     try {
       await _callPlayer.stop();
+    } catch (_) {}
+  }
+
+  /// Release the AudioPlayer's audio focus so WebRTC can take full
+  /// control of the Android AudioManager without a routing collision.
+  /// Must be awaited BEFORE calling getUserMedia().
+  Future<void> releaseAudioFocus() async {
+    try {
+      await _callPlayer.stop();
+      await _callPlayer.release();
     } catch (_) {}
   }
 
   /// Play the short call-ended chime (non-looping).
   /// Always call [stopAll] first to clear any looping sound.
   Future<void> playEndSound() async {
+    if (!_isAudioEnabled) return;
     debugPrint('[CallAudioService] playEndSound invoked');
     try {
       await _callPlayer
@@ -113,6 +130,7 @@ class CallAudioService {
   /// Uses [AndroidUsageType.notification] → notification volume stream.
   /// Uses a separate player so it never interrupts call audio.
   Future<void> playNotification() async {
+    if (!_isAudioEnabled) return;
     try {
       await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
       await _notifPlayer.setReleaseMode(ReleaseMode.stop);

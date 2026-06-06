@@ -24,8 +24,9 @@ import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, required this.device});
-  final Device device;
+  const ChatScreen({super.key, required this.deviceId, this.device});
+  final String deviceId;
+  final Device? device;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -44,20 +45,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isLoadingMore = false;
 
   late final ChatArgs _args;
+  late final Device? _resolvedDevice;
 
   @override
   void initState() {
     super.initState();
+
+    if (widget.device != null) {
+      _resolvedDevice = widget.device;
+    } else {
+      final devicesMap = ref.read(discoveryServiceProvider).valueOrNull ?? {};
+      _resolvedDevice = devicesMap[widget.deviceId];
+    }
+
+    final peerId = widget.deviceId;
+    final peerIp = _resolvedDevice?.localIp ?? '127.0.0.1';
+    final peerName = _resolvedDevice?.displayName ?? 'Unknown User';
+
     _args = ChatArgs(
-      peerId: widget.device.uuid,
-      peerIp: widget.device.localIp,
-      peerName: widget.device.displayName,
+      peerId: peerId,
+      peerIp: peerIp,
+      peerName: peerName,
     );
 
     // Save the peer name to database so we remember it offline
     ChatDatabase.instance.upsertPeer(
-      widget.device.uuid,
-      widget.device.displayName,
+      peerId,
+      peerName,
     );
 
     // Listen for scroll-to-top to trigger pagination
@@ -69,7 +83,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!mounted) return;
       ref
           .read(webrtcChatServiceProvider)
-          .warmupConnection(peerId: widget.device.uuid, peerIp: _bestPeerIp());
+          .warmupConnection(peerId: _args.peerId, peerIp: _bestPeerIp());
     });
   }
 
@@ -99,12 +113,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _bestPeerIp() {
     final devicesState = ref.read(discoveryServiceProvider);
     if (devicesState is AsyncData<Map<String, Device>>) {
-      final live = devicesState.value[widget.device.uuid];
+      final live = devicesState.value[_args.peerId];
       if (live != null && live.localIp.isNotEmpty) return live.localIp;
     }
     // Fall back to the IP stored in the chat database
-    return ChatDatabase.instance.getPeerIp(widget.device.uuid) ??
-        widget.device.localIp;
+    return ChatDatabase.instance.getPeerIp(_args.peerId) ??
+        (_resolvedDevice?.localIp ?? '127.0.0.1');
   }
 
   Future<void> _onSend() async {
@@ -211,7 +225,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       data: (pageState) {
                         final messages = pageState.messages;
                         if (messages.isEmpty) {
-                          return _EmptyConversation(device: widget.device);
+                          return _EmptyConversation(device: widget.device ?? _resolvedDevice!);
                         }
                         return Stack(
                           children: [
@@ -316,7 +330,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               _InputBar(
                 controller: _inputController,
                 focusNode: _focusNode,
-                peerName: widget.device.displayName,
+                peerName: _args.peerName,
                 onSend: _onSend,
                 selectedFile: _selectedFile,
                 onPickFile: () async {
@@ -454,7 +468,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               _isSelectionMode.value = false;
               _selectedIds.value = {};
               final remaining =
-                  ChatDatabase.instance.countMessages(widget.device.uuid);
+                  ChatDatabase.instance.countMessages(_args.peerId);
               if (remaining == 0 && mounted) {
                 Navigator.of(context).pop();
               }
@@ -469,11 +483,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final devicesState = ref.watch(discoveryServiceProvider);
     Device? currentDevice;
     if (devicesState is AsyncData<Map<String, Device>>) {
-      currentDevice = devicesState.value[widget.device.uuid];
+      currentDevice = devicesState.value[_args.peerId];
     }
 
     final displayDevice =
-        currentDevice ?? widget.device.copyWith(status: DeviceStatus.offline);
+        currentDevice ?? widget.device ?? _resolvedDevice?.copyWith(status: DeviceStatus.offline);
+
+    if (displayDevice == null) {
+      return AppBar();
+    }
 
     String statusText;
     Color statusColor;
@@ -557,8 +575,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (!granted) return;
               final peerIp = _bestPeerIp();
               await ref.read(callProvider.notifier).startCall(
-                    peerId: widget.device.uuid,
-                    peerName: widget.device.displayName,
+                    peerId: _args.peerId,
+                    peerName: _args.peerName,
                     peerIp: peerIp,
                   );
               debugPrint('[ChatScreen] startCall completed, navigating...');

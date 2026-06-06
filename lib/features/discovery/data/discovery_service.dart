@@ -89,6 +89,17 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
     _udp.announceDevice(newSelf);
   }
 
+  /// Update the local device's status (e.g. busy during a call, available after).
+  /// Immediately re-broadcasts via UDP so peer devices reflect the change
+  /// within seconds without waiting for the next 5-second announce cycle.
+  void updateLocalStatus(DeviceStatus status) {
+    final updated = _udp.selfDevice.copyWith(status: status);
+    _udp.selfDevice = updated;
+    _mdns.selfDevice = updated;
+    _registry.upsert(updated);
+    _udp.announceDevice(updated);
+  }
+
   // Empty out _syncPeerNames instead of deleting entirely to avoid
   // breaking layout indices further down if needed
 

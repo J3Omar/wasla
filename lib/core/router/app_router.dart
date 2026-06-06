@@ -53,8 +53,9 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.chat,
       name: 'chat',
       builder: (context, state) {
-        final device = state.extra as Device;
-        return ChatScreen(device: device);
+        final deviceId = state.pathParameters['deviceId']!;
+        final device = state.extra as Device?;
+        return ChatScreen(deviceId: deviceId, device: device);
       },
     ),
 
