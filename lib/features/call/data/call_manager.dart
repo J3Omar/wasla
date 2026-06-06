@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
+import 'call_audio_service.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,8 @@ class CallManager {
 
     // Fix 2F — start foreground service before ICE negotiation begins
     await _enableBackground();
+    // Part 3 — play ringback on voiceCommunication stream
+    await CallAudioService.instance.playRingback();
 
     // Pick a random signaling port
     final signalingPort = _kMinPort + Random().nextInt(_kMaxPort - _kMinPort);
@@ -126,6 +129,7 @@ class CallManager {
     // 30-second no-answer timeout → auto-end with "missed" reason
     _timeoutTimer = Timer(const Duration(seconds: 30), () {
       if (_session.state == CallState.outgoing) {
+        CallAudioService.instance.stopAll(); // stop ringback
         _session = _session.copyWith(
           state: CallState.ended,
           endReason: CallEndReason.missed,
@@ -201,6 +205,7 @@ class CallManager {
   }
 
   Future<void> endCall() async {
+    final wasActive = _session.state == CallState.active;
     // If still ringing (WS not yet established), notify via UDP cancel packet
     if (_session.state == CallState.outgoing && _session.peerIp.isNotEmpty) {
       await _sendCancelInvite(peerIp: _session.peerIp);
@@ -215,6 +220,8 @@ class CallManager {
       endReason: CallEndReason.normal,
     );
     onStateChanged(_session);
+    await CallAudioService.instance.stopAll();
+    if (wasActive) await CallAudioService.instance.playEndSound();
     await dispose();
   }
 
@@ -253,6 +260,7 @@ class CallManager {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _cancelTimeout();
+        await CallAudioService.instance.stopAll(); // stop ringback
         // Free the listening port — no more SDP/ICE needed
         _signalingServer?.close().catchError((_) {});
         _signalingServer = null;
@@ -393,6 +401,8 @@ class CallManager {
           declineCount: count,
         );
         onStateChanged(_session);
+        await CallAudioService.instance.stopAll();
+        await CallAudioService.instance.playEndSound();
         await dispose();
         break;
 
@@ -402,6 +412,8 @@ class CallManager {
           endReason: CallEndReason.normal,
         );
         onStateChanged(_session);
+        await CallAudioService.instance.stopAll();
+        await CallAudioService.instance.playEndSound();
         await dispose();
         break;
     }
@@ -489,6 +501,7 @@ class CallManager {
 
   Future<void> dispose() async {
     _disableBackground(); // Fix 2F — release foreground service in ALL cases
+    await CallAudioService.instance.stopAll(); // safety net — idempotent
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
     try {

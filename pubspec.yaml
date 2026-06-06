@@ -49,6 +49,7 @@ dependencies:
   open_file: ^3.3.2                 # open received files
   url_launcher: ^6.3.0              # open links/files
   flutter_background: ^1.2.0        # Android background service
+  audioplayers: ^6.1.0              # Ringtones & call sound effects
 
   # --- Notifications ---
   flutter_local_notifications: ^18.0.1  # Android/iOS/Linux system notifications
@@ -73,6 +74,10 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/audio/ringtone.mp3
+    - assets/audio/ringback.mp3
+    - assets/audio/call_end.mp3
+    - assets/audio/notification.mp3
 
 flutter_launcher_icons:
   android: true

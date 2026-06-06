@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/call_manager.dart';
 import '../domain/call_state.dart';
 import '../../chat/data/chat_notification_service.dart';
+import '../data/call_audio_service.dart';
 
 const _kUuidKey = 'wasla_device_uuid';
 const _kNameKey = 'wasla_device_name';
@@ -71,8 +72,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String callerId,
     required String callerName,
   }) async {
-    // Cancel the heads-up notification now that the user has responded
+    // Cancel the heads-up notification and stop ringtone
     await ChatNotificationService.instance.cancelCallNotification();
+    await CallAudioService.instance.stopAll();
     _manager?.dispose();
     _manager = CallManager(
       selfUuid: _selfUuid,
@@ -95,8 +97,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String callerIp,
     required int signalingPort,
   }) async {
-    // Cancel the heads-up notification now that the user has responded
+    // Cancel the heads-up notification and stop ringtone
     await ChatNotificationService.instance.cancelCallNotification();
+    await CallAudioService.instance.stopAll();
     _manager?.dispose();
     _manager = CallManager(
       selfUuid: _selfUuid,
@@ -159,12 +162,14 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               peerIp: callerIp,
             ));
 
-            // Show system notification so the user sees the call even when
-            // the app is in the background
+            // Show system notification + play ringtone
             ChatNotificationService.instance.showCallNotification(
               callerName: peerName,
               callerId: peerId,
             );
+            // Part 3 — play ringtone on notificationRingtone stream
+            // (respects system silent/vibrate mode)
+            CallAudioService.instance.playRingtone();
 
             onIncomingCall?.call({
               'peerId': peerId,
@@ -182,6 +187,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             if (current?.state == CallState.incoming &&
                 current?.peerId == json['from']) {
               ChatNotificationService.instance.cancelCallNotification();
+              CallAudioService.instance.stopAll(); // stop ringtone
               state = AsyncData(current!.copyWith(
                 state: CallState.ended,
                 endReason: CallEndReason.normal,
@@ -196,6 +202,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             // Only react if we are the caller and are in outgoing state
             if (current?.state == CallState.outgoing) {
               final count = (current?.declineCount ?? 0) + 1;
+              CallAudioService.instance.stopAll(); // stop ringback on caller
               state = AsyncData(current!.copyWith(
                 state: CallState.ended,
                 endReason:

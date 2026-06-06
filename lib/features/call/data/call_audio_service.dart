@@ -1,0 +1,121 @@
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
+
+/// Singleton audio service for all call and notification sounds.
+///
+/// Correct OS audio streams per sound:
+///   • Ringtone  → [AndroidUsageType.notificationRingtone]
+///                 Respects system ring volume AND silent/vibrate mode.
+///   • Ringback  → [AndroidUsageType.voiceCommunication]
+///                 Uses voice call volume — appropriate for outgoing tone.
+///   • End sound → [AndroidUsageType.voiceCommunication]
+///                 Short chime on the same voice stream so volume is consistent.
+///   • Notification → [AndroidUsageType.notification]
+///                 Respects notification volume independently of ring volume.
+///
+/// Two separate [AudioPlayer] instances are kept:
+///   [_callPlayer]  — handles ringtone / ringback / end-chime (sequential,
+///                    never overlapping).
+///   [_notifPlayer] — handles general app notification sounds (may fire
+///                    while a call is active without interrupting it).
+class CallAudioService {
+  CallAudioService._();
+
+  /// Singleton instance — safe to access from any isolate-free context.
+  static final instance = CallAudioService._();
+
+  final AudioPlayer _callPlayer = AudioPlayer();
+  final AudioPlayer _notifPlayer = AudioPlayer();
+
+  // ── AudioContext helpers ───────────────────────────────────────────────────
+
+  /// Build a platform-aware [AudioContext] for the given Android usage type.
+  AudioContext _ctx(AndroidUsageType androidUsage) => AudioContext(
+        android: AudioContextAndroid(
+          usageType: androidUsage,
+          // contentType: speech for voice streams, music for ringtone/notif
+          contentType: (androidUsage == AndroidUsageType.voiceCommunication)
+              ? AndroidContentType.speech
+              : AndroidContentType.music,
+          audioFocus: AndroidAudioFocus.gain,
+          stayAwake: false,
+        ),
+        iOS: AudioContextIOS(
+          category: (androidUsage == AndroidUsageType.voiceCommunication)
+              ? AVAudioSessionCategory.playback
+              : AVAudioSessionCategory.playback,
+          options: const {
+            AVAudioSessionOptions.duckOthers,
+            AVAudioSessionOptions.allowBluetooth,
+          },
+        ),
+      );
+
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  /// Loop the incoming ringtone.
+  /// Uses [AndroidUsageType.notificationRingtone] → respects silent/vibrate.
+  Future<void> playRingtone() async {
+    try {
+      await _callPlayer.setAudioContext(
+          _ctx(AndroidUsageType.notificationRingtone));
+      await _callPlayer.setReleaseMode(ReleaseMode.loop);
+      await _callPlayer.play(AssetSource('audio/ringtone.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playRingtone error: $e');
+    }
+  }
+
+  /// Loop the outgoing ringback tone.
+  /// Uses [AndroidUsageType.voiceCommunication] → voice call volume stream.
+  Future<void> playRingback() async {
+    try {
+      await _callPlayer
+          .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+      await _callPlayer.setReleaseMode(ReleaseMode.loop);
+      await _callPlayer.play(AssetSource('audio/ringback.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playRingback error: $e');
+    }
+  }
+
+  /// Stop all looping call audio immediately.
+  /// Idempotent — safe to call multiple times.
+  Future<void> stopAll() async {
+    try {
+      await _callPlayer.stop();
+    } catch (_) {}
+  }
+
+  /// Play the short call-ended chime (non-looping).
+  /// Always call [stopAll] first to clear any looping sound.
+  Future<void> playEndSound() async {
+    try {
+      await _callPlayer
+          .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+      await _callPlayer.setReleaseMode(ReleaseMode.noRelease);
+      await _callPlayer.play(AssetSource('audio/call_end.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playEndSound error: $e');
+    }
+  }
+
+  /// Play a one-shot general notification sound.
+  /// Uses [AndroidUsageType.notification] → notification volume stream.
+  /// Uses a separate player so it never interrupts call audio.
+  Future<void> playNotification() async {
+    try {
+      await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      await _notifPlayer.setReleaseMode(ReleaseMode.noRelease);
+      await _notifPlayer.play(AssetSource('audio/notification.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playNotification error: $e');
+    }
+  }
+
+  /// Release both players. Call only on app exit.
+  Future<void> dispose() async {
+    await _callPlayer.dispose();
+    await _notifPlayer.dispose();
+  }
+}
