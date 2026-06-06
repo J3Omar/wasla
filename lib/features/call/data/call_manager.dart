@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 
@@ -47,10 +48,48 @@ class CallManager {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescSet = false;
 
+  // Fix 2F — Android foreground service state.
+  bool _backgroundActive = false;
+
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
 
   // ── Outgoing call (caller side) ───────────────────────────────────────────
+
+  // Fix 2F — Foreground service helpers ──────────────────────────────────────
+
+  /// Enable Android foreground service so the OS doesn't kill the call
+  /// when the screen turns off or the app moves to the background.
+  /// No-op on non-Android platforms.
+  Future<void> _enableBackground() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const config = FlutterBackgroundAndroidConfig(
+        notificationTitle: 'Wasla — Voice Call',
+        notificationText: 'Call in progress',
+        notificationImportance: AndroidNotificationImportance.high,
+        notificationIcon:
+            AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+      );
+      await FlutterBackground.initialize(androidConfig: config);
+      _backgroundActive =
+          await FlutterBackground.enableBackgroundExecution();
+    } catch (_) {
+      _backgroundActive = false;
+    }
+  }
+
+  /// Disable the foreground service. Called from dispose() which is the
+  /// single exit point for ALL call-end scenarios.
+  void _disableBackground() {
+    if (!Platform.isAndroid || !_backgroundActive) return;
+    try {
+      FlutterBackground.disableBackgroundExecution();
+    } catch (_) {}
+    _backgroundActive = false;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
 
   /// Start an outgoing call to [peerId] at [peerIp].
   /// Spins up a local signaling WS server, sends UDP invite, waits for answer.
@@ -66,6 +105,9 @@ class CallManager {
       peerIp: peerIp,
     );
     onStateChanged(_session);
+
+    // Fix 2F — start foreground service before ICE negotiation begins
+    await _enableBackground();
 
     // Pick a random signaling port
     final signalingPort = _kMinPort + Random().nextInt(_kMaxPort - _kMinPort);
@@ -104,6 +146,9 @@ class CallManager {
   }) async {
     _session = _session.copyWith(state: CallState.connecting);
     onStateChanged(_session);
+
+    // Fix 2F — start foreground service before ICE negotiation begins
+    await _enableBackground();
 
     await _connectToSignalingServer(callerIp, signalingPort);
   }
@@ -443,6 +488,7 @@ class CallManager {
   }
 
   Future<void> dispose() async {
+    _disableBackground(); // Fix 2F — release foreground service in ALL cases
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
     try {

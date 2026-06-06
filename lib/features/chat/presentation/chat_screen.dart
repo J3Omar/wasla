@@ -16,6 +16,8 @@ import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../call/domain/call_provider.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
+import '../../../core/utils/smart_permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
@@ -541,6 +543,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           tooltip: 'Voice call',
           onPressed: () async {
+            // Fix 2E — require microphone before initiating
+            if (!context.mounted) return;
+            final granted = await SmartPermissionHandler.request(
+              context,
+              Permission.microphone,
+              'Microphone',
+              'to make voice calls',
+            );
+            if (!granted) return;
             final peerIp = _bestPeerIp();
             await ref.read(callProvider.notifier).startCall(
                   peerId: widget.device.uuid,

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../data/discovery_service.dart';
 import '../domain/device_model.dart';
 import '../../../core/utils/rom_detector.dart';
 import '../../../core/utils/firewall_detector.dart';
+import '../../../core/utils/smart_permission_handler.dart';
 import '../../call/domain/call_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -229,6 +231,15 @@ class _DeviceCard extends ConsumerWidget {
                           label: 'Call',
                           color: AppColors.statusOnline,
                           onTap: () async {
+                            // Fix 2E — require microphone before initiating
+                            final granted =
+                                await SmartPermissionHandler.request(
+                              context,
+                              Permission.microphone,
+                              'Microphone',
+                              'to make voice calls',
+                            );
+                            if (!granted) return;
                             await ref
                                 .read(callProvider.notifier)
                                 .startCall(

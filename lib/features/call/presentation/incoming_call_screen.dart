@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/smart_permission_handler.dart';
 import '../domain/call_provider.dart';
 import '../domain/call_state.dart';
 
@@ -103,14 +105,23 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                                 if (mounted) context.pop();
                               },
                       ),
-                      // Accept — navigate immediately; WebRTC connects in background
+                      // Accept — check mic permission, then navigate immediately
                       _CallButton(
                         icon: Icons.call_rounded,
                         color: AppColors.statusOnline,
                         label: 'Accept',
                         onTap: _isProcessing
                             ? null
-                            : () {
+                            : () async {
+                                // Fix 2E — require microphone before accepting
+                                final granted =
+                                    await SmartPermissionHandler.request(
+                                  context,
+                                  Permission.microphone,
+                                  'Microphone',
+                                  'to make voice calls',
+                                );
+                                if (!granted) return;
                                 setState(() => _isProcessing = true);
                                 // Start WebRTC in background
                                 ref.read(callProvider.notifier).acceptCall(
