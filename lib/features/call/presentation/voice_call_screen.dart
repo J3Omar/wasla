@@ -73,9 +73,15 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                 // Header
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 24, vertical: 16),
+                      horizontal: 8, vertical: 16),
                   child: Row(
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios, color: AppColors.textMuted),
+                        onPressed: () => context.go('/home'),
+                        tooltip: 'Minimize call',
+                      ),
+                      const SizedBox(width: 8),
                       Text(
                         'Voice Call',
                         style: AppTypography.labelSmall
@@ -286,9 +292,24 @@ class _PillButton extends StatelessWidget {
   }
 }
 
-class CallTimerWidget extends StatelessWidget {
+class CallTimerWidget extends StatefulWidget {
   const CallTimerWidget({super.key, this.startedAt});
   final DateTime? startedAt;
+
+  @override
+  State<CallTimerWidget> createState() => _CallTimerWidgetState();
+}
+
+class _CallTimerWidgetState extends State<CallTimerWidget> {
+  // Bug 2 fix: If startedAt is null (call_start_sync message lost),
+  // fall back to counting from the moment this widget was first built.
+  late final DateTime _fallbackStart;
+
+  @override
+  void initState() {
+    super.initState();
+    _fallbackStart = DateTime.now();
+  }
 
   String _formatDuration(Duration d) {
     final h = d.inHours.toString().padLeft(2, '0');
@@ -299,17 +320,11 @@ class CallTimerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (startedAt == null) {
-      return Text(
-        '00:00:00',
-        style: AppTypography.bodyMedium.copyWith(color: AppColors.primaryCyan),
-      );
-    }
-
+    final origin = widget.startedAt ?? _fallbackStart;
     return StreamBuilder(
       stream: Stream.periodic(const Duration(seconds: 1)),
       builder: (context, snapshot) {
-        final elapsed = DateTime.now().difference(startedAt!);
+        final elapsed = DateTime.now().difference(origin);
         return Text(
           _formatDuration(elapsed),
           style: AppTypography.bodyMedium.copyWith(color: AppColors.primaryCyan),

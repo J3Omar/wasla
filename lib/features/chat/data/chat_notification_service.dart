@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../../../core/router/app_router.dart';
 
 /// Handles system notifications for incoming messages when the app is in background.
 class ChatNotificationService {
@@ -33,9 +34,13 @@ class ChatNotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        final peerId = response.payload ?? '';
-        if (peerId.isNotEmpty) {
-          onNotificationTap?.call(peerId);
+        final payload = response.payload ?? '';
+        if (payload.startsWith('call:')) {
+          appRouter.push('/call/incoming');
+        } else if (payload.startsWith('chat:')) {
+          appRouter.go('/home');
+        } else if (payload.isNotEmpty) {
+          onNotificationTap?.call(payload);
         }
       },
     );
@@ -144,7 +149,7 @@ class ChatNotificationService {
       '📞 Incoming call',
       '$callerName is calling…',
       details,
-      payload: callerId,
+      payload: 'call:$callerId',
     );
   }
 

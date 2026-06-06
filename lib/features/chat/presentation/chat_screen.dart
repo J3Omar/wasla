@@ -15,6 +15,7 @@ import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
 import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../call/domain/call_provider.dart';
+import '../../call/domain/call_state.dart';
 import '../../call/data/call_audio_service.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
@@ -191,8 +192,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .read(chatProvider(_args).notifier)
           .sendMessage(text, freshPeerIp: peerIp);
       _inputController.clear();
-      // Play sent sound (fire-and-forget — never blocks the UI)
-      CallAudioService.instance.playMessageSent();
     }
   }
 
@@ -215,6 +214,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // Outer build() is now nearly static — only rebuilds when _selectedFile
     // changes (file pick/cancel). All message & selection rendering is isolated.
+    final selfCallState = ref.watch(callProvider).valueOrNull;
+    final isSelfInCall = selfCallState != null &&
+        (selfCallState.state == CallState.active ||
+         selfCallState.state == CallState.connecting ||
+         selfCallState.state == CallState.outgoing);
+
     return ValueListenableBuilder(
       valueListenable: _isSelectionMode,
       builder: (context, selectionMode, _) {
@@ -222,9 +227,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           backgroundColor: AppColors.bgPrimary,
           appBar: selectionMode
               ? _buildSelectionAppBar()
-              : _buildAppBar(),
+              : _buildAppBar(isSelfInCall: isSelfInCall),
           body: Column(
             children: [
+              // Non-dismissible in-call banner — tappable to return to call screen
+              if (isSelfInCall)
+                GestureDetector(
+                  onTap: () => context.push('/call/active'),
+                  child: Container(
+                    width: double.infinity,
+                    color: const Color(0xFFFFC107).withValues(alpha: 0.15),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.phone_in_talk_rounded,
+                            size: 16, color: Color(0xFFFFC107)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'In Call — tap to return',
+                          style: AppTypography.labelSmall
+                              .copyWith(color: const Color(0xFFFFC107)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               Expanded(
                 // Consumer isolates DB-driven rebuilds to the message list only
                 child: Consumer(
@@ -497,7 +525,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar({bool isSelfInCall = false}) {
     final devicesState = ref.watch(discoveryServiceProvider);
     Device? currentDevice;
     if (devicesState is AsyncData<Map<String, Device>>) {
@@ -573,43 +601,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(
-            Icons.phone_rounded,
-            color: AppColors.statusOnline,
+          icon: Icon(
+            isSelfInCall ? Icons.phone_in_talk_rounded : Icons.phone_rounded,
+            color: isSelfInCall ? AppColors.textSecondary : AppColors.statusOnline,
             size: 20,
           ),
-          tooltip: 'Voice call',
-          onPressed: () async {
-            debugPrint('[ChatScreen] Call button tapped');
-            try {
-              // Fix 2E — require microphone before initiating
-              if (!context.mounted) return;
-              final granted = await SmartPermissionHandler.request(
-                context,
-                Permission.microphone,
-                'Microphone',
-                'to make voice calls',
-              );
-              debugPrint('[ChatScreen] Microphone permission granted: $granted');
-              if (!granted) return;
-              final peerIp = _bestPeerIp();
-              final success = await ref.read(callProvider.notifier).startCall(
-                    peerId: _args.peerId,
-                    peerName: _args.peerName,
-                    peerIp: peerIp,
-                  );
-              debugPrint('[ChatScreen] startCall completed, navigating...');
-              if (mounted) {
-                if (success) {
-                  context.push('/call/outgoing');
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot place call. You are currently in another call.')));
-                }
-              }
-            } catch (e, stack) {
-              debugPrint('[ChatScreen] Error initiating call: $e\n$stack');
-            }
-          },
+          tooltip: isSelfInCall ? 'Return to call' : 'Voice call',
+          onPressed: isSelfInCall
+              ? () => context.push('/call/active')
+              : () async {
+                  debugPrint('[ChatScreen] Call button tapped');
+                  try {
+                    // Fix 2E — require microphone before initiating
+                    if (!context.mounted) return;
+                    final granted = await SmartPermissionHandler.request(
+                      context,
+                      Permission.microphone,
+                      'Microphone',
+                      'to make voice calls',
+                    );
+                    debugPrint('[ChatScreen] Microphone permission granted: $granted');
+                    if (!granted) return;
+                    final peerIp = _bestPeerIp();
+                    final success = await ref.read(callProvider.notifier).startCall(
+                          peerId: _args.peerId,
+                          peerName: _args.peerName,
+                          peerIp: peerIp,
+                        );
+                    debugPrint('[ChatScreen] startCall completed, navigating...');
+                    if (mounted) {
+                      if (success) {
+                        context.push('/call/outgoing');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot place call. You are currently in another call.')));
+                      }
+                    }
+                  } catch (e, stack) {
+                    debugPrint('[ChatScreen] Error initiating call: $e\n$stack');
+                  }
+                },
         ),
         IconButton(
           icon: const Icon(

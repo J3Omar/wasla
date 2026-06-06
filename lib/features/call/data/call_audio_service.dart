@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
@@ -60,8 +62,10 @@ class CallAudioService {
     if (!_isAudioEnabled) return;
     debugPrint('[CallAudioService] playRingtone invoked');
     try {
-      await _callPlayer.setAudioContext(
-          _ctx(AndroidUsageType.notificationRingtone));
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _callPlayer.setAudioContext(
+            _ctx(AndroidUsageType.notificationRingtone));
+      }
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
       debugPrint('[CallAudioService] playRingtone: context and release mode set, playing asset...');
       await _callPlayer.play(AssetSource('audio/ringtone.mp3'));
@@ -77,8 +81,10 @@ class CallAudioService {
     if (!_isAudioEnabled) return;
     debugPrint('[CallAudioService] playRingback invoked');
     try {
-      await _callPlayer
-          .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _callPlayer
+            .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+      }
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
       debugPrint('[CallAudioService] playRingback: context and release mode set, playing asset...');
       await _callPlayer.play(AssetSource('audio/ringback.mp3'));
@@ -113,9 +119,13 @@ class CallAudioService {
     if (!_isAudioEnabled) return;
     debugPrint('[CallAudioService] playEndSound invoked');
     try {
-      await _callPlayer
-          .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
-      await _callPlayer.setReleaseMode(ReleaseMode.stop);
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _callPlayer
+            .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+      }
+      // ReleaseMode.release — player releases resources after playback naturally
+      // completes, so the chime is never truncated mid-play.
+      await _callPlayer.setReleaseMode(ReleaseMode.release);
       debugPrint('[CallAudioService] playEndSound: context and release mode set, playing asset...');
       await _callPlayer.play(AssetSource('audio/call_end.mp3'));
       debugPrint('[CallAudioService] playEndSound: playback started');
@@ -130,7 +140,9 @@ class CallAudioService {
   Future<void> playNotification() async {
     if (!_isAudioEnabled) return;
     try {
-      await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      }
       await _notifPlayer.setReleaseMode(ReleaseMode.stop);
       await _notifPlayer.play(AssetSource('audio/notification.mp3'));
     } catch (e) {
@@ -143,7 +155,9 @@ class CallAudioService {
   Future<void> playMessageSent() async {
     if (!_isAudioEnabled) return;
     try {
-      await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      }
       await _notifPlayer.setReleaseMode(ReleaseMode.stop);
       await _notifPlayer.stop(); // Clean cut off for rapid fire
       await _notifPlayer.play(AssetSource('audio/sent.mp3'));
@@ -157,7 +171,9 @@ class CallAudioService {
   Future<void> playMessageReceived() async {
     if (!_isAudioEnabled) return;
     try {
-      await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
+      }
       await _notifPlayer.setReleaseMode(ReleaseMode.stop);
       await _notifPlayer.stop(); // Clean cut off for rapid fire
       await _notifPlayer.play(AssetSource('audio/received.mp3'));

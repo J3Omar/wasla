@@ -10,6 +10,7 @@ import '../../../core/utils/rom_detector.dart';
 import '../../../core/utils/firewall_detector.dart';
 import '../../../core/utils/smart_permission_handler.dart';
 import '../../call/domain/call_provider.dart';
+import '../../call/domain/call_state.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -144,6 +145,11 @@ class _DeviceCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor(device.status);
+    final callState = ref.watch(callProvider).valueOrNull;
+    final isSelfInCall = callState != null &&
+        (callState.state == CallState.active ||
+         callState.state == CallState.connecting ||
+         callState.state == CallState.outgoing);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -225,12 +231,19 @@ class _DeviceCard extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Expanded(
+                       Expanded(
                         child: _ActionTile(
                           icon: Icons.call_outlined,
-                          label: 'Call',
-                          color: AppColors.statusOnline,
-                          onTap: () async {
+                          label: isSelfInCall ? 'In Call' : 'Call',
+                          color: isSelfInCall
+                              ? AppColors.textSecondary
+                              : AppColors.statusOnline,
+                          onTap: isSelfInCall
+                              ? () {
+                                  // Already in a call — navigate back to it
+                                  context.push('/call/active');
+                                }
+                              : () async {
                             debugPrint('[HomeScreen] Call button tapped for ${device.displayName}');
                             try {
                               // Fix 2E — require microphone before initiating

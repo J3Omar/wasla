@@ -78,6 +78,8 @@ flutter:
     - assets/audio/ringback.mp3
     - assets/audio/call_end.mp3
     - assets/audio/notification.mp3
+    - assets/audio/sent.mp3
+    - assets/audio/received.mp3
 
 flutter_launcher_icons:
   android: true

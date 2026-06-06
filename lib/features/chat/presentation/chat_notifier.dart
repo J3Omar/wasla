@@ -8,6 +8,7 @@ import '../data/chat_database.dart';
 import '../data/webrtc_chat_service.dart';
 import '../data/chat_notification_service.dart';
 import '../domain/chat_message.dart';
+import '../../call/data/call_audio_service.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
@@ -202,6 +203,10 @@ class ChatNotifier
       saved.id,
       sent ? MessageStatus.sent : MessageStatus.queued,
     );
+
+    if (sent) {
+      CallAudioService.instance.playMessageSent();
+    }
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

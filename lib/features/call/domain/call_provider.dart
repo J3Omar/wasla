@@ -75,6 +75,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         if (s.state == CallState.active) {
           // Cancel our custom notification — flutter_background owns the ongoing foreground one
           ChatNotificationService.instance.cancelCallNotification();
+          // Broadcast inCall so peers see we are on a call
+          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.inCall);
         } else if (s.state == CallState.ended || s.state == CallState.idle) {
           ChatNotificationService.instance.cancelCallNotification();
           ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
@@ -106,6 +108,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         if (s.state == CallState.active) {
           // Cancel our custom notification — flutter_background owns the ongoing foreground one
           ChatNotificationService.instance.cancelCallNotification();
+          // Broadcast inCall so peers see we are on a call
+          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.inCall);
         } else if (s.state == CallState.ended || s.state == CallState.idle) {
           ChatNotificationService.instance.cancelCallNotification();
           ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
@@ -132,14 +136,16 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     await ChatNotificationService.instance.cancelCallNotification();
     await CallAudioService.instance.stopAll();
     _manager?.dispose();
-    _manager = CallManager(
-      selfUuid: _selfUuid,
-      selfName: _selfName,
-      onStateChanged: (s) => state = AsyncData(s),
-    );
-    await _manager!.declineCall(
-        callerIp: callerIp, signalingPort: signalingPort);
     _manager = null;
+
+    try {
+      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final payload = utf8.encode(
+          jsonEncode({'type': 'call_declined', 'from': _selfUuid}));
+      socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
+      socket.close();
+    } catch (_) {}
+
     state = const AsyncData(CallSession.idle);
   }
 
@@ -200,7 +206,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
                  // Already in an active call with someone else
                  try {
                    RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((socket) {
-                     final payload = utf8.encode(jsonEncode({'type': 'call_rejected', 'from': _selfUuid}));
+                     final payload = utf8.encode(jsonEncode({'type': 'call_busy', 'from': _selfUuid}));
                      socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
                      socket.close();
                    });
@@ -270,14 +276,14 @@ class CallNotifier extends AsyncNotifier<CallSession> {
           }
 
           // ── Callee rejected (busy) (via UDP) — notify caller ────────────────
-          else if (json['type'] == 'call_rejected') {
+          else if (json['type'] == 'call_rejected' || json['type'] == 'call_busy') {
             if (json['from'] == _selfUuid) return;
             final current = state.valueOrNull;
             if (current?.state == CallState.outgoing) {
               CallAudioService.instance.stopAll(); // stop ringback
               state = AsyncData(current!.copyWith(
                 state: CallState.ended,
-                endReason: CallEndReason.busy,
+                endReason: json['type'] == 'call_busy' ? CallEndReason.busy : CallEndReason.declined,
               ));
             }
           }

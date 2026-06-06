@@ -54,6 +54,10 @@ class CallManager {
 
   // Bug 3: ICE restart guard
   bool _iceRestartAttempted = false;
+  // Bug 1 fix: cancellation token for the delayed endCall after ICE failure
+  bool _iceEndCallPending = false;
+  // Bug 2 fix: track which side we are on for fallback timer sync
+  bool _isInitiator = false;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -265,15 +269,18 @@ class CallManager {
       endReason: CallEndReason.normal,
     );
     onStateChanged(_session);
-    // Strict teardown: WebRTC releases AudioManager first, then audio plays
+    // Correct teardown sequence (Bug 3):
+    // 1. Return AudioManager to media mode — releases WebRTC's AudioFocus
     if (!kIsWeb && Platform.isAndroid) {
       try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
     }
+    // 2. Stop looping audio (ringback, ringtone)
     await CallAudioService.instance.stopAll();
+    // 3. NOW audioplayers can acquire focus — await so chime plays fully
     if (wasActive) {
-      // DO NOT AWAIT — fire-and-forget so the chime plays while WebRTC disposes
-      CallAudioService.instance.playEndSound();
+      await CallAudioService.instance.playEndSound();
     }
+    // 4. Dispose WebRTC AFTER the chime is done
     await dispose();
   }
 
@@ -323,6 +330,7 @@ class CallManager {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _iceRestartAttempted = false; // Reset on success
+        _iceEndCallPending = false;  // Cancel any pending zombie timer
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
@@ -347,6 +355,17 @@ class CallManager {
           startedAt: DateTime.now().toUtc(),
         );
         onStateChanged(_session);
+
+        // Bug 2 fix: Callee-side fallback if call_start_sync WS message was lost.
+        // After 500ms, if startedAt is still null on callee, seed it locally.
+        if (!_isInitiator) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_session.startedAt == null) {
+              _session = _session.copyWith(startedAt: DateTime.now().toUtc());
+              onStateChanged(_session);
+            }
+          });
+        }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
                  state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         
@@ -356,10 +375,9 @@ class CallManager {
            await _pc?.restartIce();
            
            // Fallback terminator: If it doesn't recover within 10 seconds, end it cleanly
+           _iceEndCallPending = true;
            Future.delayed(const Duration(seconds: 10), () async {
-             if (_pc?.connectionState == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-               await endCall();
-             }
+             if (_iceEndCallPending) await endCall();
            });
         }
       }
@@ -384,6 +402,7 @@ class CallManager {
   }
 
   Future<void> _startSignalingServer(int port, {required bool isInitiator}) async {
+    _isInitiator = isInitiator; // Store for fallback timer sync
     _signalingServer = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _signalingServer!.transform(WebSocketTransformer()).listen((ws) async {
       _signalingWs = ws;
@@ -620,6 +639,7 @@ class CallManager {
 
   Future<void> dispose() async {
     _disableBackground(); // Fix 2F — release foreground service in ALL cases
+    _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
       try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
