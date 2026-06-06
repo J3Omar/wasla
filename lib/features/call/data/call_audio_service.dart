@@ -56,26 +56,32 @@ class CallAudioService {
   /// Loop the incoming ringtone.
   /// Uses [AndroidUsageType.notificationRingtone] → respects silent/vibrate.
   Future<void> playRingtone() async {
+    debugPrint('[CallAudioService] playRingtone invoked');
     try {
       await _callPlayer.setAudioContext(
           _ctx(AndroidUsageType.notificationRingtone));
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
+      debugPrint('[CallAudioService] playRingtone: context and release mode set, playing asset...');
       await _callPlayer.play(AssetSource('audio/ringtone.mp3'));
-    } catch (e) {
-      debugPrint('[CallAudio] playRingtone error: $e');
+      debugPrint('[CallAudioService] playRingtone: playback started');
+    } catch (e, stack) {
+      debugPrint('[CallAudioService] playRingtone error: $e\n$stack');
     }
   }
 
   /// Loop the outgoing ringback tone.
   /// Uses [AndroidUsageType.voiceCommunication] → voice call volume stream.
   Future<void> playRingback() async {
+    debugPrint('[CallAudioService] playRingback invoked');
     try {
       await _callPlayer
           .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
+      debugPrint('[CallAudioService] playRingback: context and release mode set, playing asset...');
       await _callPlayer.play(AssetSource('audio/ringback.mp3'));
-    } catch (e) {
-      debugPrint('[CallAudio] playRingback error: $e');
+      debugPrint('[CallAudioService] playRingback: playback started');
+    } catch (e, stack) {
+      debugPrint('[CallAudioService] playRingback error: $e\n$stack');
     }
   }
 
@@ -90,13 +96,16 @@ class CallAudioService {
   /// Play the short call-ended chime (non-looping).
   /// Always call [stopAll] first to clear any looping sound.
   Future<void> playEndSound() async {
+    debugPrint('[CallAudioService] playEndSound invoked');
     try {
       await _callPlayer
           .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
-      await _callPlayer.setReleaseMode(ReleaseMode.noRelease);
+      await _callPlayer.setReleaseMode(ReleaseMode.stop);
+      debugPrint('[CallAudioService] playEndSound: context and release mode set, playing asset...');
       await _callPlayer.play(AssetSource('audio/call_end.mp3'));
-    } catch (e) {
-      debugPrint('[CallAudio] playEndSound error: $e');
+      debugPrint('[CallAudioService] playEndSound: playback started');
+    } catch (e, stack) {
+      debugPrint('[CallAudioService] playEndSound error: $e\n$stack');
     }
   }
 
@@ -106,7 +115,7 @@ class CallAudioService {
   Future<void> playNotification() async {
     try {
       await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
-      await _notifPlayer.setReleaseMode(ReleaseMode.noRelease);
+      await _notifPlayer.setReleaseMode(ReleaseMode.stop);
       await _notifPlayer.play(AssetSource('audio/notification.mp3'));
     } catch (e) {
       debugPrint('[CallAudio] playNotification error: $e');

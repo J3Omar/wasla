@@ -99,6 +99,7 @@ class CallManager {
     required String peerName,
     required String peerIp,
   }) async {
+    debugPrint('[CallManager] startCall invoked for $peerName ($peerIp)');
     _session = CallSession(
       state: CallState.outgoing,
       peerId: peerId,
@@ -107,24 +108,48 @@ class CallManager {
     );
     onStateChanged(_session);
 
-    // Fix 2F — start foreground service before ICE negotiation begins
-    await _enableBackground();
-    // Part 3 — play ringback on voiceCommunication stream
-    await CallAudioService.instance.playRingback();
+    debugPrint('[CallManager] startCall: Enabling background service...');
+    try {
+      // Fix 2F — start foreground service before ICE negotiation begins
+      await _enableBackground();
+    } catch (e, stack) {
+      debugPrint('[CallManager] startCall error in _enableBackground: $e\n$stack');
+    }
 
+    debugPrint('[CallManager] startCall: Playing ringback audio...');
+    try {
+      // Part 3 — play ringback on voiceCommunication stream
+      await CallAudioService.instance.playRingback();
+    } catch (e, stack) {
+      debugPrint('[CallManager] startCall error in playRingback: $e\n$stack');
+    }
+
+    debugPrint('[CallManager] startCall: Generating random port...');
     // Pick a random signaling port
     final signalingPort = _kMinPort + Random().nextInt(_kMaxPort - _kMinPort);
+    debugPrint('[CallManager] startCall: Selected port $signalingPort');
 
-    // Start signaling server BEFORE sending invite so callee can connect
-    await _startSignalingServer(signalingPort, isInitiator: true);
+    debugPrint('[CallManager] startCall: Starting local signaling server...');
+    try {
+      // Start signaling server BEFORE sending invite so callee can connect
+      await _startSignalingServer(signalingPort, isInitiator: true);
+    } catch (e, stack) {
+      debugPrint('[CallManager] startCall error in _startSignalingServer: $e\n$stack');
+    }
 
-    // Send UDP invite
-    await _sendCallInvite(
-      peerIp: peerIp,
-      signalingPort: signalingPort,
-      peerId: peerId,
-      peerName: peerName,
-    );
+    debugPrint('[CallManager] startCall: Sending UDP invite to $peerIp...');
+    try {
+      // Send UDP invite
+      await _sendCallInvite(
+        peerIp: peerIp,
+        signalingPort: signalingPort,
+        peerId: peerId,
+        peerName: peerName,
+      );
+      debugPrint('[CallManager] startCall: UDP invite sent successfully.');
+    } catch (e, stack) {
+      debugPrint('[CallManager] startCall error in _sendCallInvite: $e\n$stack');
+    }
 
     // 30-second no-answer timeout → auto-end with "missed" reason
     _timeoutTimer = Timer(const Duration(seconds: 30), () {
@@ -148,13 +173,25 @@ class CallManager {
     required String callerIp,
     required int signalingPort,
   }) async {
+    debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
     _session = _session.copyWith(state: CallState.connecting);
     onStateChanged(_session);
 
-    // Fix 2F — start foreground service before ICE negotiation begins
-    await _enableBackground();
+    debugPrint('[CallManager] acceptCall: Enabling background service...');
+    try {
+      // Fix 2F — start foreground service before ICE negotiation begins
+      await _enableBackground();
+    } catch (e, stack) {
+      debugPrint('[CallManager] acceptCall error in _enableBackground: $e\n$stack');
+    }
 
-    await _connectToSignalingServer(callerIp, signalingPort);
+    debugPrint('[CallManager] acceptCall: Connecting to signaling server...');
+    try {
+      await _connectToSignalingServer(callerIp, signalingPort);
+      debugPrint('[CallManager] acceptCall: Connected to signaling server successfully.');
+    } catch (e, stack) {
+      debugPrint('[CallManager] acceptCall error in _connectToSignalingServer: $e\n$stack');
+    }
   }
 
   /// Decline an incoming call.
@@ -256,7 +293,7 @@ class CallManager {
     // Fix 2B+2C — when WebRTC connects, close the signaling server to free
     // the port. The WS client socket stays open so endCall() can still send
     // call_ended. _onWsClosed will NOT kill the call once state is active.
-    pc.onConnectionState = (state) {
+    pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _cancelTimeout();

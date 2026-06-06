@@ -231,24 +231,31 @@ class _DeviceCard extends ConsumerWidget {
                           label: 'Call',
                           color: AppColors.statusOnline,
                           onTap: () async {
-                            // Fix 2E — require microphone before initiating
-                            final granted =
-                                await SmartPermissionHandler.request(
-                              context,
-                              Permission.microphone,
-                              'Microphone',
-                              'to make voice calls',
-                            );
-                            if (!granted) return;
-                            await ref
-                                .read(callProvider.notifier)
-                                .startCall(
-                                  peerId: device.uuid,
-                                  peerName: device.displayName,
-                                  peerIp: device.localIp,
-                                );
-                            if (context.mounted) {
-                              context.push('/call/outgoing');
+                            debugPrint('[HomeScreen] Call button tapped for ${device.displayName}');
+                            try {
+                              // Fix 2E — require microphone before initiating
+                              final granted =
+                                  await SmartPermissionHandler.request(
+                                context,
+                                Permission.microphone,
+                                'Microphone',
+                                'to make voice calls',
+                              );
+                              debugPrint('[HomeScreen] Microphone permission granted: $granted');
+                              if (!granted) return;
+                              await ref
+                                  .read(callProvider.notifier)
+                                  .startCall(
+                                    peerId: device.uuid,
+                                    peerName: device.displayName,
+                                    peerIp: device.localIp,
+                                  );
+                              debugPrint('[HomeScreen] startCall completed, navigating to outgoing...');
+                              if (context.mounted) {
+                                context.push('/call/outgoing');
+                              }
+                            } catch (e, stack) {
+                              debugPrint('[HomeScreen] Error initiating call: $e\n$stack');
                             }
                           },
                         ),

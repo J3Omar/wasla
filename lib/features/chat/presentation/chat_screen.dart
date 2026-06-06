@@ -543,23 +543,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           tooltip: 'Voice call',
           onPressed: () async {
-            // Fix 2E — require microphone before initiating
-            if (!context.mounted) return;
-            final granted = await SmartPermissionHandler.request(
-              context,
-              Permission.microphone,
-              'Microphone',
-              'to make voice calls',
-            );
-            if (!granted) return;
-            final peerIp = _bestPeerIp();
-            await ref.read(callProvider.notifier).startCall(
-                  peerId: widget.device.uuid,
-                  peerName: widget.device.displayName,
-                  peerIp: peerIp,
-                );
-            if (mounted) {
-              context.push('/call/outgoing');
+            debugPrint('[ChatScreen] Call button tapped');
+            try {
+              // Fix 2E — require microphone before initiating
+              if (!context.mounted) return;
+              final granted = await SmartPermissionHandler.request(
+                context,
+                Permission.microphone,
+                'Microphone',
+                'to make voice calls',
+              );
+              debugPrint('[ChatScreen] Microphone permission granted: $granted');
+              if (!granted) return;
+              final peerIp = _bestPeerIp();
+              await ref.read(callProvider.notifier).startCall(
+                    peerId: widget.device.uuid,
+                    peerName: widget.device.displayName,
+                    peerIp: peerIp,
+                  );
+              debugPrint('[ChatScreen] startCall completed, navigating...');
+              if (mounted) {
+                context.push('/call/outgoing');
+              }
+            } catch (e, stack) {
+              debugPrint('[ChatScreen] Error initiating call: $e\n$stack');
             }
           },
         ),

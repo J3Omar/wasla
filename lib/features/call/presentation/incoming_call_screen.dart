@@ -113,26 +113,37 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                         onTap: _isProcessing
                             ? null
                             : () async {
-                                // Fix 2E — require microphone before accepting
-                                final granted =
-                                    await SmartPermissionHandler.request(
-                                  context,
-                                  Permission.microphone,
-                                  'Microphone',
-                                  'to make voice calls',
-                                );
-                                if (!granted) return;
-                                setState(() => _isProcessing = true);
-                                // Start WebRTC in background
-                                ref.read(callProvider.notifier).acceptCall(
-                                      callerIp: widget.callerIp,
-                                      signalingPort: widget.signalingPort,
-                                      callerId: widget.callerId,
-                                      callerName: widget.callerName,
-                                    );
-                                // Navigate immediately — don't wait for WebRTC
-                                if (mounted) {
-                                  context.pushReplacement('/call/active');
+                                debugPrint('[IncomingCallScreen] Accept button tapped');
+                                try {
+                                  // Fix 2E — require microphone before accepting
+                                  final granted =
+                                      await SmartPermissionHandler.request(
+                                    context,
+                                    Permission.microphone,
+                                    'Microphone',
+                                    'to make voice calls',
+                                  );
+                                  debugPrint('[IncomingCallScreen] Microphone permission granted: $granted');
+                                  if (!granted) return;
+                                  setState(() => _isProcessing = true);
+                                  // Start WebRTC in background
+                                  debugPrint('[IncomingCallScreen] Calling acceptCall...');
+                                  ref.read(callProvider.notifier).acceptCall(
+                                        callerIp: widget.callerIp,
+                                        signalingPort: widget.signalingPort,
+                                        callerId: widget.callerId,
+                                        callerName: widget.callerName,
+                                      );
+                                  debugPrint('[IncomingCallScreen] acceptCall returned, navigating...');
+                                  // Navigate immediately — don't wait for WebRTC
+                                  if (context.mounted) {
+                                    context.pushReplacement('/call/active');
+                                  }
+                                } catch (e, stack) {
+                                  debugPrint('[IncomingCallScreen] Error accepting call: $e\n$stack');
+                                  if (mounted) {
+                                    setState(() => _isProcessing = false);
+                                  }
                                 }
                               },
                       ),
