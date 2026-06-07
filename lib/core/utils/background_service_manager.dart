@@ -5,9 +5,9 @@ import 'package:flutter_background/flutter_background.dart';
 class BackgroundServiceManager {
   BackgroundServiceManager._();
   static final instance = BackgroundServiceManager._();
-  
+
   int _activeCount = 0;
-  
+
   Future<void> acquire(String reason) async {
     _activeCount++;
     debugPrint('[BGService] acquire($reason) → count=$_activeCount');
@@ -20,7 +20,9 @@ class BackgroundServiceManager {
           notificationText: 'Running in background',
           notificationImportance: AndroidNotificationImportance.normal,
           notificationIcon: AndroidResource(
-            name: 'ic_launcher', defType: 'mipmap'),
+            name: 'ic_launcher',
+            defType: 'mipmap',
+          ),
         );
         await FlutterBackground.initialize(androidConfig: config);
         await FlutterBackground.enableBackgroundExecution();
@@ -30,7 +32,7 @@ class BackgroundServiceManager {
       }
     }
   }
-  
+
   void release(String reason) {
     if (_activeCount <= 0) return;
     _activeCount--;
@@ -43,7 +45,7 @@ class BackgroundServiceManager {
       } catch (_) {}
     }
   }
-  
+
   // Force release all — use only on app exit
   void releaseAll() {
     _activeCount = 0;

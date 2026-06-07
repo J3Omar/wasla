@@ -354,6 +354,8 @@ class CallManager {
           CallAudioService.instance.stopReconnecting();
         }
 
+        _heartbeatTimer?.cancel();
+        _heartbeatTimer = null;
         _missedHeartbeats = 0;
         _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
           try {
@@ -367,6 +369,7 @@ class CallManager {
           }
         });
 
+        _maxDurationTimer?.cancel();
         _maxDurationTimer = Timer(_kMaxCallDuration, () async {
           debugPrint('[Call] Max call duration reached — ending call');
           await endCall();
@@ -409,6 +412,11 @@ class CallManager {
           _isReconnecting = true;
           CallAudioService.instance.playReconnecting();
         }
+
+        _heartbeatTimer?.cancel();
+        _heartbeatTimer = null;
+        _missedHeartbeats = 0;
+
         // Wait 4 seconds — might self-recover on same network
         await Future.delayed(const Duration(seconds: 4));
         if (_pc?.connectionState ==
