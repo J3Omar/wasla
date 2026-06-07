@@ -146,10 +146,11 @@ class _DeviceCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor(device.status);
     final callState = ref.watch(callProvider).valueOrNull;
-    final isSelfInCall = callState != null &&
+    final isSelfInCall =
+        callState != null &&
         (callState.state == CallState.active ||
-         callState.state == CallState.connecting ||
-         callState.state == CallState.outgoing);
+            callState.state == CallState.connecting ||
+            callState.state == CallState.outgoing);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -231,7 +232,7 @@ class _DeviceCard extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                       Expanded(
+                      Expanded(
                         child: _ActionTile(
                           icon: Icons.call_outlined,
                           label: isSelfInCall ? 'In Call' : 'Call',
@@ -244,37 +245,53 @@ class _DeviceCard extends ConsumerWidget {
                                   context.push('/call/active');
                                 }
                               : () async {
-                            debugPrint('[HomeScreen] Call button tapped for ${device.displayName}');
-                            try {
-                              // Fix 2E — require microphone before initiating
-                              final granted =
-                                  await SmartPermissionHandler.request(
-                                context,
-                                Permission.microphone,
-                                'Microphone',
-                                'to make voice calls',
-                              );
-                              debugPrint('[HomeScreen] Microphone permission granted: $granted');
-                              if (!granted) return;
-                              final success = await ref
-                                  .read(callProvider.notifier)
-                                  .startCall(
-                                    peerId: device.uuid,
-                                    peerName: device.displayName,
-                                    peerIp: device.localIp,
+                                  debugPrint(
+                                    '[HomeScreen] Call button tapped for ${device.displayName}',
                                   );
-                              debugPrint('[HomeScreen] startCall completed, navigating to outgoing...');
-                              if (context.mounted) {
-                                if (success) {
-                                  context.push('/call/outgoing');
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot place call right now.')));
-                                }
-                              }
-                            } catch (e, stack) {
-                              debugPrint('[HomeScreen] Error initiating call: $e\n$stack');
-                            }
-                          },
+                                  try {
+                                    // Fix 2E — require microphone before initiating
+                                    final granted =
+                                        await SmartPermissionHandler.request(
+                                          context,
+                                          Permission.microphone,
+                                          'Microphone',
+                                          'to make voice calls',
+                                        );
+                                    debugPrint(
+                                      '[HomeScreen] Microphone permission granted: $granted',
+                                    );
+                                    if (!granted) return;
+                                    final success = await ref
+                                        .read(callProvider.notifier)
+                                        .startCall(
+                                          peerId: device.uuid,
+                                          peerName: device.displayName,
+                                          peerIp: device.localIp,
+                                        );
+                                    debugPrint(
+                                      '[HomeScreen] startCall completed, navigating to outgoing...',
+                                    );
+                                    if (context.mounted) {
+                                      if (success) {
+                                        context.push('/call/outgoing');
+                                      } else {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Cannot place call right now.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } catch (e, stack) {
+                                    debugPrint(
+                                      '[HomeScreen] Error initiating call: $e\n$stack',
+                                    );
+                                  }
+                                },
                         ),
                       ),
                       const SizedBox(width: 8),

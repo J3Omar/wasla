@@ -59,11 +59,11 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
       if (_selfUuid != null && _udp.selfDevice.localIp != currentIp) {
         debugPrint('[Discovery] Network changed! Re-binding UDP socket...');
         await _udp.stop(); // Destroy the dead socket
-        
+
         final newSelf = _udp.selfDevice.copyWith(localIp: currentIp);
         _udp.selfDevice = newSelf;
         _mdns.selfDevice = newSelf;
-        
+
         await _udp.start(); // Re-bind on the new IP
         _registry.upsert(newSelf);
         _udp.announceDevice(newSelf);

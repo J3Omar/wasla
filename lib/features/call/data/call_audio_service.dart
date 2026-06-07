@@ -33,23 +33,23 @@ class CallAudioService {
 
   /// Build a platform-aware [AudioContext] for the given Android usage type.
   AudioContext _ctx(AndroidUsageType androidUsage) => AudioContext(
-        android: AudioContextAndroid(
-          usageType: androidUsage,
-          // contentType: speech for voice streams, music for ringtone/notif
-          contentType: (androidUsage == AndroidUsageType.voiceCommunication)
-              ? AndroidContentType.speech
-              : AndroidContentType.music,
-          audioFocus: AndroidAudioFocus.gain,
-          stayAwake: false,
-        ),
-        iOS: AudioContextIOS(
-          category: AVAudioSessionCategory.playAndRecord,
-          options: const {
-            AVAudioSessionOptions.defaultToSpeaker,
-            AVAudioSessionOptions.allowBluetooth,
-          },
-        ),
-      );
+    android: AudioContextAndroid(
+      usageType: androidUsage,
+      // contentType: speech for voice streams, music for ringtone/notif
+      contentType: (androidUsage == AndroidUsageType.voiceCommunication)
+          ? AndroidContentType.speech
+          : AndroidContentType.music,
+      audioFocus: AndroidAudioFocus.gain,
+      stayAwake: false,
+    ),
+    iOS: AudioContextIOS(
+      category: AVAudioSessionCategory.playAndRecord,
+      options: const {
+        AVAudioSessionOptions.defaultToSpeaker,
+        AVAudioSessionOptions.allowBluetooth,
+      },
+    ),
+  );
 
   // ── Public API ────────────────────────────────────────────────────────────
 
@@ -64,10 +64,13 @@ class CallAudioService {
     try {
       if (Platform.isAndroid || Platform.isIOS) {
         await _callPlayer.setAudioContext(
-            _ctx(AndroidUsageType.notificationRingtone));
+          _ctx(AndroidUsageType.notificationRingtone),
+        );
       }
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
-      debugPrint('[CallAudioService] playRingtone: context and release mode set, playing asset...');
+      debugPrint(
+        '[CallAudioService] playRingtone: context and release mode set, playing asset...',
+      );
       await _callPlayer.play(AssetSource('audio/ringtone.mp3'));
       debugPrint('[CallAudioService] playRingtone: playback started');
     } catch (e, stack) {
@@ -82,11 +85,14 @@ class CallAudioService {
     debugPrint('[CallAudioService] playRingback invoked');
     try {
       if (Platform.isAndroid || Platform.isIOS) {
-        await _callPlayer
-            .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+        await _callPlayer.setAudioContext(
+          _ctx(AndroidUsageType.voiceCommunication),
+        );
       }
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
-      debugPrint('[CallAudioService] playRingback: context and release mode set, playing asset...');
+      debugPrint(
+        '[CallAudioService] playRingback: context and release mode set, playing asset...',
+      );
       await _callPlayer.play(AssetSource('audio/ringback.mp3'));
       debugPrint('[CallAudioService] playRingback: playback started');
     } catch (e, stack) {
@@ -99,7 +105,8 @@ class CallAudioService {
     try {
       if (Platform.isAndroid || Platform.isIOS) {
         await _callPlayer.setAudioContext(
-          _ctx(AndroidUsageType.voiceCommunication));
+          _ctx(AndroidUsageType.voiceCommunication),
+        );
       }
       await _callPlayer.setReleaseMode(ReleaseMode.loop);
       await _callPlayer.play(AssetSource('audio/reconnecting.mp3'));
@@ -113,6 +120,7 @@ class CallAudioService {
       await _callPlayer.stop();
     } catch (_) {}
   }
+
   /// Stop all looping call audio immediately.
   /// Idempotent — safe to call multiple times.
   Future<void> stopAll() async {
@@ -139,13 +147,16 @@ class CallAudioService {
     debugPrint('[CallAudioService] playEndSound invoked');
     try {
       if (Platform.isAndroid || Platform.isIOS) {
-        await _callPlayer
-            .setAudioContext(_ctx(AndroidUsageType.voiceCommunication));
+        await _callPlayer.setAudioContext(
+          _ctx(AndroidUsageType.voiceCommunication),
+        );
       }
       // ReleaseMode.release — player releases resources after playback naturally
       // completes, so the chime is never truncated mid-play.
       await _callPlayer.setReleaseMode(ReleaseMode.release);
-      debugPrint('[CallAudioService] playEndSound: context and release mode set, playing asset...');
+      debugPrint(
+        '[CallAudioService] playEndSound: context and release mode set, playing asset...',
+      );
       await _callPlayer.play(AssetSource('audio/call_end.mp3'));
       debugPrint('[CallAudioService] playEndSound: playback started');
     } catch (e, stack) {

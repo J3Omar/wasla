@@ -167,7 +167,8 @@ class ChatNotificationService {
       ongoing: true,
       playSound: false,
       autoCancel: false,
-      importance: Importance.low, // Lower importance so it stays quiet in status bar
+      importance:
+          Importance.low, // Lower importance so it stays quiet in status bar
     );
     await _plugin.show(
       _kCallNotifId,

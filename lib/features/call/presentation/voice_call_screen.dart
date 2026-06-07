@@ -31,8 +31,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final callState =
-        ref.watch(callProvider).valueOrNull ?? CallSession.idle;
+    final callState = ref.watch(callProvider).valueOrNull ?? CallSession.idle;
 
     ref.listen(callProvider, (prev, next) {
       final s = next.valueOrNull;
@@ -42,12 +41,17 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
       }
     });
 
-    final isConnecting = callState.state == CallState.connecting ||
+    final isConnecting =
+        callState.state == CallState.connecting ||
         callState.state == CallState.incoming;
 
     final String cleanName = callState.peerName.trim();
     final String initials = cleanName.isNotEmpty
-        ? cleanName.split(RegExp(r'\s+')).take(2).map((w) => w.isNotEmpty ? w[0].toUpperCase() : '').join()
+        ? cleanName
+              .split(RegExp(r'\s+'))
+              .take(2)
+              .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+              .join()
         : '?';
 
     return Scaffold(
@@ -73,19 +77,25 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                 // Header
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 16),
+                    horizontal: 8,
+                    vertical: 16,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_ios, color: AppColors.textMuted),
+                        icon: const Icon(
+                          Icons.arrow_back_ios,
+                          color: AppColors.textMuted,
+                        ),
                         onPressed: () => context.go('/home'),
                         tooltip: 'Minimize call',
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Voice Call',
-                        style: AppTypography.labelSmall
-                            .copyWith(color: AppColors.textMuted),
+                        style: AppTypography.labelSmall.copyWith(
+                          color: AppColors.textMuted,
+                        ),
                       ),
                     ],
                   ),
@@ -98,10 +108,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: const LinearGradient(
-                      colors: [
-                        AppColors.primaryCyan,
-                        AppColors.primaryPurple,
-                      ],
+                      colors: [AppColors.primaryCyan, AppColors.primaryPurple],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -126,16 +133,18 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                 const SizedBox(height: 24),
                 Text(
                   callState.peerName,
-                  style: AppTypography.heading2
-                      .copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.heading2.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 // Show "Connecting…" until WebRTC is active, then show timer
                 if (isConnecting)
                   Text(
                     'Connecting…',
-                    style: AppTypography.bodyMedium
-                        .copyWith(color: AppColors.primaryCyan),
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.primaryCyan,
+                    ),
                   )
                 else
                   CallTimerWidget(startedAt: callState.startedAt),
@@ -147,10 +156,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                     isMuted: callState.isMuted,
                     isSpeakerOn: callState.isSpeakerOn,
                     // Speaker/earpiece toggle is meaningful only on mobile
-                    showSpeakerToggle:
-                        Platform.isAndroid || Platform.isIOS,
-                    onMute: () =>
-                        ref.read(callProvider.notifier).toggleMute(),
+                    showSpeakerToggle: Platform.isAndroid || Platform.isIOS,
+                    onMute: () => ref.read(callProvider.notifier).toggleMute(),
                     onSpeaker: () =>
                         ref.read(callProvider.notifier).toggleSpeaker(),
                     onEnd: () {
@@ -181,6 +188,7 @@ class _ControlsPill extends StatelessWidget {
 
   final bool isMuted;
   final bool isSpeakerOn;
+
   /// Show speaker/earpiece toggle — true on Android/iOS only.
   final bool showSpeakerToggle;
   final VoidCallback onMute;
@@ -283,8 +291,9 @@ class _PillButton extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             label,
-            style:
-                AppTypography.labelSmall.copyWith(color: AppColors.textMuted),
+            style: AppTypography.labelSmall.copyWith(
+              color: AppColors.textMuted,
+            ),
           ),
         ],
       ),
@@ -327,7 +336,9 @@ class _CallTimerWidgetState extends State<CallTimerWidget> {
         final elapsed = DateTime.now().difference(origin);
         return Text(
           _formatDuration(elapsed),
-          style: AppTypography.bodyMedium.copyWith(color: AppColors.primaryCyan),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.primaryCyan,
+          ),
         );
       },
     );

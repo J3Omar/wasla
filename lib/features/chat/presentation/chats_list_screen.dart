@@ -59,16 +59,32 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.bgSecondary,
-        title: Text('Delete Chats?', style: AppTypography.heading3.copyWith(color: AppColors.textPrimary)),
-        content: Text('Are you sure you want to delete ${toDelete.length} chat(s)? This action cannot be undone.', style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary)),
+        title: Text(
+          'Delete Chats?',
+          style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          'Are you sure you want to delete ${toDelete.length} chat(s)? This action cannot be undone.',
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel', style: AppTypography.labelLarge.copyWith(color: AppColors.textMuted)),
+            child: Text(
+              'Cancel',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.textMuted,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Delete', style: AppTypography.labelLarge.copyWith(color: Colors.redAccent)),
+            child: Text(
+              'Delete',
+              style: AppTypography.labelLarge.copyWith(color: Colors.redAccent),
+            ),
           ),
         ],
       ),
@@ -114,11 +130,16 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                   ),
                   title: Text(
                     '${_selectedPeerIds.length} selected',
-                    style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
+                    style: AppTypography.heading3.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   actions: [
                     IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
                       onPressed: _confirmAndDelete,
                     ),
                   ],
@@ -128,13 +149,17 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                   elevation: 0,
                   title: Text(
                     'Chats',
-                    style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
+                    style: AppTypography.heading3.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   centerTitle: true,
                 ),
           body: recentChatsAsync.when(
             data: (allMessages) {
-              final messages = allMessages.where((m) => !_deletedPeerIds.contains(m.peerId)).toList();
+              final messages = allMessages
+                  .where((m) => !_deletedPeerIds.contains(m.peerId))
+                  .toList();
               if (messages.isEmpty) {
                 return const _EmptyState();
               }
@@ -163,18 +188,28 @@ class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
                         if (devicesState is AsyncData<Map<String, Device>>) {
                           peerDevice = devicesState.value[msg.peerId];
                         }
-                        final savedName = ChatDatabase.instance.getPeerName(msg.peerId);
-                        final displayName = peerDevice?.displayName ?? savedName ?? 'Device (${msg.peerId.substring(0, 4)}...)';
-                        
-                        final targetDevice = peerDevice ?? Device(
-                          uuid: msg.peerId,
-                          displayName: displayName,
-                          localIp: '',
-                          port: 0,
-                          status: DeviceStatus.offline,
-                          lastSeen: DateTime.now(),
+                        final savedName = ChatDatabase.instance.getPeerName(
+                          msg.peerId,
                         );
-                        context.push('/chat/${msg.peerId}', extra: targetDevice);
+                        final displayName =
+                            peerDevice?.displayName ??
+                            savedName ??
+                            'Device (${msg.peerId.substring(0, 4)}...)';
+
+                        final targetDevice =
+                            peerDevice ??
+                            Device(
+                              uuid: msg.peerId,
+                              displayName: displayName,
+                              localIp: '',
+                              port: 0,
+                              status: DeviceStatus.offline,
+                              lastSeen: DateTime.now(),
+                            );
+                        context.push(
+                          '/chat/${msg.peerId}',
+                          extra: targetDevice,
+                        );
                       }
                     },
                     onLongPress: () => _toggleSelection(msg.peerId),
@@ -207,7 +242,7 @@ class _ChatTile extends ConsumerWidget {
     required this.onTap,
     required this.onLongPress,
   });
-  
+
   final ChatMessage message;
   final int unreadCount;
   final bool isSelected;
@@ -263,8 +298,8 @@ class _ChatTile extends ConsumerWidget {
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: isSelected 
-                ? AppColors.primaryCyan 
+            backgroundColor: isSelected
+                ? AppColors.primaryCyan
                 : AppColors.primaryCyan.withValues(alpha: 0.2),
             child: isSelected
                 ? const Icon(Icons.check, color: AppColors.bgPrimary)

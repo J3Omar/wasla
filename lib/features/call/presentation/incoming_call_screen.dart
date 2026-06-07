@@ -73,14 +73,16 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                 const SizedBox(height: 24),
                 Text(
                   widget.callerName,
-                  style: AppTypography.heading2
-                      .copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.heading2.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Incoming voice call',
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.textMuted),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textMuted,
+                  ),
                 ),
                 const Spacer(),
                 // Accept / Decline row — centered with equal spacing
@@ -98,7 +100,9 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                             ? null
                             : () {
                                 setState(() => _isProcessing = true);
-                                ref.read(callProvider.notifier).declineCall(
+                                ref
+                                    .read(callProvider.notifier)
+                                    .declineCall(
                                       callerIp: widget.callerIp,
                                       signalingPort: widget.signalingPort,
                                     );
@@ -113,40 +117,62 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                         onTap: _isProcessing
                             ? null
                             : () async {
-                                debugPrint('[IncomingCallScreen] Accept button tapped');
+                                debugPrint(
+                                  '[IncomingCallScreen] Accept button tapped',
+                                );
                                 try {
                                   // Fix 2E — require microphone before accepting
                                   final granted =
                                       await SmartPermissionHandler.request(
-                                    context,
-                                    Permission.microphone,
-                                    'Microphone',
-                                    'to make voice calls',
+                                        context,
+                                        Permission.microphone,
+                                        'Microphone',
+                                        'to make voice calls',
+                                      );
+                                  debugPrint(
+                                    '[IncomingCallScreen] Microphone permission granted: $granted',
                                   );
-                                  debugPrint('[IncomingCallScreen] Microphone permission granted: $granted');
                                   if (!granted) return;
                                   setState(() => _isProcessing = true);
                                   // Start WebRTC in background
-                                  debugPrint('[IncomingCallScreen] Calling acceptCall...');
-                                  await ref.read(callProvider.notifier).acceptCall(
+                                  debugPrint(
+                                    '[IncomingCallScreen] Calling acceptCall...',
+                                  );
+                                  await ref
+                                      .read(callProvider.notifier)
+                                      .acceptCall(
                                         callerIp: widget.callerIp,
                                         signalingPort: widget.signalingPort,
                                         callerId: widget.callerId,
                                         callerName: widget.callerName,
                                       );
-                                  debugPrint('[IncomingCallScreen] acceptCall returned, navigating...');
+                                  debugPrint(
+                                    '[IncomingCallScreen] acceptCall returned, navigating...',
+                                  );
                                   // Only navigate if the state didn't instantly revert to ended (due to socket failure)
                                   if (context.mounted) {
-                                     final currentState = ref.read(callProvider).valueOrNull?.state;
-                                     if (currentState != CallState.ended && currentState != CallState.idle) {
-                                       context.pushReplacement('/call/active');
-                                     } else {
-                                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connection failed.')));
-                                       context.pop();
-                                     }
+                                    final currentState = ref
+                                        .read(callProvider)
+                                        .valueOrNull
+                                        ?.state;
+                                    if (currentState != CallState.ended &&
+                                        currentState != CallState.idle) {
+                                      context.pushReplacement('/call/active');
+                                    } else {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Connection failed.'),
+                                        ),
+                                      );
+                                      context.pop();
+                                    }
                                   }
                                 } catch (e, stack) {
-                                  debugPrint('[IncomingCallScreen] Error accepting call: $e\n$stack');
+                                  debugPrint(
+                                    '[IncomingCallScreen] Error accepting call: $e\n$stack',
+                                  );
                                   if (mounted) {
                                     setState(() => _isProcessing = false);
                                   }
@@ -187,9 +213,10 @@ class _IncomingAvatarState extends State<_IncomingAvatar>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat();
-    _ring = Tween(begin: 0.9, end: 1.2).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
-    );
+    _ring = Tween(
+      begin: 0.9,
+      end: 1.2,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
 
   @override
@@ -220,8 +247,9 @@ class _IncomingAvatarState extends State<_IncomingAvatar>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: AppColors.statusOnline
-                        .withValues(alpha: 1.0 - (_ring.value - 0.9) / 0.3),
+                    color: AppColors.statusOnline.withValues(
+                      alpha: 1.0 - (_ring.value - 0.9) / 0.3,
+                    ),
                     width: 2,
                   ),
                 ),
@@ -250,8 +278,10 @@ class _IncomingAvatarState extends State<_IncomingAvatar>
             child: Center(
               child: Text(
                 initials.toUpperCase(),
-                style: AppTypography.heading2
-                    .copyWith(color: Colors.white, fontSize: 32),
+                style: AppTypography.heading2.copyWith(
+                  color: Colors.white,
+                  fontSize: 32,
+                ),
               ),
             ),
           ),
@@ -273,6 +303,7 @@ class _CallButton extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String label;
+
   /// Null disables the button (processing guard).
   final VoidCallback? onTap;
 
@@ -298,8 +329,9 @@ class _CallButton extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           label,
-          style: AppTypography.labelSmall
-              .copyWith(color: AppColors.textSecondary),
+          style: AppTypography.labelSmall.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
       ],
     );

@@ -63,17 +63,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final peerIp = _resolvedDevice?.localIp ?? '127.0.0.1';
     final peerName = _resolvedDevice?.displayName ?? 'Unknown User';
 
-    _args = ChatArgs(
-      peerId: peerId,
-      peerIp: peerIp,
-      peerName: peerName,
-    );
+    _args = ChatArgs(peerId: peerId, peerIp: peerIp, peerName: peerName);
 
     // Save the peer name to database so we remember it offline
-    ChatDatabase.instance.upsertPeer(
-      peerId,
-      peerName,
-    );
+    ChatDatabase.instance.upsertPeer(peerId, peerName);
 
     // Listen for scroll-to-top to trigger pagination
     _scrollController.addListener(_onScroll);
@@ -201,10 +194,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Outer build() is now nearly static — only rebuilds when _selectedFile
     // changes (file pick/cancel). All message & selection rendering is isolated.
     final selfCallState = ref.watch(callProvider).valueOrNull;
-    final isSelfInCall = selfCallState != null &&
+    final isSelfInCall =
+        selfCallState != null &&
         (selfCallState.state == CallState.active ||
-         selfCallState.state == CallState.connecting ||
-         selfCallState.state == CallState.outgoing);
+            selfCallState.state == CallState.connecting ||
+            selfCallState.state == CallState.outgoing);
 
     return ValueListenableBuilder(
       valueListenable: _isSelectionMode,
@@ -223,17 +217,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     width: double.infinity,
                     color: AppColors.primaryCyan.withValues(alpha: 0.15),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.phone_in_talk_rounded,
-                            size: 14, color: AppColors.primaryCyan),
+                        const Icon(
+                          Icons.phone_in_talk_rounded,
+                          size: 14,
+                          color: AppColors.primaryCyan,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'In Call — tap to return',
-                          style: AppTypography.labelSmall
-                              .copyWith(color: AppColors.primaryCyan),
+                          style: AppTypography.labelSmall.copyWith(
+                            color: AppColors.primaryCyan,
+                          ),
                         ),
                       ],
                     ),
@@ -251,13 +251,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                       ),
                       error: (e, _) => Center(
-                        child:
-                            Text('Error: $e', style: AppTypography.bodySmall),
+                        child: Text(
+                          'Error: $e',
+                          style: AppTypography.bodySmall,
+                        ),
                       ),
                       data: (pageState) {
                         final messages = pageState.messages;
                         if (messages.isEmpty) {
-                          return _EmptyConversation(device: widget.device ?? _resolvedDevice!);
+                          return _EmptyConversation(
+                            device: widget.device ?? _resolvedDevice!,
+                          );
                         }
                         return Stack(
                           children: [
@@ -268,8 +272,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 horizontal: 16,
                                 vertical: 12,
                               ),
-                              itemCount: messages.length +
-                                  (pageState.hasMore ? 1 : 0),
+                              itemCount:
+                                  messages.length + (pageState.hasMore ? 1 : 0),
                               itemBuilder: (context, index) {
                                 if (pageState.hasMore &&
                                     index == messages.length) {
@@ -296,9 +300,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 final prev = reversedIndex > 0
                                     ? messages[reversedIndex - 1]
                                     : null;
-                                final showDate = prev == null ||
-                                    !_sameDay(
-                                        msg.timestamp, prev.timestamp);
+                                final showDate =
+                                    prev == null ||
+                                    !_sameDay(msg.timestamp, prev.timestamp);
 
                                 // Stable key → Flutter skips rebuild for
                                 // unchanged items even when list order shifts
@@ -315,37 +319,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         valueListenable: _selectedIds,
                                         builder: (context, ids, _) =>
                                             ValueListenableBuilder(
-                                          valueListenable: _isSelectionMode,
-                                          builder: (context, selMode, _) =>
-                                              _MessageBubble(
-                                            message: msg,
-                                            peerIp: _args.peerIp,
-                                            isSelected: ids.contains(msg.id),
-                                            isSelectionMode: selMode,
-                                            onTap: () {
-                                              if (selMode) {
-                                                final next =
-                                                    Set<int>.from(ids);
-                                                if (next.contains(msg.id)) {
-                                                  next.remove(msg.id);
-                                                  if (next.isEmpty) {
-                                                    _isSelectionMode.value =
-                                                        false;
-                                                  }
-                                                } else {
-                                                  next.add(msg.id);
-                                                }
-                                                _selectedIds.value = next;
-                                              }
-                                            },
-                                            onLongPress: () {
-                                              if (!selMode) {
-                                                _selectedIds.value = {msg.id};
-                                                _isSelectionMode.value = true;
-                                              }
-                                            },
-                                          ),
-                                        ),
+                                              valueListenable: _isSelectionMode,
+                                              builder: (context, selMode, _) =>
+                                                  _MessageBubble(
+                                                    message: msg,
+                                                    peerIp: _args.peerIp,
+                                                    isSelected: ids.contains(
+                                                      msg.id,
+                                                    ),
+                                                    isSelectionMode: selMode,
+                                                    onTap: () {
+                                                      if (selMode) {
+                                                        final next =
+                                                            Set<int>.from(ids);
+                                                        if (next.contains(
+                                                          msg.id,
+                                                        )) {
+                                                          next.remove(msg.id);
+                                                          if (next.isEmpty) {
+                                                            _isSelectionMode
+                                                                    .value =
+                                                                false;
+                                                          }
+                                                        } else {
+                                                          next.add(msg.id);
+                                                        }
+                                                        _selectedIds.value =
+                                                            next;
+                                                      }
+                                                    },
+                                                    onLongPress: () {
+                                                      if (!selMode) {
+                                                        _selectedIds.value = {
+                                                          msg.id,
+                                                        };
+                                                        _isSelectionMode.value =
+                                                            true;
+                                                      }
+                                                    },
+                                                  ),
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -406,8 +419,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Builder(
             builder: (context) {
               final messages = chatState.value!.messages;
-              final selectedMessages =
-                  messages.where((m) => ids.contains(m.id)).toList();
+              final selectedMessages = messages
+                  .where((m) => ids.contains(m.id))
+                  .toList();
               final hasTextSelected = selectedMessages.any(
                 (m) => m.type == MessageType.text,
               );
@@ -446,8 +460,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           onPressed: () {
             if (chatState.hasValue) {
-              final allIds =
-                  chatState.value!.messages.map((m) => m.id).toSet();
+              final allIds = chatState.value!.messages.map((m) => m.id).toSet();
               if (ids.length == allIds.length) {
                 _selectedIds.value = {};
                 _isSelectionMode.value = false;
@@ -499,8 +512,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ChatDatabase.instance.deleteMessages(ids.toList());
               _isSelectionMode.value = false;
               _selectedIds.value = {};
-              final remaining =
-                  ChatDatabase.instance.countMessages(_args.peerId);
+              final remaining = ChatDatabase.instance.countMessages(
+                _args.peerId,
+              );
               if (remaining == 0 && mounted) {
                 Navigator.of(context).pop();
               }
@@ -518,8 +532,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       currentDevice = devicesState.value[_args.peerId];
     }
 
-    final displayDevice = currentDevice ?? 
-        widget.device?.copyWith(status: DeviceStatus.offline) ?? 
+    final displayDevice =
+        currentDevice ??
+        widget.device?.copyWith(status: DeviceStatus.offline) ??
         _resolvedDevice?.copyWith(status: DeviceStatus.offline);
 
     if (displayDevice == null) {
@@ -589,7 +604,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         IconButton(
           icon: Icon(
             isSelfInCall ? Icons.phone_in_talk_rounded : Icons.phone_rounded,
-            color: isSelfInCall ? AppColors.textSecondary : AppColors.statusOnline,
+            color: isSelfInCall
+                ? AppColors.textSecondary
+                : AppColors.statusOnline,
             size: 20,
           ),
           tooltip: isSelfInCall ? 'Return to call' : 'Voice call',
@@ -606,24 +623,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       'Microphone',
                       'to make voice calls',
                     );
-                    debugPrint('[ChatScreen] Microphone permission granted: $granted');
+                    debugPrint(
+                      '[ChatScreen] Microphone permission granted: $granted',
+                    );
                     if (!granted) return;
                     final peerIp = _bestPeerIp();
-                    final success = await ref.read(callProvider.notifier).startCall(
+                    final success = await ref
+                        .read(callProvider.notifier)
+                        .startCall(
                           peerId: _args.peerId,
                           peerName: _args.peerName,
                           peerIp: peerIp,
                         );
-                    debugPrint('[ChatScreen] startCall completed, navigating...');
+                    debugPrint(
+                      '[ChatScreen] startCall completed, navigating...',
+                    );
                     if (mounted) {
                       if (success) {
                         context.push('/call/outgoing');
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot place call. You are currently in another call.')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Cannot place call. You are currently in another call.',
+                            ),
+                          ),
+                        );
                       }
                     }
                   } catch (e, stack) {
-                    debugPrint('[ChatScreen] Error initiating call: $e\n$stack');
+                    debugPrint(
+                      '[ChatScreen] Error initiating call: $e\n$stack',
+                    );
                   }
                 },
         ),

@@ -40,7 +40,9 @@ class _MainShellState extends ConsumerState<MainShell> {
     _lifecycleListener = AppLifecycleListener(
       onDetach: () {
         // Best-effort offline broadcast before process dies
-        ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.offline);
+        ref
+            .read(discoveryServiceProvider.notifier)
+            .updateLocalStatus(DeviceStatus.offline);
       },
     );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -64,7 +66,7 @@ class _MainShellState extends ConsumerState<MainShell> {
       // Wire notification display when a message arrives in background
       service.onMessageReceived = (peerId, senderName, content) {
         final isInChat = service.activeChatPeerId == peerId;
-        
+
         if (isInChat) {
           // User is looking at this chat — play in-chat sound only
           // No notification needed
@@ -128,7 +130,8 @@ class _MainShellState extends ConsumerState<MainShell> {
   Widget build(BuildContext context) {
     final totalUnread = ref.watch(totalUnreadProvider).valueOrNull ?? 0;
     final session = ref.watch(callProvider).valueOrNull;
-    final isInCall = session != null &&
+    final isInCall =
+        session != null &&
         (session.state == CallState.active ||
             session.state == CallState.connecting);
 
@@ -145,13 +148,20 @@ class _MainShellState extends ConsumerState<MainShell> {
                   width: double.infinity,
                   color: Colors.amber.withValues(alpha: 0.9),
                   padding: const EdgeInsets.only(
-                      top: 4, bottom: 4, left: 16, right: 16),
+                    top: 4,
+                    bottom: 4,
+                    left: 16,
+                    right: 16,
+                  ),
                   height: 32,
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.phone_in_talk_rounded,
-                          size: 14, color: Colors.black87),
+                      Icon(
+                        Icons.phone_in_talk_rounded,
+                        size: 14,
+                        color: Colors.black87,
+                      ),
                       SizedBox(width: 6),
                       Text(
                         'In Call — tap to return',

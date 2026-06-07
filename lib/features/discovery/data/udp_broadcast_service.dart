@@ -67,15 +67,9 @@ class UdpBroadcastService {
 
   void _sendAnnounce() async {
     if (_socket == null || !_running) return;
-    final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
-
     try {
-      // Send to global broadcast
+      final payload = utf8.encode(jsonEncode(selfDevice.toJson()));
       _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
-    } catch (_) {}
-
-    try {
-      // Send to all subnet broadcasts to cover Hotspot and WiFi simultaneously
       final ips = await getAllLocalIPs();
       for (final ip in ips) {
         final parts = ip.split('.');
@@ -91,13 +85,9 @@ class UdpBroadcastService {
   /// Send a one-shot announce with an arbitrary [device] payload.
   void announceDevice(Device device) async {
     if (_socket == null || !_running) return;
-    final payload = utf8.encode(jsonEncode(device.toJson()));
-
     try {
+      final payload = utf8.encode(jsonEncode(device.toJson()));
       _socket!.send(payload, InternetAddress(_broadcastAddress), _udpPort);
-    } catch (_) {}
-
-    try {
       final ips = await getAllLocalIPs();
       for (final ip in ips) {
         final parts = ip.split('.');

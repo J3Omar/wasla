@@ -18,8 +18,9 @@ const _kNameKey = 'wasla_device_name';
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
-final callProvider =
-    AsyncNotifierProvider<CallNotifier, CallSession>(CallNotifier.new);
+final callProvider = AsyncNotifierProvider<CallNotifier, CallSession>(
+  CallNotifier.new,
+);
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
@@ -60,13 +61,17 @@ class CallNotifier extends AsyncNotifier<CallSession> {
   }) async {
     final currentState = state.valueOrNull?.state ?? CallState.idle;
     if (currentState != CallState.idle && currentState != CallState.ended) {
-      debugPrint('[CallProvider] Cannot start a new call while in $currentState state.');
+      debugPrint(
+        '[CallProvider] Cannot start a new call while in $currentState state.',
+      );
       return false; // Prevent navigation
     }
 
     _manager?.dispose();
     // Bug 2: mark self as busy so peer devices stop showing us as available
-    ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.busy);
+    ref
+        .read(discoveryServiceProvider.notifier)
+        .updateLocalStatus(DeviceStatus.busy);
     _manager = CallManager(
       selfUuid: _selfUuid,
       selfName: _selfName,
@@ -76,15 +81,22 @@ class CallNotifier extends AsyncNotifier<CallSession> {
           // Cancel our custom notification — flutter_background owns the ongoing foreground one
           ChatNotificationService.instance.cancelCallNotification();
           // Broadcast inCall so peers see we are on a call
-          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.inCall);
+          ref
+              .read(discoveryServiceProvider.notifier)
+              .updateLocalStatus(DeviceStatus.inCall);
         } else if (s.state == CallState.ended || s.state == CallState.idle) {
           ChatNotificationService.instance.cancelCallNotification();
-          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
+          ref
+              .read(discoveryServiceProvider.notifier)
+              .updateLocalStatus(DeviceStatus.available);
         }
       },
     );
     await _manager!.startCall(
-        peerId: peerId, peerName: peerName, peerIp: peerIp);
+      peerId: peerId,
+      peerName: peerName,
+      peerIp: peerIp,
+    );
     return true;
   }
 
@@ -99,7 +111,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     await CallAudioService.instance.stopAll();
     _manager?.dispose();
     // Bug 2: mark self as busy so peer devices stop showing us as available
-    ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.busy);
+    ref
+        .read(discoveryServiceProvider.notifier)
+        .updateLocalStatus(DeviceStatus.busy);
     _manager = CallManager(
       selfUuid: _selfUuid,
       selfName: _selfName,
@@ -109,22 +123,30 @@ class CallNotifier extends AsyncNotifier<CallSession> {
           // Cancel our custom notification — flutter_background owns the ongoing foreground one
           ChatNotificationService.instance.cancelCallNotification();
           // Broadcast inCall so peers see we are on a call
-          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.inCall);
+          ref
+              .read(discoveryServiceProvider.notifier)
+              .updateLocalStatus(DeviceStatus.inCall);
         } else if (s.state == CallState.ended || s.state == CallState.idle) {
           ChatNotificationService.instance.cancelCallNotification();
-          ref.read(discoveryServiceProvider.notifier).updateLocalStatus(DeviceStatus.available);
+          ref
+              .read(discoveryServiceProvider.notifier)
+              .updateLocalStatus(DeviceStatus.available);
         }
       },
     );
     // Pre-set session so screens show peer name immediately
-    state = AsyncData(CallSession(
-      state: CallState.connecting,
-      peerId: callerId,
-      peerName: callerName,
-      peerIp: callerIp,
-    ));
+    state = AsyncData(
+      CallSession(
+        state: CallState.connecting,
+        peerId: callerId,
+        peerName: callerName,
+        peerIp: callerIp,
+      ),
+    );
     await _manager!.acceptCall(
-        callerIp: callerIp, signalingPort: signalingPort);
+      callerIp: callerIp,
+      signalingPort: signalingPort,
+    );
   }
 
   /// Decline an incoming call.
@@ -141,7 +163,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       final payload = utf8.encode(
-          jsonEncode({'type': 'call_declined', 'from': _selfUuid}));
+        jsonEncode({'type': 'call_declined', 'from': _selfUuid}),
+      );
       socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
       socket.close();
     } catch (_) {}
@@ -172,8 +195,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         final dg = _inviteSocket!.receive();
         if (dg == null) return;
         try {
-          final json =
-              jsonDecode(utf8.decode(dg.data)) as Map<String, dynamic>;
+          final json = jsonDecode(utf8.decode(dg.data)) as Map<String, dynamic>;
 
           // ── Incoming call invite ──────────────────────────────────────────
           if (json['type'] == 'call_invite') {
@@ -193,46 +215,68 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             final currentPeerId = state.valueOrNull?.peerId;
 
             // Reconnect check
-            if ((currentState == CallState.active || currentState == CallState.connecting) &&
+            if ((currentState == CallState.active ||
+                    currentState == CallState.connecting) &&
                 currentPeerId == peerId) {
               _manager?.handleReconnectInvite(signalingPort, callerIp);
               return;
             }
 
-            if (currentState != CallState.idle && currentState != CallState.ended) {
+            if (currentState != CallState.idle &&
+                currentState != CallState.ended) {
               if (currentState == CallState.outgoing) {
-                 debugPrint('[Call] Glare detected (Simultaneous Call). Dropping incoming invite gracefully.');
-                 // Send call_rejected so the other side doesn't wait indefinitely
-                 try {
-                   RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((socket) {
-                     final payload = utf8.encode(jsonEncode({'type': 'call_rejected', 'from': _selfUuid}));
-                     socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
-                     socket.close();
-                   });
-                 } catch (_) {}
-                 return;
+                debugPrint(
+                  '[Call] Glare detected (Simultaneous Call). Dropping incoming invite gracefully.',
+                );
+                // Send call_rejected so the other side doesn't wait indefinitely
+                try {
+                  RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((
+                    socket,
+                  ) {
+                    final payload = utf8.encode(
+                      jsonEncode({'type': 'call_rejected', 'from': _selfUuid}),
+                    );
+                    socket.send(
+                      payload,
+                      InternetAddress(callerIp),
+                      kCallInviteUdpPort,
+                    );
+                    socket.close();
+                  });
+                } catch (_) {}
+                return;
               } else {
-                 // Already in an active call with someone else
-                 try {
-                   RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((socket) {
-                     final payload = utf8.encode(jsonEncode({'type': 'call_busy', 'from': _selfUuid}));
-                     socket.send(payload, InternetAddress(callerIp), kCallInviteUdpPort);
-                     socket.close();
-                   });
-                 } catch (_) {}
-                 return;
+                // Already in an active call with someone else
+                try {
+                  RawDatagramSocket.bind(InternetAddress.anyIPv4, 0).then((
+                    socket,
+                  ) {
+                    final payload = utf8.encode(
+                      jsonEncode({'type': 'call_busy', 'from': _selfUuid}),
+                    );
+                    socket.send(
+                      payload,
+                      InternetAddress(callerIp),
+                      kCallInviteUdpPort,
+                    );
+                    socket.close();
+                  });
+                } catch (_) {}
+                return;
               }
             }
 
             // Mark callee provider as 'incoming' so ref.listen on
             // IncomingCallScreen can react to any future state change
             // (e.g. caller cancels → state becomes ended → screen pops)
-            state = AsyncData(CallSession(
-              state: CallState.incoming,
-              peerId: peerId,
-              peerName: peerName,
-              peerIp: callerIp,
-            ));
+            state = AsyncData(
+              CallSession(
+                state: CallState.incoming,
+                peerId: peerId,
+                peerName: peerName,
+                peerIp: callerIp,
+              ),
+            );
 
             // Show system notification + play ringtone
             ChatNotificationService.instance.showCallNotification(
@@ -250,7 +294,6 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               'signalingPort': signalingPort,
             });
           }
-
           // ── Caller cancelled before callee answered ───────────────────────
           else if (json['type'] == 'call_cancelled') {
             if (json['from'] == _selfUuid) return;
@@ -260,13 +303,14 @@ class CallNotifier extends AsyncNotifier<CallSession> {
                 current?.peerId == json['from']) {
               ChatNotificationService.instance.cancelCallNotification();
               CallAudioService.instance.stopAll(); // stop ringtone
-              state = AsyncData(current!.copyWith(
-                state: CallState.ended,
-                endReason: CallEndReason.normal,
-              ));
+              state = AsyncData(
+                current!.copyWith(
+                  state: CallState.ended,
+                  endReason: CallEndReason.normal,
+                ),
+              );
             }
           }
-
           // ── Callee declined (via UDP) — notify caller ─────────────────────
           else if (json['type'] == 'call_declined') {
             if (json['from'] == _selfUuid) return;
@@ -275,28 +319,34 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             if (current?.state == CallState.outgoing) {
               final count = (current?.declineCount ?? 0) + 1;
               CallAudioService.instance.stopAll(); // stop ringback on caller
-              state = AsyncData(current!.copyWith(
-                state: CallState.ended,
-                endReason:
-                    count >= 3 ? CallEndReason.busy : CallEndReason.declined,
-                declineCount: count,
-              ));
+              state = AsyncData(
+                current!.copyWith(
+                  state: CallState.ended,
+                  endReason: count >= 3
+                      ? CallEndReason.busy
+                      : CallEndReason.declined,
+                  declineCount: count,
+                ),
+              );
             }
           }
-
           // ── Callee rejected (busy) (via UDP) — notify caller ────────────────
-          else if (json['type'] == 'call_rejected' || json['type'] == 'call_busy') {
+          else if (json['type'] == 'call_rejected' ||
+              json['type'] == 'call_busy') {
             if (json['from'] == _selfUuid) return;
             final current = state.valueOrNull;
             if (current?.state == CallState.outgoing) {
               CallAudioService.instance.stopAll(); // stop ringback
-              state = AsyncData(current!.copyWith(
-                state: CallState.ended,
-                endReason: json['type'] == 'call_busy' ? CallEndReason.busy : CallEndReason.declined,
-              ));
+              state = AsyncData(
+                current!.copyWith(
+                  state: CallState.ended,
+                  endReason: json['type'] == 'call_busy'
+                      ? CallEndReason.busy
+                      : CallEndReason.declined,
+                ),
+              );
             }
           }
-
         } catch (_) {}
       });
     } catch (_) {

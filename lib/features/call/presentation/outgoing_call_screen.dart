@@ -29,8 +29,7 @@ class _OutgoingCallScreenState extends ConsumerState<OutgoingCallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final callState =
-        ref.watch(callProvider).valueOrNull ?? CallSession.idle;
+    final callState = ref.watch(callProvider).valueOrNull ?? CallSession.idle;
 
     // Auto-navigate when call becomes active or ends
     ref.listen(callProvider, (_, next) {
@@ -96,14 +95,14 @@ class _OutgoingCallScreenState extends ConsumerState<OutgoingCallScreen> {
                 const SizedBox(height: 24),
                 Text(
                   callState.peerName,
-                  style: AppTypography.heading2
-                      .copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.heading2.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   statusText,
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: statusColor),
+                  style: AppTypography.bodyMedium.copyWith(color: statusColor),
                 ),
                 const Spacer(),
                 // End call button — centered
@@ -162,9 +161,10 @@ class _PulsingAvatarState extends State<_PulsingAvatar>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
-    _scale = Tween(begin: 1.0, end: 1.12).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
+    _scale = Tween(
+      begin: 1.0,
+      end: 1.12,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -180,10 +180,8 @@ class _PulsingAvatarState extends State<_PulsingAvatar>
         : '?';
     return AnimatedBuilder(
       animation: _scale,
-      builder: (context, child) => Transform.scale(
-        scale: _scale.value,
-        child: child,
-      ),
+      builder: (context, child) =>
+          Transform.scale(scale: _scale.value, child: child),
       child: Container(
         width: 110,
         height: 110,
@@ -205,8 +203,10 @@ class _PulsingAvatarState extends State<_PulsingAvatar>
         child: Center(
           child: Text(
             initials.toUpperCase(),
-            style: AppTypography.heading2
-                .copyWith(color: Colors.white, fontSize: 36),
+            style: AppTypography.heading2.copyWith(
+              color: Colors.white,
+              fontSize: 36,
+            ),
           ),
         ),
       ),

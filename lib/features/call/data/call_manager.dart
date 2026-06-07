@@ -79,19 +79,22 @@ class CallManager {
   /// when the screen turns off or the app moves to the background.
   /// No-op on non-Android platforms.
   Future<void> _enableBackground() async {
-    try { await WakelockPlus.enable(); } catch (_) {}
+    try {
+      await WakelockPlus.enable();
+    } catch (_) {}
     if (!Platform.isAndroid) return;
     try {
       const config = FlutterBackgroundAndroidConfig(
         notificationTitle: 'Wasla — Voice Call',
         notificationText: 'Call in progress',
         notificationImportance: AndroidNotificationImportance.high,
-        notificationIcon:
-            AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+        notificationIcon: AndroidResource(
+          name: 'ic_launcher',
+          defType: 'mipmap',
+        ),
       );
       await FlutterBackground.initialize(androidConfig: config);
-      _backgroundActive =
-          await FlutterBackground.enableBackgroundExecution();
+      _backgroundActive = await FlutterBackground.enableBackgroundExecution();
     } catch (_) {
       _backgroundActive = false;
     }
@@ -100,7 +103,9 @@ class CallManager {
   /// Disable the foreground service. Called from dispose() which is the
   /// single exit point for ALL call-end scenarios.
   void _disableBackground() {
-    try { WakelockPlus.disable(); } catch (_) {}
+    try {
+      WakelockPlus.disable();
+    } catch (_) {}
     if (!Platform.isAndroid || !_backgroundActive) return;
     try {
       FlutterBackground.disableBackgroundExecution();
@@ -131,7 +136,9 @@ class CallManager {
       // Fix 2F — start foreground service before ICE negotiation begins
       await _enableBackground();
     } catch (e, stack) {
-      debugPrint('[CallManager] startCall error in _enableBackground: $e\n$stack');
+      debugPrint(
+        '[CallManager] startCall error in _enableBackground: $e\n$stack',
+      );
     }
 
     debugPrint('[CallManager] startCall: Playing ringback audio...');
@@ -152,7 +159,9 @@ class CallManager {
       // Start signaling server BEFORE sending invite so callee can connect
       await _startSignalingServer(signalingPort, isInitiator: true);
     } catch (e, stack) {
-      debugPrint('[CallManager] startCall error in _startSignalingServer: $e\n$stack');
+      debugPrint(
+        '[CallManager] startCall error in _startSignalingServer: $e\n$stack',
+      );
     }
 
     debugPrint('[CallManager] startCall: Sending UDP invite to $peerIp...');
@@ -175,7 +184,7 @@ class CallManager {
         CallAudioService.instance.stopAll(); // stop ringback
         // Tell the callee to stop ringing before we dispose
         _sendCancelInvite(peerIp: _session.peerIp);
-        
+
         _session = _session.copyWith(
           state: CallState.ended,
           endReason: CallEndReason.missed,
@@ -203,15 +212,21 @@ class CallManager {
       // Fix 2F — start foreground service before ICE negotiation begins
       await _enableBackground();
     } catch (e, stack) {
-      debugPrint('[CallManager] acceptCall error in _enableBackground: $e\n$stack');
+      debugPrint(
+        '[CallManager] acceptCall error in _enableBackground: $e\n$stack',
+      );
     }
 
     debugPrint('[CallManager] acceptCall: Connecting to signaling server...');
     try {
       await _connectToSignalingServer(callerIp, signalingPort);
-      debugPrint('[CallManager] acceptCall: Connected to signaling server successfully.');
+      debugPrint(
+        '[CallManager] acceptCall: Connected to signaling server successfully.',
+      );
     } catch (e, stack) {
-      debugPrint('[CallManager] SocketException: Could not connect to signaling server: $e\n$stack');
+      debugPrint(
+        '[CallManager] SocketException: Could not connect to signaling server: $e\n$stack',
+      );
       await endCall();
       return;
     }
@@ -283,7 +298,11 @@ class CallManager {
     // Correct teardown sequence (Bug 3):
     // 1. Return AudioManager to media mode — releases WebRTC's AudioFocus
     if (!kIsWeb && Platform.isAndroid) {
-      try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+      try {
+        await Helper.setAndroidAudioConfiguration(
+          AndroidAudioConfiguration.media,
+        );
+      } catch (_) {}
     }
     // 2. Stop looping audio (ringback, ringtone)
     await CallAudioService.instance.stopAll();
@@ -331,10 +350,9 @@ class CallManager {
 
     pc.onIceCandidate = (candidate) {
       try {
-        _signalingWs?.add(jsonEncode({
-          'type': 'ice',
-          'candidate': candidate.toMap(),
-        }));
+        _signalingWs?.add(
+          jsonEncode({'type': 'ice', 'candidate': candidate.toMap()}),
+        );
       } catch (_) {}
     };
 
@@ -345,33 +363,31 @@ class CallManager {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _reconnectAttempted = false; // Reset on success
-        _iceEndCallPending = false;  // Cancel any pending zombie timer
+        _iceEndCallPending = false; // Cancel any pending zombie timer
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
 
         if (_isReconnecting) {
           _isReconnecting = false;
-          // 500ms delay before stopping — 
+          // 500ms delay before stopping —
           // lets the 1-second loop finish naturally
           await Future.delayed(const Duration(milliseconds: 500));
           CallAudioService.instance.stopReconnecting();
         }
 
         _missedHeartbeats = 0;
-        _heartbeatTimer = Timer.periodic(
-          const Duration(seconds: 5), (_) async {
-            try {
-              _signalingWs?.add(jsonEncode({'type': 'ping'}));
-            } catch (_) {
-              _missedHeartbeats++;
-              if (_missedHeartbeats >= _kMaxMissedHeartbeats) {
-                debugPrint('[Call] Heartbeat lost — ending call');
-                await endCall();
-              }
+        _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+          try {
+            _signalingWs?.add(jsonEncode({'type': 'ping'}));
+          } catch (_) {
+            _missedHeartbeats++;
+            if (_missedHeartbeats >= _kMaxMissedHeartbeats) {
+              debugPrint('[Call] Heartbeat lost — ending call');
+              await endCall();
             }
-          },
-        );
+          }
+        });
 
         _maxDurationTimer = Timer(_kMaxCallDuration, () async {
           debugPrint('[Call] Max call duration reached — ending call');
@@ -382,15 +398,15 @@ class CallManager {
         // so both timers begin from the exact same origin.
         final nowIso = DateTime.now().toUtc().toIso8601String();
         try {
-          _signalingWs?.add(jsonEncode({
-            'type': 'call_start_sync',
-            'startedAt': nowIso,
-          }));
+          _signalingWs?.add(
+            jsonEncode({'type': 'call_start_sync', 'startedAt': nowIso}),
+          );
         } catch (_) {}
 
-
         if (!kIsWeb && Platform.isAndroid) {
-          try { await Helper.setSpeakerphoneOn(false); } catch (_) {}
+          try {
+            await Helper.setSpeakerphoneOn(false);
+          } catch (_) {}
         }
         _session = _session.copyWith(
           state: CallState.active,
@@ -409,14 +425,15 @@ class CallManager {
             }
           });
         }
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+      } else if (state ==
+          RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         if (!_isReconnecting) {
           _isReconnecting = true;
           CallAudioService.instance.playReconnecting();
         }
         // Wait 4 seconds — might self-recover on same network
         await Future.delayed(const Duration(seconds: 4));
-        if (_pc?.connectionState == 
+        if (_pc?.connectionState ==
             RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
           await _attemptReconnect();
         }
@@ -445,7 +462,10 @@ class CallManager {
     return pc;
   }
 
-  Future<void> _startSignalingServer(int port, {required bool isInitiator}) async {
+  Future<void> _startSignalingServer(
+    int port, {
+    required bool isInitiator,
+  }) async {
     _isInitiator = isInitiator; // Store for fallback timer sync
     _signalingServer = await HttpServer.bind(InternetAddress.anyIPv4, port);
     _signalingServer!.transform(WebSocketTransformer()).listen((ws) async {
@@ -478,7 +498,11 @@ class CallManager {
     await CallAudioService.instance.stopAll();
     await CallAudioService.instance.releaseAudioFocus();
     if (!kIsWeb && Platform.isAndroid) {
-      try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication); } catch (_) {}
+      try {
+        await Helper.setAndroidAudioConfiguration(
+          AndroidAudioConfiguration.communication,
+        );
+      } catch (_) {}
     }
     _localStream = await _getLocalAudioStream();
     _pc = await _createPeerConnection();
@@ -505,7 +529,11 @@ class CallManager {
         await CallAudioService.instance.stopAll();
         await CallAudioService.instance.releaseAudioFocus();
         if (!kIsWeb && Platform.isAndroid) {
-          try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.communication); } catch (_) {}
+          try {
+            await Helper.setAndroidAudioConfiguration(
+              AndroidAudioConfiguration.communication,
+            );
+          } catch (_) {}
         }
         _localStream = await _getLocalAudioStream();
         _pc = await _createPeerConnection();
@@ -528,7 +556,9 @@ class CallManager {
 
         final answer = await _pc!.createAnswer();
         await _pc!.setLocalDescription(answer);
-        _signalingWs?.add(jsonEncode({'type': 'answer', 'sdp': answer.toMap()}));
+        _signalingWs?.add(
+          jsonEncode({'type': 'answer', 'sdp': answer.toMap()}),
+        );
         break;
 
       case 'answer':
@@ -585,7 +615,11 @@ class CallManager {
         );
         onStateChanged(_session);
         if (!kIsWeb && Platform.isAndroid) {
-          try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+          try {
+            await Helper.setAndroidAudioConfiguration(
+              AndroidAudioConfiguration.media,
+            );
+          } catch (_) {}
         }
         await CallAudioService.instance.stopAll();
         await CallAudioService.instance.playEndSound();
@@ -599,7 +633,11 @@ class CallManager {
         );
         onStateChanged(_session);
         if (!kIsWeb && Platform.isAndroid) {
-          try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+          try {
+            await Helper.setAndroidAudioConfiguration(
+              AndroidAudioConfiguration.media,
+            );
+          } catch (_) {}
         }
         await CallAudioService.instance.stopAll();
         await CallAudioService.instance.playEndSound();
@@ -634,20 +672,18 @@ class CallManager {
       // Use getBestLocalIpFor so hotspot hosts embed the correct interface IP
       final localIp = await getBestLocalIpFor(peerIp);
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      final payload = utf8.encode(jsonEncode({
-        'type': 'call_invite',
-        'from': selfUuid,
-        'fromName': selfName,
-        'signalingPort': signalingPort,
-        // callerIp lets the callee use the correct interface IP explicitly;
-        // falls back to UDP source address if missing
-        'callerIp': localIp,
-      }));
-      socket.send(
-        payload,
-        InternetAddress(peerIp),
-        kCallInviteUdpPort,
+      final payload = utf8.encode(
+        jsonEncode({
+          'type': 'call_invite',
+          'from': selfUuid,
+          'fromName': selfName,
+          'signalingPort': signalingPort,
+          // callerIp lets the callee use the correct interface IP explicitly;
+          // falls back to UDP source address if missing
+          'callerIp': localIp,
+        }),
       );
+      socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
       socket.close();
     } catch (_) {}
   }
@@ -657,10 +693,9 @@ class CallManager {
   Future<void> _sendCancelInvite({required String peerIp}) async {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      final payload = utf8.encode(jsonEncode({
-        'type': 'call_cancelled',
-        'from': selfUuid,
-      }));
+      final payload = utf8.encode(
+        jsonEncode({'type': 'call_cancelled', 'from': selfUuid}),
+      );
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
       socket.close();
     } catch (_) {}
@@ -671,10 +706,9 @@ class CallManager {
   Future<void> _sendDeclineUdp({required String peerIp}) async {
     try {
       final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      final payload = utf8.encode(jsonEncode({
-        'type': 'call_declined',
-        'from': selfUuid,
-      }));
+      final payload = utf8.encode(
+        jsonEncode({'type': 'call_declined', 'from': selfUuid}),
+      );
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
       socket.close();
     } catch (_) {}
@@ -688,11 +722,10 @@ class CallManager {
     } catch (_) {}
   }
 
-  Future<void> handleReconnectInvite(
-    int newPort, 
-    String callerIp,
-  ) async {
-    debugPrint('[Call] Reconnect invite received, connecting to new port $newPort');
+  Future<void> handleReconnectInvite(int newPort, String callerIp) async {
+    debugPrint(
+      '[Call] Reconnect invite received, connecting to new port $newPort',
+    );
     _remoteDescSet = false;
     _pendingCandidates.clear();
     await _connectToSignalingServer(callerIp, newPort);
@@ -702,15 +735,15 @@ class CallManager {
     if (_reconnectAttempted) return;
     _reconnectAttempted = true;
     debugPrint('[Call] Attempting UDP re-signaling reconnect...');
-    
+
     try {
       // 1. Close old peer connection
       await _pc?.close();
       _pc = null;
       _remoteDescSet = false;
       _pendingCandidates.clear();
-      
-      // 2. If we are the initiator (caller), start a new 
+
+      // 2. If we are the initiator (caller), start a new
       //    signaling server and send a new UDP invite
       if (_isInitiator) {
         final newPort = 46100 + Random().nextInt(100);
@@ -722,13 +755,12 @@ class CallManager {
           peerName: _session.peerName,
         );
       }
-      
+
       // 3. Set reconnect timeout
       _iceEndCallPending = true;
       Future.delayed(const Duration(seconds: 15), () {
         if (_iceEndCallPending) endCall();
       });
-      
     } catch (e) {
       debugPrint('[Call] Reconnect failed: $e');
       await endCall();
@@ -740,7 +772,11 @@ class CallManager {
     _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
-      try { await Helper.setAndroidAudioConfiguration(AndroidAudioConfiguration.media); } catch (_) {}
+      try {
+        await Helper.setAndroidAudioConfiguration(
+          AndroidAudioConfiguration.media,
+        );
+      } catch (_) {}
     }
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
