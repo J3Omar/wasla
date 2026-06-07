@@ -94,6 +94,25 @@ class CallAudioService {
     }
   }
 
+  Future<void> playReconnecting() async {
+    if (!_isAudioEnabled) return;
+    try {
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _callPlayer.setAudioContext(
+          _ctx(AndroidUsageType.voiceCommunication));
+      }
+      await _callPlayer.setReleaseMode(ReleaseMode.loop);
+      await _callPlayer.play(AssetSource('audio/reconnecting.mp3'));
+    } catch (e) {
+      debugPrint('[CallAudio] playReconnecting error: $e');
+    }
+  }
+
+  Future<void> stopReconnecting() async {
+    try {
+      await _callPlayer.stop();
+    } catch (_) {}
+  }
   /// Stop all looping call audio immediately.
   /// Idempotent — safe to call multiple times.
   Future<void> stopAll() async {
@@ -144,6 +163,7 @@ class CallAudioService {
         await _notifPlayer.setAudioContext(_ctx(AndroidUsageType.notification));
       }
       await _notifPlayer.setReleaseMode(ReleaseMode.stop);
+      await _notifPlayer.stop();
       await _notifPlayer.play(AssetSource('audio/notification.mp3'));
     } catch (e) {
       debugPrint('[CallAudio] playNotification error: $e');

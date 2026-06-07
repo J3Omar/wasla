@@ -72,6 +72,7 @@ class ChatArgs {
 class ChatNotifier
     extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArgs> {
   StreamSubscription<List<ChatMessage>>? _dbSub;
+  Timer? _debounceTimer;
   int _loadedCount = _kPageSize;
 
   @override
@@ -100,15 +101,19 @@ class ChatNotifier
     // Subscribe to DB changes and rebuild immediately.
     // _mergeMessages is idempotent, so duplicate emissions are harmless.
     _dbSub = ChatDatabase.instance.watchMessages(arg.peerId).listen((msgs) {
-      if (state.hasValue) {
-        final current = state.value!;
-        state = AsyncData(
-          current.copyWith(messages: _mergeMessages(current.messages, msgs)),
-        );
-      }
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 50), () {
+        if (state.hasValue) {
+          final current = state.value!;
+          state = AsyncData(
+            current.copyWith(messages: _mergeMessages(current.messages, msgs)),
+          );
+        }
+      });
     });
 
     ref.onDispose(() {
+      _debounceTimer?.cancel();
       _dbSub?.cancel();
       if (service.activeChatPeerId == arg.peerId) {
         service.activeChatPeerId = null;

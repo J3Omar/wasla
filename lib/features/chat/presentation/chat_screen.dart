@@ -16,7 +16,6 @@ import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../call/domain/call_provider.dart';
 import '../../call/domain/call_state.dart';
-import '../../call/data/call_audio_service.dart';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/utils/smart_permission_handler.dart';
@@ -197,20 +196,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen for new incoming messages to play WhatsApp-style received sound
-    ref.listen(chatProvider(_args), (previous, next) {
-      final prevList = previous?.valueOrNull?.messages;
-      final nextList = next.valueOrNull?.messages;
-      if (prevList != null && nextList != null && nextList.isNotEmpty) {
-        final newest = nextList.first;
-        // If the newest message is different, and it's NOT from us, play sound!
-        if (prevList.isEmpty || newest.id != prevList.first.id) {
-          if (!newest.isSent) {
-            CallAudioService.instance.playMessageReceived();
-          }
-        }
-      }
-    });
+    // Message received sound logic has been centralized in main_shell.dart
 
     // Outer build() is now nearly static — only rebuilds when _selectedFile
     // changes (file pick/cancel). All message & selection rendering is isolated.
@@ -230,7 +216,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               : _buildAppBar(isSelfInCall: isSelfInCall),
           body: Column(
             children: [
-              // In-call banner moved to main_shell.dart
+              if (isSelfInCall)
+                GestureDetector(
+                  onTap: () => context.push('/call/active'),
+                  child: Container(
+                    width: double.infinity,
+                    color: AppColors.primaryCyan.withValues(alpha: 0.15),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.phone_in_talk_rounded,
+                            size: 14, color: AppColors.primaryCyan),
+                        const SizedBox(width: 6),
+                        Text(
+                          'In Call — tap to return',
+                          style: AppTypography.labelSmall
+                              .copyWith(color: AppColors.primaryCyan),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               Expanded(
                 // Consumer isolates DB-driven rebuilds to the message list only
                 child: Consumer(

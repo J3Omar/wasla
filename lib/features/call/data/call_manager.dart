@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
 import 'call_audio_service.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,13 @@ class CallManager {
   WebSocket? _signalingWs;
   Timer? _timeoutTimer; // 30s no-answer auto-end
 
+  Timer? _heartbeatTimer;
+  int _missedHeartbeats = 0;
+  static const _kMaxMissedHeartbeats = 3;
+
+  Timer? _maxDurationTimer;
+  static const _kMaxCallDuration = Duration(hours: 3);
+
   // Fix 2D — ICE candidate queue.
   // Remote candidates that arrive before setRemoteDescription completes are
   // stored here, then flushed immediately after the remote desc is applied.
@@ -58,6 +66,7 @@ class CallManager {
   bool _iceEndCallPending = false;
   // Bug 2 fix: track which side we are on for fallback timer sync
   bool _isInitiator = false;
+  bool _isReconnecting = false;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -70,6 +79,7 @@ class CallManager {
   /// when the screen turns off or the app moves to the background.
   /// No-op on non-Android platforms.
   Future<void> _enableBackground() async {
+    try { await WakelockPlus.enable(); } catch (_) {}
     if (!Platform.isAndroid) return;
     try {
       const config = FlutterBackgroundAndroidConfig(
@@ -90,6 +100,7 @@ class CallManager {
   /// Disable the foreground service. Called from dispose() which is the
   /// single exit point for ALL call-end scenarios.
   void _disableBackground() {
+    try { WakelockPlus.disable(); } catch (_) {}
     if (!Platform.isAndroid || !_backgroundActive) return;
     try {
       FlutterBackground.disableBackgroundExecution();
@@ -276,6 +287,10 @@ class CallManager {
     }
     // 2. Stop looping audio (ringback, ringtone)
     await CallAudioService.instance.stopAll();
+    if (_isReconnecting) {
+      _isReconnecting = false;
+      CallAudioService.instance.stopReconnecting();
+    }
     // 3. NOW audioplayers can acquire focus — await so chime plays fully
     if (wasActive) {
       await CallAudioService.instance.playEndSound();
@@ -335,6 +350,34 @@ class CallManager {
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
 
+        if (_isReconnecting) {
+          _isReconnecting = false;
+          // 500ms delay before stopping — 
+          // lets the 1-second loop finish naturally
+          await Future.delayed(const Duration(milliseconds: 500));
+          CallAudioService.instance.stopReconnecting();
+        }
+
+        _missedHeartbeats = 0;
+        _heartbeatTimer = Timer.periodic(
+          const Duration(seconds: 5), (_) async {
+            try {
+              _signalingWs?.add(jsonEncode({'type': 'ping'}));
+            } catch (_) {
+              _missedHeartbeats++;
+              if (_missedHeartbeats >= _kMaxMissedHeartbeats) {
+                debugPrint('[Call] Heartbeat lost — ending call');
+                await endCall();
+              }
+            }
+          },
+        );
+
+        _maxDurationTimer = Timer(_kMaxCallDuration, () async {
+          debugPrint('[Call] Max call duration reached — ending call');
+          await endCall();
+        });
+
         // Phase 2 — Caller broadcasts authoritative UTC start time to Callee
         // so both timers begin from the exact same origin.
         final nowIso = DateTime.now().toUtc().toIso8601String();
@@ -367,6 +410,10 @@ class CallManager {
           });
         }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        if (!_isReconnecting) {
+          _isReconnecting = true;
+          CallAudioService.instance.playReconnecting();
+        }
         // Wait 4 seconds — might self-recover on same network
         await Future.delayed(const Duration(seconds: 4));
         if (_pc?.connectionState == 
@@ -445,6 +492,13 @@ class CallManager {
 
   void _handleSignal(Map<String, dynamic> signal) async {
     switch (signal['type']) {
+      case 'ping':
+        _missedHeartbeats = 0;
+        _signalingWs?.add(jsonEncode({'type': 'pong'}));
+        break;
+      case 'pong':
+        _missedHeartbeats = 0;
+        break;
       case 'offer':
         // Strict audio handoff sequence (Phase 1 Fix):
         // Stop looping audio → release AudioFocus → WebRTC takes over AudioManager
@@ -644,6 +698,43 @@ class CallManager {
     await _connectToSignalingServer(callerIp, newPort);
   }
 
+  Future<void> _attemptReconnect() async {
+    if (_reconnectAttempted) return;
+    _reconnectAttempted = true;
+    debugPrint('[Call] Attempting UDP re-signaling reconnect...');
+    
+    try {
+      // 1. Close old peer connection
+      await _pc?.close();
+      _pc = null;
+      _remoteDescSet = false;
+      _pendingCandidates.clear();
+      
+      // 2. If we are the initiator (caller), start a new 
+      //    signaling server and send a new UDP invite
+      if (_isInitiator) {
+        final newPort = 46100 + Random().nextInt(100);
+        await _startSignalingServer(newPort, isInitiator: true);
+        await _sendCallInvite(
+          peerIp: _session.peerIp,
+          signalingPort: newPort,
+          peerId: _session.peerId,
+          peerName: _session.peerName,
+        );
+      }
+      
+      // 3. Set reconnect timeout
+      _iceEndCallPending = true;
+      Future.delayed(const Duration(seconds: 15), () {
+        if (_iceEndCallPending) endCall();
+      });
+      
+    } catch (e) {
+      debugPrint('[Call] Reconnect failed: $e');
+      await endCall();
+    }
+  }
+
   Future<void> dispose() async {
     _disableBackground(); // Fix 2F — release foreground service in ALL cases
     _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
@@ -653,6 +744,12 @@ class CallManager {
     }
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _maxDurationTimer?.cancel();
+    _maxDurationTimer = null;
+    _isReconnecting = false;
+    CallAudioService.instance.stopReconnecting();
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
