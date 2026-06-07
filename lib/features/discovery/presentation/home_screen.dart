@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../data/discovery_service.dart';
 import '../domain/device_model.dart';
 import '../../../core/utils/rom_detector.dart';
 import '../../../core/utils/firewall_detector.dart';
+import '../../../core/utils/smart_permission_handler.dart';
+import '../../call/domain/call_provider.dart';
+import '../../call/domain/call_state.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -132,15 +136,21 @@ class _DeviceListView extends StatelessWidget {
   }
 }
 
-// ── Device Card ──────────────────────────────────────────────────────────────
+// ── Device Card ─────────────────────────────────────────────────────────────
 
-class _DeviceCard extends StatelessWidget {
+class _DeviceCard extends ConsumerWidget {
   const _DeviceCard({required this.device});
   final Device device;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final statusColor = _statusColor(device.status);
+    final callState = ref.watch(callProvider).valueOrNull;
+    final isSelfInCall =
+        callState != null &&
+        (callState.state == CallState.active ||
+            callState.state == CallState.connecting ||
+            callState.state == CallState.outgoing);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -225,9 +235,63 @@ class _DeviceCard extends StatelessWidget {
                       Expanded(
                         child: _ActionTile(
                           icon: Icons.call_outlined,
-                          label: 'Call',
-                          color: AppColors.statusOnline,
-                          onTap: () {},
+                          label: isSelfInCall ? 'In Call' : 'Call',
+                          color: isSelfInCall
+                              ? AppColors.textSecondary
+                              : AppColors.statusOnline,
+                          onTap: isSelfInCall
+                              ? () {
+                                  // Already in a call — navigate back to it
+                                  context.push('/call/active');
+                                }
+                              : () async {
+                                  debugPrint(
+                                    '[HomeScreen] Call button tapped for ${device.displayName}',
+                                  );
+                                  try {
+                                    // Fix 2E — require microphone before initiating
+                                    final granted =
+                                        await SmartPermissionHandler.request(
+                                          context,
+                                          Permission.microphone,
+                                          'Microphone',
+                                          'to make voice calls',
+                                        );
+                                    debugPrint(
+                                      '[HomeScreen] Microphone permission granted: $granted',
+                                    );
+                                    if (!granted) return;
+                                    final success = await ref
+                                        .read(callProvider.notifier)
+                                        .startCall(
+                                          peerId: device.uuid,
+                                          peerName: device.displayName,
+                                          peerIp: device.localIp,
+                                        );
+                                    debugPrint(
+                                      '[HomeScreen] startCall completed, navigating to outgoing...',
+                                    );
+                                    if (context.mounted) {
+                                      if (success) {
+                                        context.push('/call/outgoing');
+                                      } else {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Cannot place call right now.',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } catch (e, stack) {
+                                    debugPrint(
+                                      '[HomeScreen] Error initiating call: $e\n$stack',
+                                    );
+                                  }
+                                },
                         ),
                       ),
                       const SizedBox(width: 8),

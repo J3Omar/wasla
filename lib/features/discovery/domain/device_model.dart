@@ -69,10 +69,15 @@ class Device {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is Device && uuid == other.uuid;
+      identical(this, other) ||
+      other is Device &&
+          uuid == other.uuid &&
+          status == other.status &&
+          localIp == other.localIp &&
+          displayName == other.displayName;
 
   @override
-  int get hashCode => uuid.hashCode;
+  int get hashCode => Object.hash(uuid, status, localIp, displayName);
 
   @override
   String toString() => 'Device($displayName @ $localIp, $status)';

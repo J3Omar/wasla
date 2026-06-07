@@ -8,10 +8,11 @@ import '../data/chat_database.dart';
 import '../data/webrtc_chat_service.dart';
 import '../data/chat_notification_service.dart';
 import '../domain/chat_message.dart';
+import '../../call/data/call_audio_service.dart';
 
 const _kNameKey = 'wasla_device_name';
 const _kUuidKey = 'wasla_device_uuid';
-const _kPageSize = 30;
+const _kPageSize = 20;
 const _uuid = Uuid();
 
 // ── Chat Page State ───────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ class ChatArgs {
 class ChatNotifier
     extends AutoDisposeFamilyAsyncNotifier<ChatPageState, ChatArgs> {
   StreamSubscription<List<ChatMessage>>? _dbSub;
+  Timer? _debounceTimer;
   int _loadedCount = _kPageSize;
 
   @override
@@ -96,19 +98,22 @@ class ChatNotifier
     service.selfUuid ??= await storage.read(key: _kUuidKey) ?? '';
     service.selfName ??= await storage.read(key: _kNameKey) ?? 'Wasla User';
 
-    // Subscribe to DB changes — only rebuild if message list changes
+    // Subscribe to DB changes and rebuild immediately.
+    // _mergeMessages is idempotent, so duplicate emissions are harmless.
     _dbSub = ChatDatabase.instance.watchMessages(arg.peerId).listen((msgs) {
-      if (state.hasValue) {
-        final current = state.value!;
-        // Merge new messages into current paginated list
-        // New messages are appended; already-loaded older messages keep pagination
-        state = AsyncData(
-          current.copyWith(messages: _mergeMessages(current.messages, msgs)),
-        );
-      }
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 50), () {
+        if (state.hasValue) {
+          final current = state.value!;
+          state = AsyncData(
+            current.copyWith(messages: _mergeMessages(current.messages, msgs)),
+          );
+        }
+      });
     });
 
     ref.onDispose(() {
+      _debounceTimer?.cancel();
       _dbSub?.cancel();
       if (service.activeChatPeerId == arg.peerId) {
         service.activeChatPeerId = null;
@@ -203,6 +208,10 @@ class ChatNotifier
       saved.id,
       sent ? MessageStatus.sent : MessageStatus.queued,
     );
+
+    if (sent) {
+      CallAudioService.instance.playMessageSent();
+    }
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

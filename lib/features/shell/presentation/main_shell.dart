@@ -13,6 +13,12 @@ import '../../chat/data/chat_database.dart';
 import '../../chat/data/chat_notification_service.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
 import '../../profile/presentation/profile_screen.dart';
+import 'dart:io';
+import '../../call/domain/call_provider.dart';
+import '../../call/domain/call_state.dart';
+import '../../call/data/call_audio_service.dart';
+import '../../discovery/data/discovery_service.dart';
+import '../../../core/utils/background_service_manager.dart';
 
 /// Top-level navigation shell with 3 tabs.
 class MainShell extends ConsumerStatefulWidget {
@@ -27,9 +33,21 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   static const _tabs = [HomeScreen(), ChatsListScreen(), ProfileScreen()];
 
+  late final AppLifecycleListener _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
+    _lifecycleListener = AppLifecycleListener(
+      onDetach: () {
+        // Force cleanup background services so they don't zombie
+        BackgroundServiceManager.instance.releaseAll();
+        // Best-effort offline broadcast before process dies
+        ref
+            .read(discoveryServiceProvider.notifier)
+            .updateLocalStatus(DeviceStatus.offline);
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Open database
       await ChatDatabase.instance.open();
@@ -50,13 +68,25 @@ class _MainShellState extends ConsumerState<MainShell> {
 
       // Wire notification display when a message arrives in background
       service.onMessageReceived = (peerId, senderName, content) {
-        // Only show notification if user is NOT in this specific chat
-        if (service.activeChatPeerId != peerId) {
+        final isInChat = service.activeChatPeerId == peerId;
+
+        if (isInChat) {
+          // User is looking at this chat — play in-chat sound only
+          // No notification needed
+          CallAudioService.instance.playMessageReceived();
+        } else {
+          // User is elsewhere — show notification with sound
           ChatNotificationService.instance.showMessageNotification(
             senderName: senderName,
             content: content,
             peerId: peerId,
           );
+          // Desktop: notification service doesn't play mp3 natively
+          // so we play notification.mp3 manually here
+          if (!Platform.isAndroid && !Platform.isIOS) {
+            CallAudioService.instance.playNotification();
+          }
+          // Android: notification channel handles its own sound
         }
       };
 
@@ -74,15 +104,86 @@ class _MainShellState extends ConsumerState<MainShell> {
         );
         context.push('/chat/$peerId', extra: targetDevice);
       };
+
+      // Start call provider (spins up UDP invite listener on port 45680)
+      final callNotifier = ref.read(callProvider.notifier);
+      // Wire incoming call → navigate to IncomingCallScreen
+      callNotifier.onIncomingCall = (info) {
+        if (!mounted) return;
+        context.push(
+          '/call/incoming',
+          extra: {
+            'callerId': info['peerId'] as String,
+            'callerName': info['peerName'] as String,
+            'callerIp': info['callerIp'] as String,
+            'signalingPort': info['signalingPort'] as int,
+          },
+        );
+      };
     });
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final totalUnread = ref.watch(totalUnreadProvider).valueOrNull ?? 0;
+    final session = ref.watch(callProvider).valueOrNull;
+    final isInCall =
+        session != null &&
+        (session.state == CallState.active ||
+            session.state == CallState.connecting);
+
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      body: IndexedStack(index: _currentIndex, children: _tabs),
+      body: Column(
+        children: [
+          if (isInCall)
+            SafeArea(
+              bottom: false,
+              child: GestureDetector(
+                onTap: () => context.go('/call/active'),
+                child: Container(
+                  width: double.infinity,
+                  color: Colors.amber.withValues(alpha: 0.9),
+                  padding: const EdgeInsets.only(
+                    top: 4,
+                    bottom: 4,
+                    left: 16,
+                    right: 16,
+                  ),
+                  height: 32,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.phone_in_talk_rounded,
+                        size: 14,
+                        color: Colors.black87,
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'In Call — tap to return',
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(index: _currentIndex, children: _tabs),
+          ),
+        ],
+      ),
       bottomNavigationBar: _WaslaNavBar(
         currentIndex: _currentIndex,
         totalUnread: totalUnread,

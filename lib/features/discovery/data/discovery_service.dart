@@ -9,6 +9,7 @@ import '../domain/device_model.dart';
 import 'device_registry.dart';
 import 'mdns_service.dart';
 import 'udp_broadcast_service.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/utils/string_utils.dart';
 
 const _kUuidKey = 'wasla_device_uuid';
@@ -56,10 +57,14 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
       final currentIp = normalizeDigits(currentRawIp);
 
       if (_selfUuid != null && _udp.selfDevice.localIp != currentIp) {
-        // IP changed! Update self device and broadcast immediately
+        debugPrint('[Discovery] Network changed! Re-binding UDP socket...');
+        await _udp.stop(); // Destroy the dead socket
+
         final newSelf = _udp.selfDevice.copyWith(localIp: currentIp);
         _udp.selfDevice = newSelf;
         _mdns.selfDevice = newSelf;
+
+        await _udp.start(); // Re-bind on the new IP
         _registry.upsert(newSelf);
         _udp.announceDevice(newSelf);
       }
@@ -87,6 +92,17 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
     _udp.selfDevice = newSelf;
     _mdns.selfDevice = newSelf;
     _udp.announceDevice(newSelf);
+  }
+
+  /// Update the local device's status (e.g. busy during a call, available after).
+  /// Immediately re-broadcasts via UDP so peer devices reflect the change
+  /// within seconds without waiting for the next 5-second announce cycle.
+  void updateLocalStatus(DeviceStatus status) {
+    final updated = _udp.selfDevice.copyWith(status: status);
+    _udp.selfDevice = updated;
+    _mdns.selfDevice = updated;
+    _registry.upsert(updated);
+    _udp.announceDevice(updated);
   }
 
   // Empty out _syncPeerNames instead of deleting entirely to avoid

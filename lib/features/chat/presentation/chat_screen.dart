@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../../../core/theme/app_colors.dart';
@@ -13,15 +14,20 @@ import 'chat_notifier.dart';
 import '../../file_sharing/presentation/widgets/file_message_bubble.dart';
 import '../../file_sharing/presentation/widgets/file_preview_card.dart';
 import '../../file_sharing/data/file_transfer_service.dart';
+import '../../call/domain/call_provider.dart';
+import '../../call/domain/call_state.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
+import '../../../core/utils/smart_permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key, required this.device});
-  final Device device;
+  const ChatScreen({super.key, required this.deviceId, this.device});
+  final String deviceId;
+  final Device? device;
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -33,26 +39,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _focusNode = FocusNode();
   File? _selectedFile;
 
-  bool _isSelectionMode = false;
-  final Set<int> _selectedIds = {};
+  // Selection state as ValueNotifiers so toggling selection does NOT call
+  // setState on _ChatScreenState, preventing Consumer + ListView rebuild.
+  final _isSelectionMode = ValueNotifier(false);
+  final _selectedIds = ValueNotifier(<int>{});
   bool _isLoadingMore = false;
 
   late final ChatArgs _args;
+  late final Device? _resolvedDevice;
 
   @override
   void initState() {
     super.initState();
-    _args = ChatArgs(
-      peerId: widget.device.uuid,
-      peerIp: widget.device.localIp,
-      peerName: widget.device.displayName,
-    );
+
+    if (widget.device != null) {
+      _resolvedDevice = widget.device;
+    } else {
+      final devicesMap = ref.read(discoveryServiceProvider).valueOrNull ?? {};
+      _resolvedDevice = devicesMap[widget.deviceId];
+    }
+
+    final peerId = widget.deviceId;
+    final peerIp = _resolvedDevice?.localIp ?? '127.0.0.1';
+    final peerName = _resolvedDevice?.displayName ?? 'Unknown User';
+
+    _args = ChatArgs(peerId: peerId, peerIp: peerIp, peerName: peerName);
 
     // Save the peer name to database so we remember it offline
-    ChatDatabase.instance.upsertPeer(
-      widget.device.uuid,
-      widget.device.displayName,
-    );
+    ChatDatabase.instance.upsertPeer(peerId, peerName);
 
     // Listen for scroll-to-top to trigger pagination
     _scrollController.addListener(_onScroll);
@@ -63,7 +77,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!mounted) return;
       ref
           .read(webrtcChatServiceProvider)
-          .warmupConnection(peerId: widget.device.uuid, peerIp: _bestPeerIp());
+          .warmupConnection(peerId: _args.peerId, peerIp: _bestPeerIp());
     });
   }
 
@@ -82,6 +96,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _inputController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _isSelectionMode.dispose();
+    _selectedIds.dispose();
     super.dispose();
   }
 
@@ -91,12 +107,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _bestPeerIp() {
     final devicesState = ref.read(discoveryServiceProvider);
     if (devicesState is AsyncData<Map<String, Device>>) {
-      final live = devicesState.value[widget.device.uuid];
+      final live = devicesState.value[_args.peerId];
       if (live != null && live.localIp.isNotEmpty) return live.localIp;
     }
     // Fall back to the IP stored in the chat database
-    return ChatDatabase.instance.getPeerIp(widget.device.uuid) ??
-        widget.device.localIp;
+    return ChatDatabase.instance.getPeerIp(_args.peerId) ??
+        (_resolvedDevice?.localIp ?? '127.0.0.1');
   }
 
   Future<void> _onSend() async {
@@ -173,169 +189,229 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // chatState is only watched here for the selection-mode AppBar.
-    // The message list lives inside a Consumer so it rebuilds independently.
-    // Do NOT watch here just to pass to _InputBar — that caused per-keystroke
-    // full-tree rebuilds. _InputBar manages its own hasText state now.
-    final AsyncValue<ChatPageState>? chatState = _isSelectionMode
-        ? ref.watch(chatProvider(_args))
-        : null;
+    // Message received sound logic has been centralized in main_shell.dart
 
-    return Scaffold(
-      backgroundColor: AppColors.bgPrimary,
-      appBar: _isSelectionMode
-          ? _buildSelectionAppBar(chatState!)
-          : _buildAppBar(),
-      body: Column(
-        children: [
-          Expanded(
-            // Consumer isolates rebuilds to the message list only
-            child: Consumer(
-              builder: (context, ref, _) {
-                final state = ref.watch(chatProvider(_args));
-                return state.when(
-                  loading: () => const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.primaryCyan,
+    // Outer build() is now nearly static — only rebuilds when _selectedFile
+    // changes (file pick/cancel). All message & selection rendering is isolated.
+    final selfCallState = ref.watch(callProvider).valueOrNull;
+    final isSelfInCall =
+        selfCallState != null &&
+        (selfCallState.state == CallState.active ||
+            selfCallState.state == CallState.connecting ||
+            selfCallState.state == CallState.outgoing);
+
+    return ValueListenableBuilder(
+      valueListenable: _isSelectionMode,
+      builder: (context, selectionMode, _) {
+        return Scaffold(
+          backgroundColor: AppColors.bgPrimary,
+          appBar: selectionMode
+              ? _buildSelectionAppBar()
+              : _buildAppBar(isSelfInCall: isSelfInCall),
+          body: Column(
+            children: [
+              if (isSelfInCall)
+                GestureDetector(
+                  onTap: () => context.push('/call/active'),
+                  child: Container(
+                    width: double.infinity,
+                    color: AppColors.primaryCyan.withValues(alpha: 0.15),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
                     ),
-                  ),
-                  error: (e, _) => Center(
-                    child: Text('Error: $e', style: AppTypography.bodySmall),
-                  ),
-                  data: (pageState) {
-                    final messages = pageState.messages;
-                    if (messages.isEmpty) {
-                      return _EmptyConversation(device: widget.device);
-                    }
-                    return Stack(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // reverse:true → index 0 = newest, auto-anchors to bottom
-                        ListView.builder(
-                          controller: _scrollController,
-                          reverse: true,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                        const Icon(
+                          Icons.phone_in_talk_rounded,
+                          size: 14,
+                          color: AppColors.primaryCyan,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'In Call — tap to return',
+                          style: AppTypography.labelSmall.copyWith(
+                            color: AppColors.primaryCyan,
                           ),
-                          itemCount:
-                              messages.length + (pageState.hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            // Loading indicator at top (last item in reversed list)
-                            if (pageState.hasMore && index == messages.length) {
-                              return Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: pageState.isLoadingMore
-                                      ? const SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: AppColors.primaryCyan,
-                                          ),
-                                        )
-                                      : const SizedBox.shrink(),
-                                ),
-                              );
-                            }
-
-                            // reversed: index 0 = last message (newest)
-                            final reversedIndex = messages.length - 1 - index;
-                            final msg = messages[reversedIndex];
-                            final prev = reversedIndex > 0
-                                ? messages[reversedIndex - 1]
-                                : null;
-                            final showDate =
-                                prev == null ||
-                                !_sameDay(msg.timestamp, prev.timestamp);
-
-                            return RepaintBoundary(
-                              child: Column(
-                                children: [
-                                  if (showDate)
-                                    _DateDivider(date: msg.timestamp),
-                                  _MessageBubble(
-                                    message: msg,
-                                    peerIp: _args.peerIp,
-                                    isSelected: _selectedIds.contains(msg.id),
-                                    isSelectionMode: _isSelectionMode,
-                                    onTap: () {
-                                      if (_isSelectionMode) {
-                                        setState(() {
-                                          if (_selectedIds.contains(msg.id)) {
-                                            _selectedIds.remove(msg.id);
-                                            if (_selectedIds.isEmpty) {
-                                              _isSelectionMode = false;
-                                            }
-                                          } else {
-                                            _selectedIds.add(msg.id);
-                                          }
-                                        });
-                                      }
-                                    },
-                                    onLongPress: () {
-                                      if (!_isSelectionMode) {
-                                        setState(() {
-                                          _isSelectionMode = true;
-                                          _selectedIds.add(msg.id);
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
                         ),
                       ],
+                    ),
+                  ),
+                ),
+              Expanded(
+                // Consumer isolates DB-driven rebuilds to the message list only
+                child: Consumer(
+                  builder: (context, ref, _) {
+                    final state = ref.watch(chatProvider(_args));
+                    return state.when(
+                      loading: () => const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primaryCyan,
+                        ),
+                      ),
+                      error: (e, _) => Center(
+                        child: Text(
+                          'Error: $e',
+                          style: AppTypography.bodySmall,
+                        ),
+                      ),
+                      data: (pageState) {
+                        final messages = pageState.messages;
+                        if (messages.isEmpty) {
+                          return _EmptyConversation(
+                            device: widget.device ?? _resolvedDevice!,
+                          );
+                        }
+                        return Stack(
+                          children: [
+                            ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              itemCount:
+                                  messages.length + (pageState.hasMore ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                if (pageState.hasMore &&
+                                    index == messages.length) {
+                                  return Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: pageState.isLoadingMore
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: AppColors.primaryCyan,
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  );
+                                }
+
+                                final reversedIndex =
+                                    messages.length - 1 - index;
+                                final msg = messages[reversedIndex];
+                                final prev = reversedIndex > 0
+                                    ? messages[reversedIndex - 1]
+                                    : null;
+                                final showDate =
+                                    prev == null ||
+                                    !_sameDay(msg.timestamp, prev.timestamp);
+
+                                // Stable key → Flutter skips rebuild for
+                                // unchanged items even when list order shifts
+                                return RepaintBoundary(
+                                  key: ValueKey(msg.id),
+                                  child: Column(
+                                    children: [
+                                      if (showDate)
+                                        _DateDivider(date: msg.timestamp),
+                                      // Nested ValueListenableBuilders so that
+                                      // tapping to select ONLY repaints the
+                                      // affected bubble, not the entire list
+                                      ValueListenableBuilder(
+                                        valueListenable: _selectedIds,
+                                        builder: (context, ids, _) =>
+                                            ValueListenableBuilder(
+                                              valueListenable: _isSelectionMode,
+                                              builder: (context, selMode, _) =>
+                                                  _MessageBubble(
+                                                    message: msg,
+                                                    peerIp: _args.peerIp,
+                                                    isSelected: ids.contains(
+                                                      msg.id,
+                                                    ),
+                                                    isSelectionMode: selMode,
+                                                    onTap: () {
+                                                      if (selMode) {
+                                                        final next =
+                                                            Set<int>.from(ids);
+                                                        if (next.contains(
+                                                          msg.id,
+                                                        )) {
+                                                          next.remove(msg.id);
+                                                          if (next.isEmpty) {
+                                                            _isSelectionMode
+                                                                    .value =
+                                                                false;
+                                                          }
+                                                        } else {
+                                                          next.add(msg.id);
+                                                        }
+                                                        _selectedIds.value =
+                                                            next;
+                                                      }
+                                                    },
+                                                    onLongPress: () {
+                                                      if (!selMode) {
+                                                        _selectedIds.value = {
+                                                          msg.id,
+                                                        };
+                                                        _isSelectionMode.value =
+                                                            true;
+                                                      }
+                                                    },
+                                                  ),
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+              _InputBar(
+                controller: _inputController,
+                focusNode: _focusNode,
+                peerName: _args.peerName,
+                onSend: _onSend,
+                selectedFile: _selectedFile,
+                onPickFile: () async {
+                  final result = await FilePicker.platform.pickFiles();
+                  if (result != null && result.files.single.path != null) {
+                    setState(() {
+                      _selectedFile = File(result.files.single.path!);
+                    });
+                  }
+                },
+                onCancelFile: () {
+                  setState(() => _selectedFile = null);
+                },
+              ),
+            ],
           ),
-          _InputBar(
-            controller: _inputController,
-            focusNode: _focusNode,
-            peerName: widget.device.displayName,
-            onSend: _onSend,
-            selectedFile: _selectedFile,
-            onPickFile: () async {
-              final result = await FilePicker.platform.pickFiles();
-              if (result != null && result.files.single.path != null) {
-                setState(() {
-                  _selectedFile = File(result.files.single.path!);
-                });
-              }
-            },
-            onCancelFile: () {
-              setState(() {
-                _selectedFile = null;
-              });
-            },
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  PreferredSizeWidget _buildSelectionAppBar(
-    AsyncValue<ChatPageState> chatState,
-  ) {
+  PreferredSizeWidget _buildSelectionAppBar() {
+    final ids = _selectedIds.value;
+    final chatState = ref.read(chatProvider(_args));
     return AppBar(
       backgroundColor: AppColors.bgSecondary,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.close_rounded, color: AppColors.textPrimary),
         onPressed: () {
-          setState(() {
-            _isSelectionMode = false;
-            _selectedIds.clear();
-          });
+          _isSelectionMode.value = false;
+          _selectedIds.value = {};
         },
       ),
       title: Text(
-        '${_selectedIds.length} selected',
+        '${ids.length} selected',
         style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
       ),
       actions: [
@@ -344,14 +420,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             builder: (context) {
               final messages = chatState.value!.messages;
               final selectedMessages = messages
-                  .where((m) => _selectedIds.contains(m.id))
+                  .where((m) => ids.contains(m.id))
                   .toList();
               final hasTextSelected = selectedMessages.any(
                 (m) => m.type == MessageType.text,
               );
-
               if (!hasTextSelected) return const SizedBox.shrink();
-
               return IconButton(
                 icon: const Icon(Icons.copy, color: AppColors.textPrimary),
                 tooltip: 'Copy',
@@ -361,12 +435,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       .map((m) => m.content)
                       .join('\n');
                   Clipboard.setData(ClipboardData(text: textOnly));
-
-                  setState(() {
-                    _isSelectionMode = false;
-                    _selectedIds.clear();
-                  });
-
+                  _isSelectionMode.value = false;
+                  _selectedIds.value = {};
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
@@ -390,17 +460,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
           onPressed: () {
             if (chatState.hasValue) {
-              setState(() {
-                final allIds = chatState.value!.messages
-                    .map((m) => m.id)
-                    .toSet();
-                if (_selectedIds.length == allIds.length) {
-                  _selectedIds.clear();
-                  _isSelectionMode = false;
-                } else {
-                  _selectedIds.addAll(allIds);
-                }
-              });
+              final allIds = chatState.value!.messages.map((m) => m.id).toSet();
+              if (ids.length == allIds.length) {
+                _selectedIds.value = {};
+                _isSelectionMode.value = false;
+              } else {
+                _selectedIds.value = allIds;
+              }
             }
           },
         ),
@@ -410,14 +476,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             color: Colors.redAccent,
           ),
           onPressed: () async {
-            if (_selectedIds.isEmpty) return;
+            if (ids.isEmpty) return;
             final confirm = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
                 backgroundColor: AppColors.bgSecondary,
                 title: Text('Delete Messages', style: AppTypography.heading3),
                 content: Text(
-                  'Are you sure you want to delete ${_selectedIds.length} message(s)?',
+                  'Are you sure you want to delete ${ids.length} message(s)?',
                   style: AppTypography.bodyMedium,
                 ),
                 actions: [
@@ -443,14 +509,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             );
             if (confirm == true) {
-              ChatDatabase.instance.deleteMessages(_selectedIds.toList());
-              setState(() {
-                _isSelectionMode = false;
-                _selectedIds.clear();
-              });
-              // If all messages in the conversation are gone, go back
+              ChatDatabase.instance.deleteMessages(ids.toList());
+              _isSelectionMode.value = false;
+              _selectedIds.value = {};
               final remaining = ChatDatabase.instance.countMessages(
-                widget.device.uuid,
+                _args.peerId,
               );
               if (remaining == 0 && mounted) {
                 Navigator.of(context).pop();
@@ -462,15 +525,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar({bool isSelfInCall = false}) {
     final devicesState = ref.watch(discoveryServiceProvider);
     Device? currentDevice;
     if (devicesState is AsyncData<Map<String, Device>>) {
-      currentDevice = devicesState.value[widget.device.uuid];
+      currentDevice = devicesState.value[_args.peerId];
     }
 
     final displayDevice =
-        currentDevice ?? widget.device.copyWith(status: DeviceStatus.offline);
+        currentDevice ??
+        widget.device?.copyWith(status: DeviceStatus.offline) ??
+        _resolvedDevice?.copyWith(status: DeviceStatus.offline);
+
+    if (displayDevice == null) {
+      return AppBar();
+    }
 
     String statusText;
     Color statusColor;
@@ -533,12 +602,61 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(
-            Icons.phone_rounded,
-            color: AppColors.textSecondary,
+          icon: Icon(
+            isSelfInCall ? Icons.phone_in_talk_rounded : Icons.phone_rounded,
+            color: isSelfInCall
+                ? AppColors.textSecondary
+                : AppColors.statusOnline,
             size: 20,
           ),
-          onPressed: () => _showComingSoon(context, 'Voice call'),
+          tooltip: isSelfInCall ? 'Return to call' : 'Voice call',
+          onPressed: isSelfInCall
+              ? () => context.push('/call/active')
+              : () async {
+                  debugPrint('[ChatScreen] Call button tapped');
+                  try {
+                    // Fix 2E — require microphone before initiating
+                    if (!context.mounted) return;
+                    final granted = await SmartPermissionHandler.request(
+                      context,
+                      Permission.microphone,
+                      'Microphone',
+                      'to make voice calls',
+                    );
+                    debugPrint(
+                      '[ChatScreen] Microphone permission granted: $granted',
+                    );
+                    if (!granted) return;
+                    final peerIp = _bestPeerIp();
+                    final success = await ref
+                        .read(callProvider.notifier)
+                        .startCall(
+                          peerId: _args.peerId,
+                          peerName: _args.peerName,
+                          peerIp: peerIp,
+                        );
+                    debugPrint(
+                      '[ChatScreen] startCall completed, navigating...',
+                    );
+                    if (mounted) {
+                      if (success) {
+                        context.push('/call/outgoing');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Cannot place call. You are currently in another call.',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e, stack) {
+                    debugPrint(
+                      '[ChatScreen] Error initiating call: $e\n$stack',
+                    );
+                  }
+                },
         ),
         IconButton(
           icon: const Icon(
@@ -553,10 +671,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           color: AppColors.bgSecondary,
           onSelected: (value) {
             if (value == 'delete') {
-              setState(() {
-                _isSelectionMode = true;
-                _selectedIds.clear();
-              });
+              _selectedIds.value = {};
+              _isSelectionMode.value = true;
             }
           },
           itemBuilder: (_) => [

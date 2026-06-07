@@ -25,7 +25,7 @@ abstract final class AppColors {
 
   // ── Status ───────────────────────────────────────────────────────────────
   static const Color statusOnline = Color(0xFF00E476);
-  static const Color statusBusy = Color(0xFFD1BCFF);
+  static const Color statusBusy = Color(0xFFF44336);
   static const Color statusOffline = Color(0xFFFFB4AB);
   static const Color statusIdle = Color(0xFF849495);
 

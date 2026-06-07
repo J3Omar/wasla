@@ -26,52 +26,206 @@ final totalUnreadProvider = StreamProvider<int>((ref) {
   });
 });
 
-class ChatsListScreen extends ConsumerWidget {
+class ChatsListScreen extends ConsumerStatefulWidget {
   const ChatsListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final recentChatsAsync = ref.watch(recentChatsProvider);
-    final unreadCounts = ref.watch(unreadCountsProvider).valueOrNull ?? {};
+  ConsumerState<ChatsListScreen> createState() => _ChatsListScreenState();
+}
 
-    return Scaffold(
-      backgroundColor: AppColors.bgPrimary,
-      appBar: AppBar(
+class _ChatsListScreenState extends ConsumerState<ChatsListScreen> {
+  final Set<String> _selectedPeerIds = {};
+  final Set<String> _deletedPeerIds = {}; // For optimistic updates
+
+  void _toggleSelection(String peerId) {
+    setState(() {
+      if (_selectedPeerIds.contains(peerId)) {
+        _selectedPeerIds.remove(peerId);
+      } else {
+        _selectedPeerIds.add(peerId);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedPeerIds.clear();
+    });
+  }
+
+  Future<void> _confirmAndDelete() async {
+    final toDelete = _selectedPeerIds.toList();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
         backgroundColor: AppColors.bgSecondary,
-        elevation: 0,
         title: Text(
-          'Chats',
+          'Delete Chats?',
           style: AppTypography.heading3.copyWith(color: AppColors.textPrimary),
         ),
-        centerTitle: true,
-      ),
-      body: recentChatsAsync.when(
-        data: (messages) {
-          if (messages.isEmpty) {
-            return const _EmptyState();
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: messages.length,
-            separatorBuilder: (_, _) => const Divider(
-              color: AppColors.borderDefault,
-              height: 1,
-              indent: 72,
-            ),
-            itemBuilder: (context, index) {
-              final msg = messages[index];
-              final unread = unreadCounts[msg.peerId] ?? 0;
-              return _ChatTile(message: msg, unreadCount: unread);
-            },
-          );
-        },
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primaryCyan),
+        content: Text(
+          'Are you sure you want to delete ${toDelete.length} chat(s)? This action cannot be undone.',
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
-        error: (e, st) => Center(
-          child: Text(
-            'Error loading chats',
-            style: TextStyle(color: Colors.red.shade300),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Delete',
+              style: AppTypography.labelLarge.copyWith(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Optimistic UI update
+    setState(() {
+      _deletedPeerIds.addAll(toDelete);
+      _selectedPeerIds.clear();
+    });
+
+    // DB update
+    for (final id in toDelete) {
+      ChatDatabase.instance.deleteChat(id);
+    }
+    ref.invalidate(recentChatsProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recentChatsAsync = ref.watch(recentChatsProvider);
+    final unreadCounts = ref.watch(unreadCountsProvider).valueOrNull ?? {};
+    final isSelectionMode = _selectedPeerIds.isNotEmpty;
+
+    return PopScope(
+      canPop: !isSelectionMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _clearSelection();
+      },
+      child: GestureDetector(
+        onTap: isSelectionMode ? _clearSelection : null,
+        child: Scaffold(
+          backgroundColor: AppColors.bgPrimary,
+          appBar: isSelectionMode
+              ? AppBar(
+                  backgroundColor: AppColors.primaryCyan.withValues(alpha: 0.1),
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.close, color: AppColors.textPrimary),
+                    onPressed: _clearSelection,
+                  ),
+                  title: Text(
+                    '${_selectedPeerIds.length} selected',
+                    style: AppTypography.heading3.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
+                      onPressed: _confirmAndDelete,
+                    ),
+                  ],
+                )
+              : AppBar(
+                  backgroundColor: AppColors.bgSecondary,
+                  elevation: 0,
+                  title: Text(
+                    'Chats',
+                    style: AppTypography.heading3.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  centerTitle: true,
+                ),
+          body: recentChatsAsync.when(
+            data: (allMessages) {
+              final messages = allMessages
+                  .where((m) => !_deletedPeerIds.contains(m.peerId))
+                  .toList();
+              if (messages.isEmpty) {
+                return const _EmptyState();
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: messages.length,
+                separatorBuilder: (_, _) => const Divider(
+                  color: AppColors.borderDefault,
+                  height: 1,
+                  indent: 72,
+                ),
+                itemBuilder: (context, index) {
+                  final msg = messages[index];
+                  final unread = unreadCounts[msg.peerId] ?? 0;
+                  return _ChatTile(
+                    message: msg,
+                    unreadCount: unread,
+                    isSelected: _selectedPeerIds.contains(msg.peerId),
+                    isSelectionMode: isSelectionMode,
+                    onTap: () {
+                      if (isSelectionMode) {
+                        _toggleSelection(msg.peerId);
+                      } else {
+                        final devicesState = ref.read(discoveryServiceProvider);
+                        Device? peerDevice;
+                        if (devicesState is AsyncData<Map<String, Device>>) {
+                          peerDevice = devicesState.value[msg.peerId];
+                        }
+                        final savedName = ChatDatabase.instance.getPeerName(
+                          msg.peerId,
+                        );
+                        final displayName =
+                            peerDevice?.displayName ??
+                            savedName ??
+                            'Device (${msg.peerId.substring(0, 4)}...)';
+
+                        final targetDevice =
+                            peerDevice ??
+                            Device(
+                              uuid: msg.peerId,
+                              displayName: displayName,
+                              localIp: '',
+                              port: 0,
+                              status: DeviceStatus.offline,
+                              lastSeen: DateTime.now(),
+                            );
+                        context.push(
+                          '/chat/${msg.peerId}',
+                          extra: targetDevice,
+                        );
+                      }
+                    },
+                    onLongPress: () => _toggleSelection(msg.peerId),
+                  );
+                },
+              );
+            },
+            loading: () => const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryCyan),
+            ),
+            error: (e, st) => Center(
+              child: Text(
+                'Error loading chats',
+                style: TextStyle(color: Colors.red.shade300),
+              ),
+            ),
           ),
         ),
       ),
@@ -80,9 +234,21 @@ class ChatsListScreen extends ConsumerWidget {
 }
 
 class _ChatTile extends ConsumerWidget {
-  const _ChatTile({required this.message, this.unreadCount = 0});
+  const _ChatTile({
+    required this.message,
+    this.unreadCount = 0,
+    required this.isSelected,
+    required this.isSelectionMode,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
   final ChatMessage message;
   final int unreadCount;
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -126,17 +292,23 @@ class _ChatTile extends ConsumerWidget {
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      selected: isSelected,
+      selectedTileColor: AppColors.primaryCyan.withValues(alpha: 0.1),
       leading: Stack(
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: AppColors.primaryCyan.withValues(alpha: 0.2),
-            child: Text(
-              displayName[0].toUpperCase(),
-              style: AppTypography.heading3.copyWith(
-                color: AppColors.primaryCyan,
-              ),
-            ),
+            backgroundColor: isSelected
+                ? AppColors.primaryCyan
+                : AppColors.primaryCyan.withValues(alpha: 0.2),
+            child: isSelected
+                ? const Icon(Icons.check, color: AppColors.bgPrimary)
+                : Text(
+                    displayName[0].toUpperCase(),
+                    style: AppTypography.heading3.copyWith(
+                      color: AppColors.primaryCyan,
+                    ),
+                  ),
           ),
           Positioned(
             right: 0,
@@ -219,22 +391,8 @@ class _ChatTile extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      onTap: () {
-        // If we have the full device object, pass it.
-        // Otherwise, create a dummy offline device to view history.
-        final targetDevice =
-            peerDevice ??
-            Device(
-              uuid: message.peerId,
-              displayName: displayName,
-              localIp: '',
-              port: 0,
-              status: DeviceStatus.offline,
-              lastSeen: DateTime.now(),
-            );
-
-        context.push('/chat/${message.peerId}', extra: targetDevice);
-      },
+      onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }
