@@ -111,8 +111,8 @@ jobs:
           name: wasla-linux-deb
           path: build/wasla_1.0.0_amd64.deb
 
-  build-windows:
-    runs-on: windows-latest
+build-windows:
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
