@@ -190,6 +190,15 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             final signalingPort = json['signalingPort'] as int;
 
             final currentState = state.valueOrNull?.state ?? CallState.idle;
+            final currentPeerId = state.valueOrNull?.peerId;
+
+            // Reconnect check
+            if ((currentState == CallState.active || currentState == CallState.connecting) &&
+                currentPeerId == peerId) {
+              _manager?.handleReconnectInvite(signalingPort, callerIp);
+              return;
+            }
+
             if (currentState != CallState.idle && currentState != CallState.ended) {
               if (currentState == CallState.outgoing) {
                  debugPrint('[Call] Glare detected (Simultaneous Call). Dropping incoming invite gracefully.');

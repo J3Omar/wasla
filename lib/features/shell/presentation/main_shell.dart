@@ -118,9 +118,37 @@ class _MainShellState extends ConsumerState<MainShell> {
   @override
   Widget build(BuildContext context) {
     final totalUnread = ref.watch(totalUnreadProvider).valueOrNull ?? 0;
+    final session = ref.watch(callProvider).valueOrNull;
+    final isInCall = session != null &&
+        (session.state == CallState.active ||
+            session.state == CallState.connecting);
+
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      body: IndexedStack(index: _currentIndex, children: _tabs),
+      body: Column(
+        children: [
+          if (isInCall)
+            GestureDetector(
+              onTap: () => context.go('/call/active'),
+              child: Container(
+                width: double.infinity,
+                color: Colors.amber.withOpacity(0.9),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: const Text(
+                  '📞 In Call — tap to return',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(index: _currentIndex, children: _tabs),
+          ),
+        ],
+      ),
       bottomNavigationBar: _WaslaNavBar(
         currentIndex: _currentIndex,
         totalUnread: totalUnread,

@@ -230,29 +230,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               : _buildAppBar(isSelfInCall: isSelfInCall),
           body: Column(
             children: [
-              // Non-dismissible in-call banner — tappable to return to call screen
-              if (isSelfInCall)
-                GestureDetector(
-                  onTap: () => context.push('/call/active'),
-                  child: Container(
-                    width: double.infinity,
-                    color: const Color(0xFFFFC107).withValues(alpha: 0.15),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.phone_in_talk_rounded,
-                            size: 16, color: Color(0xFFFFC107)),
-                        const SizedBox(width: 8),
-                        Text(
-                          'In Call — tap to return',
-                          style: AppTypography.labelSmall
-                              .copyWith(color: const Color(0xFFFFC107)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              // In-call banner moved to main_shell.dart
               Expanded(
                 // Consumer isolates DB-driven rebuilds to the message list only
                 child: Consumer(

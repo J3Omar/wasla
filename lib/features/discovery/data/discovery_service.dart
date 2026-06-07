@@ -103,8 +103,6 @@ class DiscoveryService extends AsyncNotifier<Map<String, Device>> {
     _mdns.selfDevice = updated;
     _registry.upsert(updated);
     _udp.announceDevice(updated);
-    // Force Riverpod to emit the new map so the UI updates the Local Profile immediately
-    state = AsyncData(_registry.devices);
   }
 
   // Empty out _syncPeerNames instead of deleting entirely to avoid

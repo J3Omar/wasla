@@ -16,7 +16,7 @@ class DeviceRegistry {
   Stream<Map<String, Device>> get devicesStream => _controller.stream;
 
   /// Current snapshot.
-  Map<String, Device> get devices => Map.unmodifiable(_devices);
+  Map<String, Device> get devices => Map.of(_devices);
 
   /// Start the eviction loop.
   void start() {

@@ -52,8 +52,8 @@ class CallManager {
   // Fix 2F — Android foreground service state.
   bool _backgroundActive = false;
 
-  // Bug 3: ICE restart guard
-  bool _iceRestartAttempted = false;
+  // Bug 3: UDP reconnect guard
+  bool _reconnectAttempted = false;
   // Bug 1 fix: cancellation token for the delayed endCall after ICE failure
   bool _iceEndCallPending = false;
   // Bug 2 fix: track which side we are on for fallback timer sync
@@ -155,7 +155,7 @@ class CallManager {
       );
       debugPrint('[CallManager] startCall: UDP invite sent successfully.');
     } catch (e, stack) {
-      debugPrint('[CallManager] startCall error in _sendCallInvite: $e\n$stack');
+      debugPrint('[CallManager] _sendCallInvite: $e\n$stack');
     }
 
     // 30-second no-answer timeout → auto-end with "missed" reason
@@ -329,7 +329,7 @@ class CallManager {
     pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _iceRestartAttempted = false; // Reset on success
+        _reconnectAttempted = false; // Reset on success
         _iceEndCallPending = false;  // Cancel any pending zombie timer
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
@@ -366,20 +366,17 @@ class CallManager {
             }
           });
         }
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-                 state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        
-        if (!_iceRestartAttempted) {
-           _iceRestartAttempted = true;
-           debugPrint('[Call] Attempting ICE restart due to Disconnected/Failed state...');
-           await _pc?.restartIce();
-           
-           // Fallback terminator: If it doesn't recover within 10 seconds, end it cleanly
-           _iceEndCallPending = true;
-           Future.delayed(const Duration(seconds: 10), () async {
-             if (_iceEndCallPending) await endCall();
-           });
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        // Wait 4 seconds — might self-recover on same network
+        await Future.delayed(const Duration(seconds: 4));
+        if (_pc?.connectionState == 
+            RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          await _attemptReconnect();
         }
+      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        // Failed is terminal — end immediately
+        _iceEndCallPending = false;
+        await endCall();
       }
     };
 
@@ -635,6 +632,16 @@ class CallManager {
       ws.add(data);
       await ws.close();
     } catch (_) {}
+  }
+
+  Future<void> handleReconnectInvite(
+    int newPort, 
+    String callerIp,
+  ) async {
+    debugPrint('[Call] Reconnect invite received, connecting to new port $newPort');
+    _remoteDescSet = false;
+    _pendingCandidates.clear();
+    await _connectToSignalingServer(callerIp, newPort);
   }
 
   Future<void> dispose() async {
