@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_background/flutter_background.dart';
 import 'package:uuid/uuid.dart';
 import 'package:mime/mime.dart';
 import 'package:crypto/crypto.dart';
@@ -12,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'file_storage_service.dart';
 import '../domain/file_transfer_state.dart';
 import '../../../core/utils/digest_sink.dart';
+import '../../../core/utils/background_service_manager.dart';
 import '../../chat/data/webrtc_chat_service.dart';
 import '../../chat/data/chat_database.dart';
 import '../../chat/data/chat_notification_service.dart';
@@ -104,39 +104,19 @@ class FileTransferService {
     _chatService = chatService;
     _chatService!.onRawDataReceived = _onRawDataReceived;
     _chatService!.onPeerDisconnected = _onPeerDisconnected;
-
-    _initBackgroundService();
-  }
-
-  Future<void> _initBackgroundService() async {
-    if (!Platform.isAndroid) return;
-
-    const androidConfig = FlutterBackgroundAndroidConfig(
-      notificationTitle: "Wasla File Transfer",
-      notificationText: "Keeping file transfers active in the background.",
-      notificationImportance: AndroidNotificationImportance.normal,
-      notificationIcon: AndroidResource(
-        name: 'ic_launcher',
-        defType: 'mipmap',
-      ), // default flutter icon
-    );
-    await FlutterBackground.initialize(androidConfig: androidConfig);
   }
 
   bool _isBackgroundServiceActive = false;
 
-  void _updateBackgroundState() {
-    if (!Platform.isAndroid) return;
-
+  void _updateBackgroundState() async {
     final hasActiveTransfers = _activeTransfers.isNotEmpty;
 
     if (hasActiveTransfers && !_isBackgroundServiceActive) {
-      FlutterBackground.enableBackgroundExecution().then((success) {
-        _isBackgroundServiceActive = success;
-      });
+      _isBackgroundServiceActive = true;
+      await BackgroundServiceManager.instance.acquire('file_transfer');
     } else if (!hasActiveTransfers && _isBackgroundServiceActive) {
-      FlutterBackground.disableBackgroundExecution();
       _isBackgroundServiceActive = false;
+      BackgroundServiceManager.instance.release('file_transfer');
     }
   }
 

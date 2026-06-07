@@ -18,6 +18,7 @@ import '../../call/domain/call_provider.dart';
 import '../../call/domain/call_state.dart';
 import '../../call/data/call_audio_service.dart';
 import '../../discovery/data/discovery_service.dart';
+import '../../../core/utils/background_service_manager.dart';
 
 /// Top-level navigation shell with 3 tabs.
 class MainShell extends ConsumerStatefulWidget {
@@ -39,6 +40,8 @@ class _MainShellState extends ConsumerState<MainShell> {
     super.initState();
     _lifecycleListener = AppLifecycleListener(
       onDetach: () {
+        // Force cleanup background services so they don't zombie
+        BackgroundServiceManager.instance.releaseAll();
         // Best-effort offline broadcast before process dies
         ref
             .read(discoveryServiceProvider.notifier)

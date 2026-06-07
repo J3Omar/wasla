@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 
@@ -11,6 +10,7 @@ import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
 import 'call_audio_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../../core/utils/background_service_manager.dart';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -57,9 +57,6 @@ class CallManager {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescSet = false;
 
-  // Fix 2F — Android foreground service state.
-  bool _backgroundActive = false;
-
   // Bug 3: UDP reconnect guard
   bool _reconnectAttempted = false;
   // Bug 1 fix: cancellation token for the delayed endCall after ICE failure
@@ -82,22 +79,7 @@ class CallManager {
     try {
       await WakelockPlus.enable();
     } catch (_) {}
-    if (!Platform.isAndroid) return;
-    try {
-      const config = FlutterBackgroundAndroidConfig(
-        notificationTitle: 'Wasla — Voice Call',
-        notificationText: 'Call in progress',
-        notificationImportance: AndroidNotificationImportance.high,
-        notificationIcon: AndroidResource(
-          name: 'ic_launcher',
-          defType: 'mipmap',
-        ),
-      );
-      await FlutterBackground.initialize(androidConfig: config);
-      _backgroundActive = await FlutterBackground.enableBackgroundExecution();
-    } catch (_) {
-      _backgroundActive = false;
-    }
+    await BackgroundServiceManager.instance.acquire('call');
   }
 
   /// Disable the foreground service. Called from dispose() which is the
@@ -106,11 +88,7 @@ class CallManager {
     try {
       WakelockPlus.disable();
     } catch (_) {}
-    if (!Platform.isAndroid || !_backgroundActive) return;
-    try {
-      FlutterBackground.disableBackgroundExecution();
-    } catch (_) {}
-    _backgroundActive = false;
+    BackgroundServiceManager.instance.release('call');
   }
 
   // ───────────────────────────────────────────────────────────────────────────
