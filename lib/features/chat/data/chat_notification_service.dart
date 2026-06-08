@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../../core/router/app_router.dart';
 
@@ -6,6 +8,8 @@ import '../../../core/router/app_router.dart';
 class ChatNotificationService {
   ChatNotificationService._();
   static final ChatNotificationService instance = ChatNotificationService._();
+
+  static DateTime? _lastCallTap;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -34,13 +38,38 @@ class ChatNotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload ?? '';
-        if (payload.startsWith('call:')) {
-          appRouter.push('/call/incoming');
-        } else if (payload.startsWith('chat:')) {
-          appRouter.go('/home');
-        } else if (payload.isNotEmpty) {
-          onNotificationTap?.call(payload);
+        if (response.payload == null || response.payload!.isEmpty) return;
+        
+        try {
+          final data = jsonDecode(response.payload!);
+          if (data is Map<String, dynamic>) {
+            if (data['type'] == 'call') {
+              // 1. Debounce Guard (Prevent rapid duplicate taps within 2 seconds)
+              final now = DateTime.now();
+              if (_lastCallTap != null && now.difference(_lastCallTap!).inSeconds < 2) {
+                debugPrint('Ignoring rapid duplicate notification tap.');
+                return;
+              }
+              _lastCallTap = now;
+
+              // 2. Iron-clad State Guard
+              final currentLocation = appRouter.routerDelegate.currentConfiguration.uri.toString();
+              // Prevent push if we are anywhere inside the /call tree.
+              if (currentLocation.startsWith('/call')) {
+                 debugPrint('Already in the call flow, blocking duplicate push.');
+                 return; 
+              }
+              
+              appRouter.push('/call/incoming', extra: data);
+            } else if (data['type'] == 'chat') {
+              appRouter.go('/home');
+            }
+          }
+        } catch (e) {
+           // Fallback for old payloads
+           if (response.payload!.startsWith('chat:')) {
+             appRouter.go('/home');
+           }
         }
       },
     );
@@ -116,6 +145,8 @@ class ChatNotificationService {
   Future<void> showCallNotification({
     required String callerName,
     required String callerId,
+    required String callerIp,
+    required int signalingPort,
   }) async {
     if (!_initialized) return;
 
@@ -144,12 +175,20 @@ class ChatNotificationService {
       linux: linuxDetails,
     );
 
+    final payloadMap = {
+      'type': 'call',
+      'callerId': callerId,
+      'callerName': callerName,
+      'callerIp': callerIp,
+      'signalingPort': signalingPort,
+    };
+    
     await _plugin.show(
       _kCallNotifId,
       '📞 Incoming call',
       '$callerName is calling…',
       details,
-      payload: 'call:$callerId',
+      payload: jsonEncode(payloadMap),
     );
   }
 

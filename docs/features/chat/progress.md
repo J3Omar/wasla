@@ -1,6 +1,6 @@
 # Progress: Chat
 
-## Status: 🟡 In Progress
+## Status: ✅ Done
 
 ---
 

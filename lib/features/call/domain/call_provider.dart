@@ -282,6 +282,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             ChatNotificationService.instance.showCallNotification(
               callerName: peerName,
               callerId: peerId,
+              callerIp: callerIp,
+              signalingPort: signalingPort,
             );
             // Part 3 — play ringtone on notificationRingtone stream
             // (respects system silent/vibrate mode)

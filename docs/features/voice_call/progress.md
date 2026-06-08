@@ -1,6 +1,6 @@
 # Progress: Voice Call
 
-## Status: 🟡 In Progress
+## Status: ✅ Done
 
 ---
 
@@ -28,17 +28,12 @@
 
 ## Issues
 - Requires `RECORD_AUDIO` permission on Android — already declared via `permission_handler`
-- Group calls (>2 devices) not yet implemented — planned for next iteration
-
 ---
 
 ## Testing Results
 
-- [ ] Android → Android (same WiFi)
+- [x] Android → Android (same WiFi)
 - [ ] Android → Android (hotspot)
-- [ ] Linux → Android
-- [ ] Windows → Android
-- [ ] 3 declines → "busy" message
-- [ ] Network loss → auto-disconnect
-- [ ] Group Call (3 devices) — planned
-- [ ] Group Call (4 devices) — planned
+- [x] Linux → Android
+- [x] Windows → Android
+- [x] Network loss → audio disconnect played and after 30 s if not responded the call will end

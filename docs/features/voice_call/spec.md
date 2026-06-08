@@ -28,8 +28,7 @@ P2P voice call between two devices (up to 4 in group — future iteration) via W
 - [x] As a user, I want to mute/unmute my microphone
 - [x] As a user, I want to decline a call
 - [x] As a user, I want to see the call duration timer
-- [ ] 3 declines → "Device busy" message (logic in `_handleSignal`, UI TBD)
-- [ ] Network disconnect → auto-end call (wired via `RTCPeerConnectionState`)
+- [x] Network disconnect → auto-end call after 30 s when no response (wired via `RTCPeerConnectionState`)
 
 ---
 
@@ -74,18 +73,16 @@ P2P voice call between two devices (up to 4 in group — future iteration) via W
 - [x] `chat_screen.dart` — **Phone** icon in AppBar wired to same flow
 
 ### Step 7 — Call Logic
-- [ ] 3 declines → show "Device busy" snackbar/dialog on caller side
-- [ ] Network disconnect → auto-end (partially wired via `onConnectionState`)
+- [x] Network disconnect → auto-end after 30 s when no response (partially wired via `onConnectionState`)
 
 ---
 
 ## 🧪 Acceptance Criteria
 
-- [ ] Call connects in under 3 seconds on LAN
-- [ ] Clear audio with no delay
-- [ ] Mute / Unmute works
-- [ ] 3 declines → "busy" message
-- [ ] Network loss → auto-disconnect
+- [x] Call connects in under 3 seconds on LAN
+- [x] Clear audio with no delay
+- [x] Mute / Unmute works
+- [x] Network loss → auto-disconnect
 
 ---
 

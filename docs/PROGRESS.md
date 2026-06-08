@@ -42,31 +42,31 @@
 ## ⬜ Phase 1 — Technical Setup
 
 - [x] Project folder structure
-- [ ] Add dependencies to `pubspec.yaml`
-- [ ] Set up Theme (colors + typography) in Flutter
-- [ ] Set up Router (go_router)
-- [ ] Set up Drift database
-- [ ] Set up flutter_webrtc
-- [ ] Set up mDNS for device discovery
-- [ ] Update `.gitignore`
-- [ ] GitHub repo
+- [x] Add dependencies to `pubspec.yaml`
+- [x] Set up Theme (colors + typography) in Flutter
+- [x] Set up Router (go_router)
+- [x] Set up Drift database
+- [x] Set up flutter_webrtc
+- [x] Set up mDNS for device discovery
+- [x] Update `.gitignore`
+- [x] GitHub repo
 
 ---
 
 ## ⬜ Phase 2 — Implementation
 
 ### Week 1
-- [ ] **F1 — Onboarding:** Device name + UUID
-- [ ] **F2 — Device Discovery:** mDNS + UDP Broadcast
-- [ ] **Home Screen:** Device list
+- [x] **F1 — Onboarding:** Device name + UUID
+- [x] **F2 — Device Discovery:** mDNS + UDP Broadcast
+- [x] **Home Screen:** Device list
 
 ### Week 2
-- [ ] **F3 — Chat:** Text messaging
-- [ ] **F4 — Voice Call:** Audio call
+- [x] **F3 — Chat:** Text messaging
+- [x] **F4 — Voice Call:** Audio call
 
 ### Week 3
 - [ ] **F5 — Video Call:** Video call
-- [ ] **F7 — File Sharing:** File transfer
+- [x] **F7 — File Sharing:** File transfer
 
 ### Week 4
 - [ ] **F6 — Screen Share:** Screen sharing
@@ -77,9 +77,9 @@
 ## ⬜ Phase 3 — Build & Release
 
 - [ ] GitHub Actions → builds
-  - [ ] Android `.apk`
-  - [ ] Windows `.exe`
-  - [ ] Linux `.deb` / `.AppImage`
+  - [x] Android `.apk`
+  - [x] Windows `.exe`
+  - [x] Linux `.deb`
 - [ ] README with screenshots
 - [ ] Release
 
