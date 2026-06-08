@@ -10,6 +10,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/string_utils.dart';
+import '../../../core/utils/battery_optimization_util.dart';
 import '../../file_sharing/data/file_storage_service.dart';
 import '../../discovery/data/discovery_service.dart';
 
@@ -23,17 +24,40 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with WidgetsBindingObserver {
   String _name = '';
   String _uuid = '';
   String _localIp = '';
   String _savePath = '';
   bool _loading = true;
+  bool _isBatteryOptimized = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkBattery();
+    }
+  }
+
+  Future<void> _checkBattery() async {
+    final disabled = await BatteryOptimizationUtil.isOptimizationDisabled();
+    if (mounted) {
+      setState(() => _isBatteryOptimized = !disabled);
+    }
   }
 
   Future<void> _load() async {
@@ -60,6 +84,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     final path = await FileStorageService.instance.getSavePath();
+    final disabled = await BatteryOptimizationUtil.isOptimizationDisabled();
 
     if (mounted) {
       setState(() {
@@ -67,6 +92,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _uuid = uuid;
         _localIp = normalizeDigits(ip);
         _savePath = path;
+        _isBatteryOptimized = !disabled;
         _loading = false;
       });
     }
@@ -225,6 +251,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ? 'Not set'
                         : '${_uuid.substring(0, 8)}…',
                   ),
+                  if (Platform.isAndroid) ...[
+                    const SizedBox(height: 10),
+                    _InfoCard(
+                      icon: Icons.battery_alert_rounded,
+                      label: 'Battery Optimization',
+                      value: _isBatteryOptimized
+                          ? '⚠️ Not optimized'
+                          : '✅ Optimized (Background allowed)',
+                      trailing: _isBatteryOptimized
+                          ? TextButton(
+                              onPressed: () async {
+                                await BatteryOptimizationUtil.requestDisableOptimization();
+                                _checkBattery();
+                              },
+                              child: const Text(
+                                'Fix now',
+                                style: TextStyle(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          : null,
+                    ),
+                  ],
 
                   const SizedBox(height: 36),
 

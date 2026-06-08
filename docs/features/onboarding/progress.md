@@ -1,6 +1,6 @@
 # Progress: Onboarding
 
-## Status: ✅ Complete
+## Status: ✅ Done
 
 ---
 

@@ -37,7 +37,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
       final s = next.valueOrNull;
       if (s == null) return;
       if (s.state == CallState.ended) {
-        if (mounted) context.pop();
+        if (mounted) context.go('/home');
       }
     });
 

@@ -1,6 +1,6 @@
 # Progress: File Sharing
 
-## Status: 🟢 Implemented (Ready for Testing)
+## Status: ✅ Done
 
 ---
 

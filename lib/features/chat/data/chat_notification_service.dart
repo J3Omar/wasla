@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../../core/router/app_router.dart';
+import '../../call/presentation/incoming_call_screen.dart';
 
 /// Handles system notifications for incoming messages when the app is in background.
 class ChatNotificationService {
@@ -34,13 +37,27 @@ class ChatNotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) {
-        final payload = response.payload ?? '';
-        if (payload.startsWith('call:')) {
-          appRouter.push('/call/incoming');
-        } else if (payload.startsWith('chat:')) {
-          appRouter.go('/home');
-        } else if (payload.isNotEmpty) {
-          onNotificationTap?.call(payload);
+        if (response.payload == null || response.payload!.isEmpty) return;
+
+        try {
+          final data = jsonDecode(response.payload!);
+          if (data is Map<String, dynamic>) {
+            if (data['type'] == 'call') {
+              // Synchronous guard — relies on screen lifecycle, not router state
+              if (IncomingCallScreen.isActive) {
+                debugPrint('IncomingCallScreen already active, ignoring tap.');
+                return;
+              }
+              appRouter.push('/call/incoming', extra: data);
+            } else if (data['type'] == 'chat') {
+              appRouter.go('/home');
+            }
+          }
+        } catch (e) {
+          // Fallback for old payloads
+          if (response.payload!.startsWith('chat:')) {
+            appRouter.go('/home');
+          }
         }
       },
     );
@@ -116,6 +133,8 @@ class ChatNotificationService {
   Future<void> showCallNotification({
     required String callerName,
     required String callerId,
+    required String callerIp,
+    required int signalingPort,
   }) async {
     if (!_initialized) return;
 
@@ -144,12 +163,20 @@ class ChatNotificationService {
       linux: linuxDetails,
     );
 
+    final payloadMap = {
+      'type': 'call',
+      'callerId': callerId,
+      'callerName': callerName,
+      'callerIp': callerIp,
+      'signalingPort': signalingPort,
+    };
+
     await _plugin.show(
       _kCallNotifId,
       '📞 Incoming call',
       '$callerName is calling…',
       details,
-      payload: 'call:$callerId',
+      payload: jsonEncode(payloadMap),
     );
   }
 
