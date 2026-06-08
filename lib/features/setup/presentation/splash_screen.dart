@@ -67,7 +67,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _navigate() async {
     const storage = FlutterSecureStorage();
-    
+
     // Battery Intercept Logic
     final handled = await storage.read(key: 'battery_prompt_handled') == 'true';
     if (!handled) {

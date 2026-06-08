@@ -24,7 +24,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> with WidgetsBindingObserver {
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with WidgetsBindingObserver {
   String _name = '';
   String _uuid = '';
   String _localIp = '';
@@ -255,7 +256,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> with WidgetsBindi
                     _InfoCard(
                       icon: Icons.battery_alert_rounded,
                       label: 'Battery Optimization',
-                      value: _isBatteryOptimized ? '⚠️ Not optimized' : '✅ Optimized (Background allowed)',
+                      value: _isBatteryOptimized
+                          ? '⚠️ Not optimized'
+                          : '✅ Optimized (Background allowed)',
                       trailing: _isBatteryOptimized
                           ? TextButton(
                               onPressed: () async {

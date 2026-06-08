@@ -14,8 +14,8 @@ class BatteryPromptScreen extends StatefulWidget {
   State<BatteryPromptScreen> createState() => _BatteryPromptScreenState();
 }
 
-class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsBindingObserver {
-  
+class _BatteryPromptScreenState extends State<BatteryPromptScreen>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -51,11 +51,12 @@ class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsB
   Future<void> _markHandledAndProceed() async {
     const storage = FlutterSecureStorage();
     await storage.write(key: 'battery_prompt_handled', value: 'true');
-    
+
     // Check if onboarding is needed, like in splash screen
     final name = await storage.read(key: 'wasla_device_name');
-    final needsSetup = name == null || name.isEmpty || name.startsWith('Device-');
-    
+    final needsSetup =
+        name == null || name.isEmpty || name.startsWith('Device-');
+
     if (mounted) {
       context.go(needsSetup ? AppRoutes.onboarding : AppRoutes.home);
     }
@@ -74,7 +75,10 @@ class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsB
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Go back', style: TextStyle(color: AppColors.textPrimary)),
+            child: const Text(
+              'Go back',
+              style: TextStyle(color: AppColors.textPrimary),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
@@ -82,7 +86,10 @@ class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsB
               Navigator.pop(ctx);
               _markHandledAndProceed();
             },
-            child: const Text('I understand, skip', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'I understand, skip',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -99,7 +106,11 @@ class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsB
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.battery_alert_rounded, size: 80, color: Colors.orange),
+              const Icon(
+                Icons.battery_alert_rounded,
+                size: 80,
+                color: Colors.orange,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Background Execution',
@@ -109,7 +120,10 @@ class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsB
               const SizedBox(height: 16),
               Text(
                 'Wasla needs to run in the background to receive incoming WebRTC calls and maintain file transfers. Please allow background execution in the next screen.',
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary, height: 1.5),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
@@ -119,18 +133,30 @@ class _BatteryPromptScreenState extends State<BatteryPromptScreen> with WidgetsB
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryCyan,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   onPressed: () async {
                     await BatteryOptimizationUtil.requestDisableOptimization();
                   },
-                  child: Text('Allow', style: AppTypography.heading3.copyWith(color: AppColors.bgDeep)),
+                  child: Text(
+                    'Allow',
+                    style: AppTypography.heading3.copyWith(
+                      color: AppColors.bgDeep,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
               TextButton(
                 onPressed: _showSkipWarning,
-                child: Text('Skip', style: AppTypography.bodyMedium.copyWith(color: AppColors.textMuted)),
+                child: Text(
+                  'Skip',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+                ),
               ),
             ],
           ),

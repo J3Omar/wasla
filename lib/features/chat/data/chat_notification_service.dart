@@ -38,7 +38,7 @@ class ChatNotificationService {
       initSettings,
       onDidReceiveNotificationResponse: (response) {
         if (response.payload == null || response.payload!.isEmpty) return;
-        
+
         try {
           final data = jsonDecode(response.payload!);
           if (data is Map<String, dynamic>) {
@@ -54,10 +54,10 @@ class ChatNotificationService {
             }
           }
         } catch (e) {
-           // Fallback for old payloads
-           if (response.payload!.startsWith('chat:')) {
-             appRouter.go('/home');
-           }
+          // Fallback for old payloads
+          if (response.payload!.startsWith('chat:')) {
+            appRouter.go('/home');
+          }
         }
       },
     );
@@ -170,7 +170,7 @@ class ChatNotificationService {
       'callerIp': callerIp,
       'signalingPort': signalingPort,
     };
-    
+
     await _plugin.show(
       _kCallNotifId,
       '📞 Incoming call',
