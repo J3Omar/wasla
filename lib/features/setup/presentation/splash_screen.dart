@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/utils/battery_optimization_util.dart';
+import '../../../core/utils/rom_detector.dart';
 
 const _kNameKey = 'wasla_device_name';
 
@@ -65,6 +67,22 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _navigate() async {
     const storage = FlutterSecureStorage();
+    
+    // Battery Intercept Logic
+    final handled = await storage.read(key: 'battery_prompt_handled') == 'true';
+    if (!handled) {
+      final disabled = await BatteryOptimizationUtil.isOptimizationDisabled();
+      if (disabled) {
+        await storage.write(key: 'battery_prompt_handled', value: 'true');
+      } else {
+        final brand = await RomDetector.getRestrictiveBrand();
+        if (brand != null && mounted) {
+          context.go(AppRoutes.batteryPrompt);
+          return;
+        }
+      }
+    }
+
     final name = await storage.read(key: _kNameKey);
     final needsSetup =
         name == null || name.isEmpty || name.startsWith('Device-');
