@@ -3,13 +3,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../../core/router/app_router.dart';
+import '../../call/presentation/incoming_call_screen.dart';
 
 /// Handles system notifications for incoming messages when the app is in background.
 class ChatNotificationService {
   ChatNotificationService._();
   static final ChatNotificationService instance = ChatNotificationService._();
-
-  static DateTime? _lastCallTap;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -44,22 +43,11 @@ class ChatNotificationService {
           final data = jsonDecode(response.payload!);
           if (data is Map<String, dynamic>) {
             if (data['type'] == 'call') {
-              // 1. Debounce Guard (Prevent rapid duplicate taps within 2 seconds)
-              final now = DateTime.now();
-              if (_lastCallTap != null && now.difference(_lastCallTap!).inSeconds < 2) {
-                debugPrint('Ignoring rapid duplicate notification tap.');
+              // Synchronous guard — relies on screen lifecycle, not router state
+              if (IncomingCallScreen.isActive) {
+                debugPrint('IncomingCallScreen already active, ignoring tap.');
                 return;
               }
-              _lastCallTap = now;
-
-              // 2. Iron-clad State Guard
-              final currentLocation = appRouter.routerDelegate.currentConfiguration.uri.toString();
-              // Prevent push if we are anywhere inside the /call tree.
-              if (currentLocation.startsWith('/call')) {
-                 debugPrint('Already in the call flow, blocking duplicate push.');
-                 return; 
-              }
-              
               appRouter.push('/call/incoming', extra: data);
             } else if (data['type'] == 'chat') {
               appRouter.go('/home');

@@ -25,6 +25,8 @@ class IncomingCallScreen extends ConsumerStatefulWidget {
   final String callerIp;
   final int signalingPort;
 
+  static bool isActive = false;
+
   @override
   ConsumerState<IncomingCallScreen> createState() => _IncomingCallScreenState();
 }
@@ -32,6 +34,18 @@ class IncomingCallScreen extends ConsumerStatefulWidget {
 class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
   // Bug fix: prevent multiple rapid taps from triggering accept/decline twice
   bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    IncomingCallScreen.isActive = true;
+  }
+
+  @override
+  void dispose() {
+    IncomingCallScreen.isActive = false;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
