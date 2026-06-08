@@ -93,6 +93,7 @@ class ChatNotificationService {
       enableVibration: true,
       playSound: true,
       sound: RawResourceAndroidNotificationSound('notification'),
+      audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
       autoCancel: true,
       styleInformation: BigTextStyleInformation(''),
     );
