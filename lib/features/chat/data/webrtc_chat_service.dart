@@ -329,7 +329,9 @@ class WebRtcChatService {
 
     pc.onIceCandidate = (candidate) {
       if (candidate.candidate != null) {
-        ws.add(jsonEncode({'type': 'ice', 'candidate': candidate.toMap()}));
+        try {
+          ws.add(jsonEncode({'type': 'ice', 'candidate': candidate.toMap()}));
+        } catch (_) {}
       }
     };
 
@@ -652,7 +654,7 @@ class WebRtcChatService {
     String peerId,
   ) async {
     try {
-      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final socket = await RawDatagramSocket.bind(InternetAddress(selfIp), 0);
       final payload = utf8.encode(
         jsonEncode({
           'type': 'chat_invite',

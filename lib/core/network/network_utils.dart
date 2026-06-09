@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 /// Returns the local IP that is on the same subnet as [targetIp].
 /// Falls back to the first available non-loopback IP if no match found.
 Future<String> getBestLocalIpFor(String targetIp) async {
@@ -8,8 +10,18 @@ Future<String> getBestLocalIpFor(String targetIp) async {
     includeLoopback: false,
   );
 
+  for (final i in interfaces) {
+    for (final a in i.addresses) {
+      debugPrint('[NET] interface: ${i.name} → ${a.address}');
+    }
+  }
+
   // Extract target subnet prefix (first 3 octets)
-  final targetParts = targetIp.split('.');
+  // Strip IPv4-mapped IPv6 prefix if present (e.g. '::ffff:10.0.0.1')
+  final cleanTarget = targetIp.startsWith('::ffff:')
+      ? targetIp.substring(7)
+      : targetIp;
+  final targetParts = cleanTarget.split('.');
   if (targetParts.length != 4) return '0.0.0.0';
   final targetSubnet = '${targetParts[0]}.${targetParts[1]}.${targetParts[2]}';
 
