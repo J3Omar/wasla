@@ -73,6 +73,7 @@ class CallManager {
   // Bug 2 fix: track which side we are on for fallback timer sync
   bool _isInitiator = false;
   bool _isReconnecting = false;
+  bool _isDisposing = false;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -93,7 +94,7 @@ class CallManager {
 
   /// Disable the foreground service. Called from dispose() which is the
   /// single exit point for ALL call-end scenarios.
-  void _disableBackground() {
+  Future<void> _disableBackground() async {
     try {
       WakelockPlus.disable();
     } catch (_) {}
@@ -921,7 +922,11 @@ class CallManager {
   }
 
   Future<void> dispose() async {
-    _disableBackground(); // Fix 2F — release foreground service in ALL cases
+    if (_isDisposing) return;
+    _isDisposing = true;
+
+    debugPrint('[CallManager] Disposing resources...');
+    await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
@@ -950,7 +955,7 @@ class CallManager {
       await _remoteRenderer?.dispose();
       await _pc?.close();
       await _signalingServer?.close();
-      await _signalingWs?.close();
+      await _signalingWs?.close(); // Safe now, _isDisposing blocks the loop
     } catch (_) {}
     _localStream = null;
     _localVideoStream = null;
@@ -960,5 +965,6 @@ class CallManager {
     _pc = null;
     _signalingServer = null;
     _signalingWs = null;
+    _isDisposing = false; // Reset for future calls
   }
 }

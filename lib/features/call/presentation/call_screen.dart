@@ -126,192 +126,215 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         behavior: HitTestBehavior.opaque,
         child: Stack(
           children: [
-            // Background gradient
-            Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 1.2,
-                  colors: [
-                    AppColors.primaryCyan.withValues(alpha: 0.10),
-                    AppColors.bgPrimary,
+            // 1. ABSOLUTE BACKGROUND: Edge-to-Edge Video (No SafeArea)
+            Positioned.fill(
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  // Remote Video OR Local Video OR Avatar
+                  if (callState.isRemoteVideoOn &&
+                      ref.read(callProvider.notifier).remoteRenderer != null)
+                    Positioned.fill(
+                      child: RTCVideoView(
+                        ref.read(callProvider.notifier).remoteRenderer!,
+                        objectFit:
+                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      ),
+                    )
+                  else if (callState.isLocalVideoOn &&
+                      ref.read(callProvider.notifier).localRenderer != null &&
+                      !callState.isRemoteVideoOn)
+                    Positioned.fill(
+                      child: RTCVideoView(
+                        ref.read(callProvider.notifier).localRenderer!,
+                        mirror: false,
+                        objectFit:
+                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      height: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment.topCenter,
+                          radius: 1.2,
+                          colors: [
+                            AppColors.primaryCyan.withValues(alpha: 0.10),
+                            AppColors.bgPrimary,
+                          ],
+                        ),
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 110,
+                          height: 110,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [
+                                AppColors.primaryCyan,
+                                AppColors.primaryPurple,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryCyan.withValues(
+                                  alpha: 0.3,
+                                ),
+                                blurRadius: 30,
+                                spreadRadius: 6,
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              initials.toUpperCase(),
+                              style: AppTypography.heading2.copyWith(
+                                color: Colors.white,
+                                fontSize: 36,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // 2. FOREGROUND UI (Safe Area for Notch/Status Bar)
+            Positioned.fill(
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    // Header
+                    AnimatedOpacity(
+                      opacity: _showControls ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 16,
+                        ),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.arrow_back_ios,
+                                color: AppColors.textMuted,
+                              ),
+                              onPressed: () => context.go('/home'),
+                              tooltip: 'Minimize call',
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              hasAnyVideo ? 'Video Call' : 'Voice Call',
+                              style: AppTypography.labelSmall.copyWith(
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+
+                    // Name and Timer
+                    AnimatedOpacity(
+                      opacity: _showControls ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Column(
+                        children: [
+                          Text(
+                            callState.peerName,
+                            style: AppTypography.heading2.copyWith(
+                              color: Colors.white,
+                              shadows: [
+                                const Shadow(
+                                  blurRadius: 10.0,
+                                  color: Colors.black54,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (isConnecting)
+                            Text(
+                              'Connecting…',
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.primaryCyan,
+                                shadows: [
+                                  const Shadow(
+                                    blurRadius: 10.0,
+                                    color: Colors.black54,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            CallTimerWidget(startedAt: callState.startedAt),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+
+                    // Controls pill
+                    AnimatedOpacity(
+                      opacity: _showControls ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 30),
+                        child: _ControlsPill(
+                          isMuted: callState.isMuted,
+                          isSpeakerOn: callState.isSpeakerOn,
+                          isLocalVideoOn: callState.isLocalVideoOn,
+                          hasMultipleCameras: _hasMultipleCameras,
+                          showSpeakerToggle:
+                              (Platform.isAndroid || Platform.isIOS) &&
+                              !callState.isLocalVideoOn,
+                          onMute: () =>
+                              ref.read(callProvider.notifier).toggleMute(),
+                          onSpeaker: () =>
+                              ref.read(callProvider.notifier).toggleSpeaker(),
+                          onToggleVideo: () => _onToggleVideo(callState),
+                          onSwitchCamera: () =>
+                              ref.read(callProvider.notifier).switchCamera(),
+                          onEnd: () {
+                            ref.read(callProvider.notifier).endCall();
+                          },
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            SafeArea(
-              child: Column(
-                children: [
-                  // Header
-                  AnimatedOpacity(
-                    opacity: _showControls ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 16,
-                      ),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.arrow_back_ios,
-                              color: AppColors.textMuted,
-                            ),
-                            onPressed: () => context.go('/home'),
-                            tooltip: 'Minimize call',
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            hasAnyVideo ? 'Video Call' : 'Voice Call',
-                            style: AppTypography.labelSmall.copyWith(
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  // Main View (Remote Video OR Avatar)
-                  Expanded(
-                    flex: 8,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      clipBehavior: Clip.hardEdge,
-                      children: [
-                        // 1. Background Layer (Remote Video OR Local Video OR Avatar)
-                        if (callState.isRemoteVideoOn &&
-                            ref.read(callProvider.notifier).remoteRenderer !=
-                                null)
-                          Positioned.fill(
-                            child: SizedBox.expand(
-                              child: RTCVideoView(
-                                ref.read(callProvider.notifier).remoteRenderer!,
-                                objectFit: RTCVideoViewObjectFit
-                                    .RTCVideoViewObjectFitContain,
-                              ),
-                            ),
-                          )
-                        else if (callState.isLocalVideoOn &&
-                            ref.read(callProvider.notifier).localRenderer !=
-                                null &&
-                            !callState.isRemoteVideoOn)
-                          Positioned.fill(
-                            child: RTCVideoView(
-                              ref.read(callProvider.notifier).localRenderer!,
-                              mirror: callState.isFrontCamera,
-                              objectFit: RTCVideoViewObjectFit
-                                  .RTCVideoViewObjectFitCover,
-                            ),
-                          )
-                        else
-                          Container(
-                            width: 110,
-                            height: 110,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: const LinearGradient(
-                                colors: [
-                                  AppColors.primaryCyan,
-                                  AppColors.primaryPurple,
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryCyan.withValues(
-                                    alpha: 0.3,
-                                  ),
-                                  blurRadius: 30,
-                                  spreadRadius: 6,
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                initials.toUpperCase(),
-                                style: AppTypography.heading2.copyWith(
-                                  color: Colors.white,
-                                  fontSize: 36,
-                                ),
-                              ),
-                            ),
-                          ),
 
-                        // 2. PiP Layer (Local Video when Remote is ON)
-                        if (callState.isLocalVideoOn &&
-                            callState.isRemoteVideoOn &&
-                            ref.read(callProvider.notifier).localRenderer !=
-                                null)
-                          Positioned(
-                            top: 16,
-                            right: 16,
-                            width: 100,
-                            height: 140,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: RTCVideoView(
-                                ref.read(callProvider.notifier).localRenderer!,
-                                mirror: callState.isFrontCamera,
-                                objectFit: RTCVideoViewObjectFit
-                                    .RTCVideoViewObjectFitCover,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+            // 3. PiP Local Video (Above controls, safe distance from bottom)
+            if (callState.isLocalVideoOn &&
+                callState.isRemoteVideoOn &&
+                ref.read(callProvider.notifier).localRenderer != null)
+              Positioned(
+                bottom: 150, // Avoid overlapping the controls
+                right: 16,
+                width: 100,
+                height: 140,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: RTCVideoView(
+                    ref.read(callProvider.notifier).localRenderer!,
+                    mirror: false,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    callState.peerName,
-                    style: AppTypography.heading2.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Show "Connecting…" until WebRTC is active, then show timer
-                  if (isConnecting)
-                    Text(
-                      'Connecting…',
-                      style: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.primaryCyan,
-                      ),
-                    )
-                  else
-                    CallTimerWidget(startedAt: callState.startedAt),
-                  const Spacer(),
-                  // ── Controls pill ──────────────────────────────────────────────────
-                  AnimatedOpacity(
-                    opacity: _showControls ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 300),
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 60),
-                      child: _ControlsPill(
-                        isMuted: callState.isMuted,
-                        isSpeakerOn: callState.isSpeakerOn,
-                        isLocalVideoOn: callState.isLocalVideoOn,
-                        hasMultipleCameras: _hasMultipleCameras,
-                        showSpeakerToggle:
-                            (Platform.isAndroid || Platform.isIOS) &&
-                            !callState.isLocalVideoOn,
-                        onMute: () =>
-                            ref.read(callProvider.notifier).toggleMute(),
-                        onSpeaker: () =>
-                            ref.read(callProvider.notifier).toggleSpeaker(),
-                        onToggleVideo: () => _onToggleVideo(callState),
-                        onSwitchCamera: () =>
-                            ref.read(callProvider.notifier).switchCamera(),
-                        onEnd: () {
-                          ref.read(callProvider.notifier).endCall();
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
           ],
         ),
       ),

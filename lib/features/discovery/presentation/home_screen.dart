@@ -337,8 +337,10 @@ class _DeviceCard extends ConsumerWidget {
                       Expanded(
                         child: _ActionTile(
                           icon: Icons.videocam_outlined,
-                          label: 'Video',
-                          color: AppColors.primaryPurple,
+                          label: isSelfInCall ? 'In Call' : 'Video',
+                          color: isSelfInCall
+                              ? AppColors.textSecondary
+                              : AppColors.primaryPurple,
                           onTap: isSelfInCall
                               ? () {
                                   context.push('/call/active');
