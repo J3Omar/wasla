@@ -86,51 +86,66 @@ class _OutgoingCallScreenState extends ConsumerState<OutgoingCallScreen> {
             ),
           ),
           SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Spacer(),
-                // Pulsing avatar
-                _PulsingAvatar(name: callState.peerName),
-                const SizedBox(height: 24),
-                Text(
-                  callState.peerName,
-                  style: AppTypography.heading2.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  statusText,
-                  style: AppTypography.bodyMedium.copyWith(color: statusColor),
-                ),
-                const Spacer(),
-                // End call button — centered
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 60),
-                    child: GestureDetector(
-                      onTap: () {
-                        ref.read(callProvider.notifier).endCall();
-                        _safePop();
-                      },
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: const BoxDecoration(
-                          color: Colors.redAccent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.call_end_rounded,
-                          color: Colors.white,
-                          size: 32,
-                        ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Spacer(),
+                          // Pulsing avatar
+                          _PulsingAvatar(name: callState.peerName),
+                          const SizedBox(height: 24),
+                          Text(
+                            callState.peerName,
+                            style: AppTypography.heading2.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            statusText,
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: statusColor,
+                            ),
+                          ),
+                          const Spacer(),
+                          // End call button — centered
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: GestureDetector(
+                                onTap: () {
+                                  ref.read(callProvider.notifier).endCall();
+                                  _safePop();
+                                },
+                                child: Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.redAccent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.call_end_rounded,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ],

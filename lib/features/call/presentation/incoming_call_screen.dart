@@ -86,130 +86,157 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
             ),
           ),
           SafeArea(
-            child: Column(
-              children: [
-                const Spacer(),
-                // Avatar
-                _IncomingAvatar(callerName: widget.callerName),
-                const SizedBox(height: 24),
-                Text(
-                  widget.callerName,
-                  style: AppTypography.heading2.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.isVideo
-                      ? 'Incoming Video Call...'
-                      : 'Incoming Voice Call...',
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const Spacer(),
-                // Accept / Decline row — centered with equal spacing
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 60),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Decline
-                      _CallButton(
-                        icon: Icons.call_end_rounded,
-                        color: Colors.redAccent,
-                        label: 'Decline',
-                        onTap: _isProcessing
-                            ? null
-                            : () {
-                                setState(() => _isProcessing = true);
-                                ref
-                                    .read(callProvider.notifier)
-                                    .declineCall(
-                                      callerIp: widget.callerIp,
-                                      signalingPort: widget.signalingPort,
-                                    );
-                                if (mounted) context.pop();
-                              },
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Spacer(),
+                          // Avatar
+                          _IncomingAvatar(callerName: widget.callerName),
+                          const SizedBox(height: 24),
+                          Text(
+                            widget.callerName,
+                            style: AppTypography.heading2.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.isVideo
+                                ? 'Incoming Video Call...'
+                                : 'Incoming Voice Call...',
+                            style: AppTypography.bodyMedium.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const Spacer(),
+                          // Accept / Decline row — centered with equal spacing
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                // Decline
+                                _CallButton(
+                                  icon: Icons.call_end_rounded,
+                                  color: Colors.redAccent,
+                                  label: 'Decline',
+                                  onTap: _isProcessing
+                                      ? null
+                                      : () {
+                                          setState(() => _isProcessing = true);
+                                          ref
+                                              .read(callProvider.notifier)
+                                              .declineCall(
+                                                callerIp: widget.callerIp,
+                                                signalingPort:
+                                                    widget.signalingPort,
+                                              );
+                                          if (mounted) context.pop();
+                                        },
+                                ),
+                                // Accept — check mic permission, then navigate immediately
+                                _CallButton(
+                                  icon: Icons.call_rounded,
+                                  color: AppColors.statusOnline,
+                                  label: 'Accept',
+                                  onTap: _isProcessing
+                                      ? null
+                                      : () async {
+                                          debugPrint(
+                                            '[IncomingCallScreen] Accept button tapped',
+                                          );
+                                          try {
+                                            // Fix 2E — require microphone before accepting
+                                            final granted =
+                                                await SmartPermissionHandler.request(
+                                                  context,
+                                                  Permission.microphone,
+                                                  'Microphone',
+                                                  'to make voice calls',
+                                                );
+                                            debugPrint(
+                                              '[IncomingCallScreen] Microphone permission granted: $granted',
+                                            );
+                                            if (!granted) return;
+                                            setState(
+                                              () => _isProcessing = true,
+                                            );
+                                            // Start WebRTC in background
+                                            debugPrint(
+                                              '[IncomingCallScreen] Calling acceptCall...',
+                                            );
+                                            await ref
+                                                .read(callProvider.notifier)
+                                                .acceptCall(
+                                                  callerIp: widget.callerIp,
+                                                  signalingPort:
+                                                      widget.signalingPort,
+                                                  callerId: widget.callerId,
+                                                  callerName: widget.callerName,
+                                                  isVideo: widget.isVideo,
+                                                );
+                                            debugPrint(
+                                              '[IncomingCallScreen] acceptCall returned, navigating...',
+                                            );
+                                            // Only navigate if the state didn't instantly revert to ended (due to socket failure)
+                                            if (context.mounted) {
+                                              final currentState = ref
+                                                  .read(callProvider)
+                                                  .valueOrNull
+                                                  ?.state;
+                                              if (currentState !=
+                                                      CallState.ended &&
+                                                  currentState !=
+                                                      CallState.idle) {
+                                                context.pushReplacement(
+                                                  '/call/active',
+                                                  extra: {
+                                                    'peerName':
+                                                        widget.callerName,
+                                                  },
+                                                );
+                                              } else {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Connection failed.',
+                                                    ),
+                                                  ),
+                                                );
+                                                context.pop();
+                                              }
+                                            }
+                                          } catch (e, stack) {
+                                            debugPrint(
+                                              '[IncomingCallScreen] Error accepting call: $e\n$stack',
+                                            );
+                                            if (mounted) {
+                                              setState(
+                                                () => _isProcessing = false,
+                                              );
+                                            }
+                                          }
+                                        },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      // Accept — check mic permission, then navigate immediately
-                      _CallButton(
-                        icon: Icons.call_rounded,
-                        color: AppColors.statusOnline,
-                        label: 'Accept',
-                        onTap: _isProcessing
-                            ? null
-                            : () async {
-                                debugPrint(
-                                  '[IncomingCallScreen] Accept button tapped',
-                                );
-                                try {
-                                  // Fix 2E — require microphone before accepting
-                                  final granted =
-                                      await SmartPermissionHandler.request(
-                                        context,
-                                        Permission.microphone,
-                                        'Microphone',
-                                        'to make voice calls',
-                                      );
-                                  debugPrint(
-                                    '[IncomingCallScreen] Microphone permission granted: $granted',
-                                  );
-                                  if (!granted) return;
-                                  setState(() => _isProcessing = true);
-                                  // Start WebRTC in background
-                                  debugPrint(
-                                    '[IncomingCallScreen] Calling acceptCall...',
-                                  );
-                                  await ref
-                                      .read(callProvider.notifier)
-                                      .acceptCall(
-                                        callerIp: widget.callerIp,
-                                        signalingPort: widget.signalingPort,
-                                        callerId: widget.callerId,
-                                        callerName: widget.callerName,
-                                        isVideo: widget.isVideo,
-                                      );
-                                  debugPrint(
-                                    '[IncomingCallScreen] acceptCall returned, navigating...',
-                                  );
-                                  // Only navigate if the state didn't instantly revert to ended (due to socket failure)
-                                  if (context.mounted) {
-                                    final currentState = ref
-                                        .read(callProvider)
-                                        .valueOrNull
-                                        ?.state;
-                                    if (currentState != CallState.ended &&
-                                        currentState != CallState.idle) {
-                                      context.pushReplacement(
-                                        '/call/active',
-                                        extra: {'peerName': widget.callerName},
-                                      );
-                                    } else {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Connection failed.'),
-                                        ),
-                                      );
-                                      context.pop();
-                                    }
-                                  }
-                                } catch (e, stack) {
-                                  debugPrint(
-                                    '[IncomingCallScreen] Error accepting call: $e\n$stack',
-                                  );
-                                  if (mounted) {
-                                    setState(() => _isProcessing = false);
-                                  }
-                                }
-                              },
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ],

@@ -25,6 +25,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   bool _hasMultipleCameras = false;
   bool _wasSpeakerOnBeforeVideo = false;
   bool _showControls = true;
+  bool _isVideoToggling = false;
   Timer? _controlsTimer;
 
   @override
@@ -60,8 +61,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   }
 
   Future<void> _onToggleVideo(CallSession state) async {
-    final notifier = ref.read(callProvider.notifier);
+    if (_isVideoToggling) return; // Cooldown active, ignore taps
+    setState(() => _isVideoToggling = true);
+
     try {
+      final notifier = ref.read(callProvider.notifier);
       if (!state.isLocalVideoOn) {
         _wasSpeakerOnBeforeVideo = state.isSpeakerOn;
         await notifier.toggleVideo();
@@ -79,6 +83,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           const SnackBar(content: Text("This device doesn't support a camera")),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isVideoToggling = false);
     }
   }
 
@@ -136,10 +142,18 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                   if (callState.isRemoteVideoOn &&
                       ref.read(callProvider.notifier).remoteRenderer != null)
                     Positioned.fill(
-                      child: RTCVideoView(
-                        ref.read(callProvider.notifier).remoteRenderer!,
-                        objectFit:
-                            RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      child: SizedBox.expand(
+                        child: RTCVideoView(
+                          ref.read(callProvider.notifier).remoteRenderer!,
+                          objectFit:
+                              (Platform.isLinux ||
+                                  Platform.isWindows ||
+                                  Platform.isMacOS)
+                              ? RTCVideoViewObjectFit
+                                    .RTCVideoViewObjectFitContain
+                              : RTCVideoViewObjectFit
+                                    .RTCVideoViewObjectFitCover,
+                        ),
                       ),
                     )
                   else if (callState.isLocalVideoOn &&
@@ -295,6 +309,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           isMuted: callState.isMuted,
                           isSpeakerOn: callState.isSpeakerOn,
                           isLocalVideoOn: callState.isLocalVideoOn,
+                          isVideoToggling: _isVideoToggling,
                           hasMultipleCameras: _hasMultipleCameras,
                           showSpeakerToggle:
                               (Platform.isAndroid || Platform.isIOS) &&
@@ -349,6 +364,7 @@ class _ControlsPill extends StatelessWidget {
     required this.isMuted,
     required this.isSpeakerOn,
     required this.isLocalVideoOn,
+    required this.isVideoToggling,
     required this.hasMultipleCameras,
     required this.showSpeakerToggle,
     required this.onMute,
@@ -361,6 +377,7 @@ class _ControlsPill extends StatelessWidget {
   final bool isMuted;
   final bool isSpeakerOn;
   final bool isLocalVideoOn;
+  final bool isVideoToggling;
   final bool hasMultipleCameras;
 
   /// Show speaker/earpiece toggle — true on Android/iOS only.
@@ -405,11 +422,13 @@ class _ControlsPill extends StatelessWidget {
             icon: isLocalVideoOn
                 ? Icons.videocam_rounded
                 : Icons.videocam_off_rounded,
-            label: 'Camera',
-            color: isLocalVideoOn
+            label: isVideoToggling ? 'Wait...' : 'Camera',
+            color: isVideoToggling
+                ? AppColors.textMuted
+                : isLocalVideoOn
                 ? AppColors.primaryCyan
                 : AppColors.textSecondary,
-            onTap: onToggleVideo,
+            onTap: isVideoToggling ? () {} : onToggleVideo,
           ),
           // Switch camera — ONLY shown if video is on and 2+ cameras exist
           if (isLocalVideoOn && hasMultipleCameras)
