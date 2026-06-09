@@ -190,7 +190,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         kCallInviteUdpPort,
         reuseAddress: true,
       );
-      _inviteSocket!.listen((event) {
+      _inviteSocket!.listen((event) async {
         if (event != RawSocketEvent.read) return;
         final dg = _inviteSocket!.receive();
         if (dg == null) return;
@@ -320,7 +320,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             // Only react if we are the caller and are in outgoing state
             if (current?.state == CallState.outgoing) {
               final count = (current?.declineCount ?? 0) + 1;
-              CallAudioService.instance.stopAll(); // stop ringback on caller
+              await CallAudioService.instance.stopAll(); // stop ringback on caller
+              _manager?.dispose();
+              _manager = null;
               state = AsyncData(
                 current!.copyWith(
                   state: CallState.ended,

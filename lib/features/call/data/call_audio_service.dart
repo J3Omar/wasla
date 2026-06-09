@@ -39,7 +39,9 @@ class CallAudioService {
       contentType: (androidUsage == AndroidUsageType.voiceCommunication)
           ? AndroidContentType.speech
           : AndroidContentType.music,
-      audioFocus: AndroidAudioFocus.gain,
+      audioFocus: androidUsage == AndroidUsageType.voiceCommunication
+          ? AndroidAudioFocus.gain
+          : AndroidAudioFocus.gainTransientMayDuck,
       stayAwake: false,
     ),
     iOS: AudioContextIOS(
