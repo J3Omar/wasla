@@ -40,6 +40,15 @@ class CallManager {
 
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
+
+  MediaStream? _localVideoStream;
+  RTCVideoRenderer? _localRenderer;
+  RTCVideoRenderer? _remoteRenderer;
+  bool _isVideoOn = false;
+
+  RTCVideoRenderer? get localRenderer => _localRenderer;
+  RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
+
   HttpServer? _signalingServer;
   WebSocket? _signalingWs;
   Timer? _timeoutTimer; // 30s no-answer auto-end
@@ -64,6 +73,7 @@ class CallManager {
   // Bug 2 fix: track which side we are on for fallback timer sync
   bool _isInitiator = false;
   bool _isReconnecting = false;
+  bool _isDisposing = false;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -84,7 +94,7 @@ class CallManager {
 
   /// Disable the foreground service. Called from dispose() which is the
   /// single exit point for ALL call-end scenarios.
-  void _disableBackground() {
+  Future<void> _disableBackground() async {
     try {
       WakelockPlus.disable();
     } catch (_) {}
@@ -99,6 +109,7 @@ class CallManager {
     required String peerId,
     required String peerName,
     required String peerIp,
+    bool isVideo = false,
   }) async {
     debugPrint('[CallManager] startCall invoked for $peerName ($peerIp)');
     _session = CallSession(
@@ -106,8 +117,20 @@ class CallManager {
       peerId: peerId,
       peerName: peerName,
       peerIp: peerIp,
+      isSpeakerOn: isVideo,
+      isLocalVideoOn: isVideo,
     );
     onStateChanged(_session);
+
+    if (isVideo && (Platform.isAndroid || Platform.isIOS)) {
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (_) {}
+    }
+
+    if (isVideo) {
+      await toggleVideo();
+    }
 
     debugPrint('[CallManager] startCall: Enabling background service...');
     try {
@@ -180,10 +203,17 @@ class CallManager {
   Future<void> acceptCall({
     required String callerIp,
     required int signalingPort,
+    bool isVideo = false,
   }) async {
     debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
     _session = _session.copyWith(state: CallState.connecting);
     onStateChanged(_session);
+
+    if (isVideo && (Platform.isAndroid || Platform.isIOS)) {
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (_) {}
+    }
 
     debugPrint('[CallManager] acceptCall: Enabling background service...');
     try {
@@ -251,10 +281,65 @@ class CallManager {
   }
 
   void toggleSpeaker() {
-    // flutter_webrtc exposes Helper.setSpeakerphoneOn
-    Helper.setSpeakerphoneOn(!_session.isSpeakerOn);
+    if (Platform.isAndroid || Platform.isIOS) {
+      Helper.setSpeakerphoneOn(!_session.isSpeakerOn);
+    }
     _session = _session.copyWith(isSpeakerOn: !_session.isSpeakerOn);
     onStateChanged(_session);
+  }
+
+  Future<void> toggleVideo() async {
+    if (!_isVideoOn) {
+      final devices = await navigator.mediaDevices.enumerateDevices();
+      final hasCamera = devices.any((d) => d.kind == 'videoinput');
+      if (!hasCamera) throw Exception('NO_CAMERA');
+
+      _localVideoStream = await navigator.mediaDevices.getUserMedia({
+        'video': {
+          'width': {'ideal': 1280},
+          'height': {'ideal': 720},
+          'facingMode': 'user',
+        },
+        'audio': false,
+      });
+      _localRenderer ??= RTCVideoRenderer();
+      await _localRenderer!.initialize();
+      _localRenderer!.srcObject = _localVideoStream;
+      if (_pc != null) {
+        await _pc!.addTrack(
+          _localVideoStream!.getVideoTracks().first,
+          _localVideoStream!,
+        );
+      }
+      _isVideoOn = true;
+      _session = _session.copyWith(isLocalVideoOn: true);
+    } else {
+      final track = _localVideoStream?.getVideoTracks().first;
+      if (track != null && _pc != null) {
+        final senders = await _pc!.getSenders();
+        for (var sender in senders) {
+          if (sender.track?.id == track.id) {
+            await _pc!.removeTrack(sender);
+            break;
+          }
+        }
+      }
+      _localRenderer?.srcObject = null;
+      _localVideoStream?.getVideoTracks().forEach((t) => t.stop());
+      await _localVideoStream?.dispose();
+      _localVideoStream = null;
+      _isVideoOn = false;
+      _session = _session.copyWith(isLocalVideoOn: false);
+    }
+    onStateChanged(_session);
+  }
+
+  Future<void> switchCamera() async {
+    if (_isVideoOn && _localVideoStream != null) {
+      await Helper.switchCamera(_localVideoStream!.getVideoTracks().first);
+      _session = _session.copyWith(isFrontCamera: !_session.isFrontCamera);
+      onStateChanged(_session);
+    }
   }
 
   Future<void> endCall() async {
@@ -433,6 +518,11 @@ class CallManager {
     // Fix 2C — debug logging so we can track exactly which state it stalls at
     pc.onIceConnectionState = (state) {
       debugPrint('[Call] ICE connection state: $state');
+      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+          state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+        endCall();
+      }
     };
     pc.onIceGatheringState = (state) {
       debugPrint('[Call] ICE gathering state: $state');
@@ -441,8 +531,42 @@ class CallManager {
       debugPrint('[Call] Signaling state: $state');
     };
 
+    pc.onRenegotiationNeeded = () async {
+      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable) {
+        return;
+      }
+      try {
+        final offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        _signalingWs?.add(jsonEncode({'type': 'offer', 'sdp': offer.toMap()}));
+      } catch (e) {
+        debugPrint('[Call] Renegotiation error: $e');
+      }
+    };
+
     pc.onTrack = (event) {
       // Remote audio track — flutter_webrtc handles playback automatically
+      if (event.track.kind == 'video') {
+        _remoteRenderer ??= RTCVideoRenderer();
+        _remoteRenderer!.initialize().then((_) {
+          _remoteRenderer!.srcObject = event.streams[0];
+          _session = _session.copyWith(isRemoteVideoOn: true);
+          onStateChanged(_session);
+        });
+        event.track.onEnded = () {
+          _session = _session.copyWith(isRemoteVideoOn: false);
+          onStateChanged(_session);
+        };
+      }
+    };
+
+    pc.onRemoveTrack = (stream, track) {
+      if (track.kind == 'video') {
+        debugPrint('[CallManager] Remote video track removed.');
+        _remoteRenderer?.srcObject = null;
+        _session = _session.copyWith(isRemoteVideoOn: false);
+        onStateChanged(_session);
+      }
     };
 
     return pc;
@@ -495,6 +619,13 @@ class CallManager {
     for (final track in _localStream!.getAudioTracks()) {
       _pc!.addTrack(track, _localStream!);
     }
+
+    // Add Video if active
+    if (_localVideoStream != null) {
+      for (final track in _localVideoStream!.getVideoTracks()) {
+        _pc!.addTrack(track, _localVideoStream!);
+      }
+    }
     final offer = await _pc!.createOffer();
     await _pc!.setLocalDescription(offer);
     _signalingWs?.add(jsonEncode({'type': 'offer', 'sdp': offer.toMap()}));
@@ -510,6 +641,40 @@ class CallManager {
         _missedHeartbeats = 0;
         break;
       case 'offer':
+        final description = RTCSessionDescription(
+          signal['sdp']['sdp'] as String,
+          signal['sdp']['type'] as String,
+        );
+
+        // Check if this is a mid-call Renegotiation
+        if (_pc != null) {
+          debugPrint('[CallManager] Handling MID-CALL Renegotiation Offer...');
+
+          // ANTI-GLARE SHIELD: If we are already negotiating, ignore the incoming offer
+          if (_pc!.signalingState !=
+              RTCSignalingState.RTCSignalingStateStable) {
+            debugPrint(
+              '[CallManager] GLARE DETECTED: Ignoring offer to prevent crash. State: ${_pc!.signalingState}',
+            );
+            return;
+          }
+
+          await _pc!.setRemoteDescription(description);
+          _remoteDescSet = true;
+          for (final c in _pendingCandidates) {
+            await _pc?.addCandidate(c);
+          }
+          _pendingCandidates.clear();
+
+          final answer = await _pc!.createAnswer();
+          await _pc!.setLocalDescription(answer);
+          _signalingWs?.add(
+            jsonEncode({'type': 'answer', 'sdp': answer.toMap()}),
+          );
+          return; // Exit here. Do NOT restart the call.
+        }
+
+        debugPrint('[CallManager] Handling INITIAL Offer...');
         // Strict audio handoff sequence (Phase 1 Fix):
         // Stop looping audio → release AudioFocus → WebRTC takes over AudioManager
         await CallAudioService.instance.stopAll();
@@ -526,12 +691,14 @@ class CallManager {
         for (final track in _localStream!.getAudioTracks()) {
           _pc!.addTrack(track, _localStream!);
         }
-        await _pc!.setRemoteDescription(
-          RTCSessionDescription(
-            signal['sdp']['sdp'] as String,
-            signal['sdp']['type'] as String,
-          ),
-        );
+
+        // Add Video if active
+        if (_localVideoStream != null) {
+          for (final track in _localVideoStream!.getVideoTracks()) {
+            _pc!.addTrack(track, _localVideoStream!);
+          }
+        }
+        await _pc!.setRemoteDescription(description);
         // Fix 2D — remote desc is now set; flush any ICE candidates that
         // arrived while the offer was being processed.
         _remoteDescSet = true;
@@ -667,6 +834,7 @@ class CallManager {
           // callerIp lets the callee use the correct interface IP explicitly;
           // falls back to UDP source address if missing
           'callerIp': localIp,
+          'isVideo': _session.isLocalVideoOn,
         }),
       );
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
@@ -754,7 +922,11 @@ class CallManager {
   }
 
   Future<void> dispose() async {
-    _disableBackground(); // Fix 2F — release foreground service in ALL cases
+    if (_isDisposing) return;
+    _isDisposing = true;
+
+    debugPrint('[CallManager] Disposing resources...');
+    await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
@@ -775,13 +947,24 @@ class CallManager {
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
+      _localVideoStream?.getTracks().forEach((t) => t.stop());
+      await _localVideoStream?.dispose();
+      _localRenderer?.srcObject = null;
+      await _localRenderer?.dispose();
+      _remoteRenderer?.srcObject = null;
+      await _remoteRenderer?.dispose();
       await _pc?.close();
       await _signalingServer?.close();
-      await _signalingWs?.close();
+      await _signalingWs?.close(); // Safe now, _isDisposing blocks the loop
     } catch (_) {}
     _localStream = null;
+    _localVideoStream = null;
+    _localRenderer = null;
+    _remoteRenderer = null;
+    _isVideoOn = false;
     _pc = null;
     _signalingServer = null;
     _signalingWs = null;
+    _isDisposing = false; // Reset for future calls
   }
 }

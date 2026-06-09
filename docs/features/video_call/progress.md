@@ -1,6 +1,6 @@
 # Progress: Video Call
 
-## Status: 🔴 Not Started
+## Status: 🧪 Testing
 
 ---
 
@@ -8,7 +8,7 @@
 
 | Date | What | Status |
 |------|------|--------|
-| -    | -    | -      |
+| 2026-06-09 | Implemented Video Call Engine (PiP, Controls, Toggle, Track Negotiation) and completed Audit Fixes | Done |
 
 ---
 
@@ -19,8 +19,7 @@
 
 ## Testing Results
 
-- [ ] Windows → Android
-- [ ] Android → Windows
-- [ ] Android → Android
-- [ ] Linux → Android
-- [ ] Group Video Call (3 devices)
+- [] Windows → Android
+- [] Android → Windows
+- [x] Android → Android
+- [x] Linux → Android

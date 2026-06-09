@@ -33,7 +33,7 @@
 ## Testing Results
 
 - [x] Android → Android (same WiFi)
-- [ ] Android → Android (hotspot)
+- [ ] Android → Android (hotspot) -> I can't do it :/ 
 - [x] Linux → Android
 - [x] Windows → Android
 - [x] Network loss → audio disconnect played and after 30 s if not responded the call will end

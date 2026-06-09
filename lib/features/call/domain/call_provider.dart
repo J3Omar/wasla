@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../data/call_manager.dart';
 import '../domain/call_state.dart';
@@ -61,6 +62,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String peerId,
     required String peerName,
     required String peerIp,
+    bool isVideo = false,
   }) async {
     final currentState = state.valueOrNull?.state ?? CallState.idle;
     if (currentState != CallState.idle && currentState != CallState.ended) {
@@ -99,6 +101,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
       peerId: peerId,
       peerName: peerName,
       peerIp: peerIp,
+      isVideo: isVideo,
     );
     return true;
   }
@@ -109,6 +112,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required int signalingPort,
     required String callerId,
     required String callerName,
+    bool isVideo = false,
   }) async {
     // Remove cancelCallNotification from here, handled cleanly in onStateChanged
     await CallAudioService.instance.stopAll();
@@ -144,11 +148,14 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         peerId: callerId,
         peerName: callerName,
         peerIp: callerIp,
+        isSpeakerOn: isVideo,
+        isRemoteVideoOn: isVideo,
       ),
     );
     await _manager!.acceptCall(
       callerIp: callerIp,
       signalingPort: signalingPort,
+      isVideo: isVideo,
     );
   }
 
@@ -177,6 +184,12 @@ class CallNotifier extends AsyncNotifier<CallSession> {
 
   void toggleMute() => _manager?.toggleMute();
   void toggleSpeaker() => _manager?.toggleSpeaker();
+
+  Future<void> toggleVideo() async => await _manager?.toggleVideo();
+  Future<void> switchCamera() async => await _manager?.switchCamera();
+
+  RTCVideoRenderer? get localRenderer => _manager?.localRenderer;
+  RTCVideoRenderer? get remoteRenderer => _manager?.remoteRenderer;
 
   Future<void> endCall() async {
     await _manager?.endCall();
@@ -212,6 +225,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             // The embedded callerIp is wrong when sender is a hotspot host.
             final callerIp = dg.address.address;
             final signalingPort = json['signalingPort'] as int;
+            final isVideo = json['isVideo'] as bool? ?? false;
 
             final currentState = state.valueOrNull?.state ?? CallState.idle;
             final currentPeerId = state.valueOrNull?.peerId;
@@ -277,6 +291,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
                 peerId: peerId,
                 peerName: peerName,
                 peerIp: callerIp,
+                isRemoteVideoOn: isVideo,
               ),
             );
 
@@ -286,6 +301,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               callerId: peerId,
               callerIp: callerIp,
               signalingPort: signalingPort,
+              isVideo: isVideo,
             );
             // Part 3 — play ringtone on notificationRingtone stream
             // (respects system silent/vibrate mode)
@@ -296,6 +312,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               'peerName': peerName,
               'callerIp': callerIp,
               'signalingPort': signalingPort,
+              'isVideo': isVideo,
             });
           }
           // ── Caller cancelled before callee answered ───────────────────────

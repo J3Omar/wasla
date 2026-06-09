@@ -118,6 +118,7 @@ class _MainShellState extends ConsumerState<MainShell> {
             'callerName': info['peerName'] as String,
             'callerIp': info['callerIp'] as String,
             'signalingPort': info['signalingPort'] as int,
+            'isVideo': info['isVideo'] as bool? ?? false,
           },
         );
       };
@@ -137,7 +138,8 @@ class _MainShellState extends ConsumerState<MainShell> {
     final isInCall =
         session != null &&
         (session.state == CallState.active ||
-            session.state == CallState.connecting);
+            session.state == CallState.connecting ||
+            session.state == CallState.outgoing);
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -147,7 +149,13 @@ class _MainShellState extends ConsumerState<MainShell> {
             SafeArea(
               bottom: false,
               child: GestureDetector(
-                onTap: () => context.go('/call/active'),
+                onTap: () {
+                  if (session.state == CallState.outgoing) {
+                    context.push('/call/outgoing');
+                  } else {
+                    context.push('/call/active'); // connecting or active
+                  }
+                },
                 child: Container(
                   width: double.infinity,
                   color: Colors.amber.withValues(alpha: 0.9),

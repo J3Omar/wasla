@@ -16,6 +16,9 @@ class CallSession {
     this.isMuted = false,
     this.isSpeakerOn = false,
     this.declineCount = 0,
+    this.isLocalVideoOn = false,
+    this.isRemoteVideoOn = false,
+    this.isFrontCamera = true,
   });
 
   final CallState state;
@@ -26,6 +29,9 @@ class CallSession {
   final CallEndReason? endReason;
   final bool isMuted;
   final bool isSpeakerOn;
+  final bool isLocalVideoOn;
+  final bool isRemoteVideoOn;
+  final bool isFrontCamera;
 
   /// How many times the remote peer has declined (3 → busy message).
   final int declineCount;
@@ -46,6 +52,9 @@ class CallSession {
     CallEndReason? endReason,
     bool? isMuted,
     bool? isSpeakerOn,
+    bool? isLocalVideoOn,
+    bool? isRemoteVideoOn,
+    bool? isFrontCamera,
     int? declineCount,
   }) {
     return CallSession(
@@ -57,6 +66,9 @@ class CallSession {
       endReason: endReason ?? this.endReason,
       isMuted: isMuted ?? this.isMuted,
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
+      isLocalVideoOn: isLocalVideoOn ?? this.isLocalVideoOn,
+      isRemoteVideoOn: isRemoteVideoOn ?? this.isRemoteVideoOn,
+      isFrontCamera: isFrontCamera ?? this.isFrontCamera,
       declineCount: declineCount ?? this.declineCount,
     );
   }

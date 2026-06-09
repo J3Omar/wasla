@@ -10,7 +10,7 @@ import 'package:wasla/features/chat/presentation/chat_screen.dart';
 import 'package:wasla/features/discovery/domain/device_model.dart';
 import 'package:wasla/features/call/presentation/incoming_call_screen.dart';
 import 'package:wasla/features/call/presentation/outgoing_call_screen.dart';
-import 'package:wasla/features/call/presentation/voice_call_screen.dart';
+import 'package:wasla/features/call/presentation/call_screen.dart';
 
 /// Route name constants — use these instead of raw strings
 abstract final class AppRoutes {
@@ -91,6 +91,7 @@ final GoRouter appRouter = GoRouter(
           callerName: (extra['callerName'] as String?) ?? 'Unknown',
           callerIp: (extra['callerIp'] as String?) ?? '',
           signalingPort: (extra['signalingPort'] as int?) ?? 0,
+          isVideo: (extra['isVideo'] as bool?) ?? false,
         );
       },
     ),
@@ -100,7 +101,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final extra = state.extra as Map<String, dynamic>?;
         final peerName = extra?['peerName'] as String? ?? '';
-        return VoiceCallScreen(peerName: peerName);
+        return CallScreen(peerName: peerName);
       },
     ),
 

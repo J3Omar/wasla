@@ -26,7 +26,7 @@
 | 5 | Incoming Call Screen | ✅ Designed |
 | 6 | Onboarding Screen | ⬜ Pending |
 | 7 | Outgoing Call Screen | ⬜ Pending |
-| 8 | Active Video Call | ⬜ Pending |
+| 8 | Active Video Call | ✅ Designed |
 | 9 | Screen Share Screen | ⬜ Pending |
 | 10 | Settings Screen | ⬜ Pending |
 
@@ -65,7 +65,7 @@
 - [x] **F4 — Voice Call:** Audio call
 
 ### Week 3
-- [ ] **F5 — Video Call:** Video call
+- [x] **F5 — Video Call:** Video call
 - [x] **F7 — File Sharing:** File transfer
 
 ### Week 4
