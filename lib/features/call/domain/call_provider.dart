@@ -39,7 +39,10 @@ class CallNotifier extends AsyncNotifier<CallSession> {
   Future<CallSession> build() async {
     const storage = FlutterSecureStorage();
     _selfUuid = await storage.read(key: _kUuidKey) ?? '';
-    _selfName = await storage.read(key: _kNameKey) ?? 'Wasla User';
+    final rawName = await storage.read(key: _kNameKey);
+    _selfName = (rawName == null || rawName.trim().isEmpty) 
+        ? 'Wasla User' 
+        : rawName.trim();
 
     await _startInviteListener();
 
