@@ -185,6 +185,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .sendMessage(text, freshPeerIp: peerIp);
       _inputController.clear();
     }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      _focusNode.requestFocus();
+    }
   }
 
   @override
@@ -1218,24 +1222,53 @@ class _InputBarState extends State<_InputBar> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppColors.borderDefault),
                   ),
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: widget.focusNode,
-                    style: AppTypography.bodyMedium,
-                    maxLines: null,
-                    textInputAction: TextInputAction.newline,
-                    decoration: InputDecoration(
-                      hintText: 'Write message...',
-                      hintStyle: AppTypography.bodyMedium.copyWith(
-                        color: AppColors.textMuted,
+                  child: Focus(
+                    onKeyEvent: (node, event) {
+                      if (event is KeyDownEvent &&
+                          event.logicalKey == LogicalKeyboardKey.enter) {
+                        if (HardwareKeyboard.instance.isShiftPressed) {
+                          // Insert newline manually
+                          final controller = widget.controller;
+                          final text = controller.text;
+                          final selection = controller.selection;
+                          final newText = text.replaceRange(
+                            selection.start,
+                            selection.end,
+                            '\n',
+                          );
+                          controller.value = TextEditingValue(
+                            text: newText,
+                            selection: TextSelection.collapsed(
+                              offset: selection.start + 1,
+                            ),
+                          );
+                          return KeyEventResult.handled;
+                        } else {
+                          // Send message
+                          widget.onSend();
+                          return KeyEventResult.handled;
+                        }
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: TextField(
+                      controller: widget.controller,
+                      focusNode: widget.focusNode,
+                      style: AppTypography.bodyMedium,
+                      maxLines: null,
+                      textInputAction: TextInputAction.newline,
+                      decoration: InputDecoration(
+                        hintText: 'Write message...',
+                        hintStyle: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textMuted,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        border: InputBorder.none,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      border: InputBorder.none,
                     ),
-                    onSubmitted: (_) => widget.onSend(),
                   ),
                 ),
               ),

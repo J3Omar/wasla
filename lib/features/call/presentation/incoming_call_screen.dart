@@ -54,7 +54,12 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
       final s = next.valueOrNull;
       if (s == null) return;
       if (s.state == CallState.active) {
-        if (mounted) context.pushReplacement('/call/active');
+        if (mounted) {
+          context.pushReplacement(
+            '/call/active',
+            extra: {'peerName': widget.callerName},
+          );
+        }
       } else if (s.state == CallState.ended) {
         // Caller cancelled before we answered — pop immediately
         if (mounted) context.pop();
@@ -83,7 +88,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
               children: [
                 const Spacer(),
                 // Avatar
-                _IncomingAvatar(name: widget.callerName),
+                _IncomingAvatar(callerName: widget.callerName),
                 const SizedBox(height: 24),
                 Text(
                   widget.callerName,
@@ -171,7 +176,10 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                                         ?.state;
                                     if (currentState != CallState.ended &&
                                         currentState != CallState.idle) {
-                                      context.pushReplacement('/call/active');
+                                      context.pushReplacement(
+                                        '/call/active',
+                                        extra: {'peerName': widget.callerName},
+                                      );
                                     } else {
                                       ScaffoldMessenger.of(
                                         context,
@@ -208,8 +216,8 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
 class _IncomingAvatar extends StatefulWidget {
-  const _IncomingAvatar({required this.name});
-  final String name;
+  const _IncomingAvatar({required this.callerName});
+  final String callerName;
 
   @override
   State<_IncomingAvatar> createState() => _IncomingAvatarState();
@@ -241,8 +249,8 @@ class _IncomingAvatarState extends State<_IncomingAvatar>
 
   @override
   Widget build(BuildContext context) {
-    final initials = widget.name.isNotEmpty
-        ? widget.name.trim().split(' ').map((w) => w[0]).take(2).join()
+    final initials = widget.callerName.isNotEmpty
+        ? widget.callerName.trim().split(' ').map((w) => w[0]).take(2).join()
         : '?';
     return SizedBox(
       width: 160,
@@ -292,9 +300,9 @@ class _IncomingAvatarState extends State<_IncomingAvatar>
             child: Center(
               child: Text(
                 initials.toUpperCase(),
-                style: AppTypography.heading2.copyWith(
+                style: AppTypography.heading1.copyWith(
                   color: Colors.white,
-                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),

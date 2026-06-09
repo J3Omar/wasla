@@ -8,6 +8,7 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/battery_optimization_util.dart';
 import '../../../core/utils/rom_detector.dart';
+import '../../chat/data/chat_database.dart';
 
 const _kNameKey = 'wasla_device_name';
 
@@ -62,10 +63,22 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    _ctrl.forward().then((_) => _navigate());
+    // Start animation and async initialization concurrently
+    Future.wait([_ctrl.forward(), _initializeApp()]).then((_) => _routeUser());
   }
 
-  Future<void> _navigate() async {
+  // Holds the routing decision state
+  String? _nextRoute;
+
+  Future<void> _initializeApp() async {
+    // 1. Open Database asynchronously
+    try {
+      await ChatDatabase.instance.open();
+    } catch (e) {
+      debugPrint('CRITICAL: Failed to open ChatDatabase: $e');
+    }
+
+    // 2. Read Secure Storage
     const storage = FlutterSecureStorage();
 
     // Battery Intercept Logic
@@ -76,8 +89,8 @@ class _SplashScreenState extends State<SplashScreen>
         await storage.write(key: 'battery_prompt_handled', value: 'true');
       } else {
         final brand = await RomDetector.getRestrictiveBrand();
-        if (brand != null && mounted) {
-          context.go(AppRoutes.batteryPrompt);
+        if (brand != null) {
+          _nextRoute = AppRoutes.batteryPrompt;
           return;
         }
       }
@@ -86,9 +99,12 @@ class _SplashScreenState extends State<SplashScreen>
     final name = await storage.read(key: _kNameKey);
     final needsSetup =
         name == null || name.isEmpty || name.startsWith('Device-');
+    _nextRoute = needsSetup ? AppRoutes.onboarding : AppRoutes.home;
+  }
 
-    if (mounted) {
-      context.go(needsSetup ? AppRoutes.onboarding : AppRoutes.home);
+  void _routeUser() {
+    if (mounted && _nextRoute != null) {
+      context.go(_nextRoute!);
     }
   }
 

@@ -110,6 +110,7 @@ class _MainShellState extends ConsumerState<MainShell> {
       // Wire incoming call → navigate to IncomingCallScreen
       callNotifier.onIncomingCall = (info) {
         if (!mounted) return;
+        debugPrint('[DEBUG] callerName to router: "${info['peerName']}"');
         context.push(
           '/call/incoming',
           extra: {

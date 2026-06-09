@@ -97,7 +97,11 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.callActive,
       name: 'callActive',
-      builder: (context, state) => const VoiceCallScreen(),
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        final peerName = extra?['peerName'] as String? ?? '';
+        return VoiceCallScreen(peerName: peerName);
+      },
     ),
 
     // ── Settings placeholder ──────────────────────────────────────────────

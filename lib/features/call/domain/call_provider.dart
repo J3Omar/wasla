@@ -39,7 +39,10 @@ class CallNotifier extends AsyncNotifier<CallSession> {
   Future<CallSession> build() async {
     const storage = FlutterSecureStorage();
     _selfUuid = await storage.read(key: _kUuidKey) ?? '';
-    _selfName = await storage.read(key: _kNameKey) ?? 'Wasla User';
+    final rawName = await storage.read(key: _kNameKey);
+    _selfName = (rawName == null || rawName.trim().isEmpty)
+        ? 'Wasla User'
+        : rawName.trim();
 
     await _startInviteListener();
 
@@ -190,7 +193,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         kCallInviteUdpPort,
         reuseAddress: true,
       );
-      _inviteSocket!.listen((event) {
+      _inviteSocket!.listen((event) async {
         if (event != RawSocketEvent.read) return;
         final dg = _inviteSocket!.receive();
         if (dg == null) return;
@@ -204,11 +207,10 @@ class CallNotifier extends AsyncNotifier<CallSession> {
 
             final peerId = json['from'] as String;
             final peerName = json['fromName'] as String? ?? 'Unknown';
-            // Prefer the embedded callerIp (set via getBestLocalIpFor) over
-            // UDP source address — critical for hotspot hosts
-            final callerIp = (json['callerIp'] as String?)?.isNotEmpty == true
-                ? json['callerIp'] as String
-                : dg.address.address;
+            debugPrint('[DEBUG] peerName from UDP: "$peerName"');
+            // Always trust the real UDP source address (like discovery does).
+            // The embedded callerIp is wrong when sender is a hotspot host.
+            final callerIp = dg.address.address;
             final signalingPort = json['signalingPort'] as int;
 
             final currentState = state.valueOrNull?.state ?? CallState.idle;
@@ -320,7 +322,10 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             // Only react if we are the caller and are in outgoing state
             if (current?.state == CallState.outgoing) {
               final count = (current?.declineCount ?? 0) + 1;
-              CallAudioService.instance.stopAll(); // stop ringback on caller
+              await CallAudioService.instance
+                  .stopAll(); // stop ringback on caller
+              _manager?.dispose();
+              _manager = null;
               state = AsyncData(
                 current!.copyWith(
                   state: CallState.ended,

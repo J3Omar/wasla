@@ -12,7 +12,9 @@ import '../domain/call_state.dart';
 
 /// Active voice call screen — shown once WebRTC audio is connected.
 class VoiceCallScreen extends ConsumerStatefulWidget {
-  const VoiceCallScreen({super.key});
+  const VoiceCallScreen({super.key, this.peerName = ''});
+
+  final String peerName;
 
   @override
   ConsumerState<VoiceCallScreen> createState() => _VoiceCallScreenState();
@@ -45,7 +47,10 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
         callState.state == CallState.connecting ||
         callState.state == CallState.incoming;
 
-    final String cleanName = callState.peerName.trim();
+    final rawName = callState.peerName.isNotEmpty
+        ? callState.peerName
+        : widget.peerName;
+    final String cleanName = rawName.trim();
     final String initials = cleanName.isNotEmpty
         ? cleanName
               .split(RegExp(r'\s+'))

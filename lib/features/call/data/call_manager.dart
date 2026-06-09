@@ -657,7 +657,7 @@ class CallManager {
     try {
       // Use getBestLocalIpFor so hotspot hosts embed the correct interface IP
       final localIp = await getBestLocalIpFor(peerIp);
-      final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final socket = await RawDatagramSocket.bind(InternetAddress(localIp), 0);
       final payload = utf8.encode(
         jsonEncode({
           'type': 'call_invite',

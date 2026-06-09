@@ -134,12 +134,14 @@ class FileTransferService {
   }
 
   void _onPeerDisconnected(String peerId) {
-    final transfersToCancel = _activeTransfers.values
-        .where((t) => t.peerId == peerId)
-        .toList();
-    for (final transfer in transfersToCancel) {
-      _handleFileCancel(peerId, {'transferId': transfer.transferId});
-    }
+    Future.delayed(const Duration(seconds: 10), () {
+      final transfersToCancel = _activeTransfers.values
+          .where((t) => t.peerId == peerId)
+          .toList();
+      for (final transfer in transfersToCancel) {
+        _handleFileCancel(peerId, {'transferId': transfer.transferId});
+      }
+    });
   }
 
   // ─── Incoming Data Handler ──────────────────────────────────────────────
@@ -339,7 +341,7 @@ class FileTransferService {
           final startTime = DateTime.now().millisecondsSinceEpoch;
           try {
             await transfer.ackCompleter!.future.timeout(
-              const Duration(seconds: 20),
+              const Duration(seconds: 60),
             );
             final rtt = DateTime.now().millisecondsSinceEpoch - startTime;
 
