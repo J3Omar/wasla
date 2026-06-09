@@ -207,6 +207,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
 
             final peerId = json['from'] as String;
             final peerName = json['fromName'] as String? ?? 'Unknown';
+            debugPrint('[DEBUG] peerName from UDP: "$peerName"');
             // Always trust the real UDP source address (like discovery does).
             // The embedded callerIp is wrong when sender is a hotspot host.
             final callerIp = dg.address.address;
