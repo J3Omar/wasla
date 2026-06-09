@@ -108,6 +108,7 @@ class CallManager {
     required String peerId,
     required String peerName,
     required String peerIp,
+    bool isVideo = false,
   }) async {
     debugPrint('[CallManager] startCall invoked for $peerName ($peerIp)');
     _session = CallSession(
@@ -117,6 +118,10 @@ class CallManager {
       peerIp: peerIp,
     );
     onStateChanged(_session);
+
+    if (isVideo) {
+      await toggleVideo();
+    }
 
     debugPrint('[CallManager] startCall: Enabling background service...');
     try {
@@ -260,8 +265,9 @@ class CallManager {
   }
 
   void toggleSpeaker() {
-    // flutter_webrtc exposes Helper.setSpeakerphoneOn
-    Helper.setSpeakerphoneOn(!_session.isSpeakerOn);
+    if (Platform.isAndroid || Platform.isIOS) {
+      Helper.setSpeakerphoneOn(!_session.isSpeakerOn);
+    }
     _session = _session.copyWith(isSpeakerOn: !_session.isSpeakerOn);
     onStateChanged(_session);
   }
@@ -276,6 +282,9 @@ class CallManager {
         'video': true,
         'audio': false,
       });
+      _localRenderer ??= RTCVideoRenderer();
+      await _localRenderer!.initialize();
+      _localRenderer!.srcObject = _localVideoStream;
       if (_pc != null) {
         await _pc!.addTrack(
           _localVideoStream!.getVideoTracks().first,
@@ -500,9 +509,9 @@ class CallManager {
         _remoteRenderer ??= RTCVideoRenderer();
         _remoteRenderer!.initialize().then((_) {
           _remoteRenderer!.srcObject = event.streams[0];
+          _session = _session.copyWith(isRemoteVideoOn: true);
+          onStateChanged(_session);
         });
-        _session = _session.copyWith(isRemoteVideoOn: true);
-        onStateChanged(_session);
         event.track.onEnded = () {
           _session = _session.copyWith(isRemoteVideoOn: false);
           onStateChanged(_session);
@@ -842,7 +851,9 @@ class CallManager {
       await _localStream?.dispose();
       _localVideoStream?.getTracks().forEach((t) => t.stop());
       await _localVideoStream?.dispose();
+      _localRenderer?.srcObject = null;
       await _localRenderer?.dispose();
+      _remoteRenderer?.srcObject = null;
       await _remoteRenderer?.dispose();
       await _pc?.close();
       await _signalingServer?.close();

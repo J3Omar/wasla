@@ -62,6 +62,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required String peerId,
     required String peerName,
     required String peerIp,
+    bool isVideo = false,
   }) async {
     final currentState = state.valueOrNull?.state ?? CallState.idle;
     if (currentState != CallState.idle && currentState != CallState.ended) {
@@ -100,6 +101,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
       peerId: peerId,
       peerName: peerName,
       peerIp: peerIp,
+      isVideo: isVideo,
     );
     return true;
   }
