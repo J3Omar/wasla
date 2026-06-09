@@ -40,6 +40,15 @@ class CallManager {
 
   RTCPeerConnection? _pc;
   MediaStream? _localStream;
+
+  MediaStream? _localVideoStream;
+  RTCVideoRenderer? _localRenderer;
+  RTCVideoRenderer? _remoteRenderer;
+  bool _isVideoOn = false;
+
+  RTCVideoRenderer? get localRenderer => _localRenderer;
+  RTCVideoRenderer? get remoteRenderer => _remoteRenderer;
+
   HttpServer? _signalingServer;
   WebSocket? _signalingWs;
   Timer? _timeoutTimer; // 30s no-answer auto-end
@@ -257,6 +266,47 @@ class CallManager {
     onStateChanged(_session);
   }
 
+  Future<void> toggleVideo() async {
+    if (!_isVideoOn) {
+      final devices = await navigator.mediaDevices.enumerateDevices();
+      final hasCamera = devices.any((d) => d.kind == 'videoinput');
+      if (!hasCamera) throw Exception('NO_CAMERA');
+
+      _localVideoStream = await navigator.mediaDevices.getUserMedia({
+        'video': true,
+        'audio': false,
+      });
+      if (_pc != null) {
+        await _pc!.addTrack(_localVideoStream!.getVideoTracks().first, _localVideoStream!);
+      }
+      _isVideoOn = true;
+      _session = _session.copyWith(isLocalVideoOn: true);
+    } else {
+      final track = _localVideoStream?.getVideoTracks().first;
+      if (track != null && _pc != null) {
+        final senders = await _pc!.getSenders();
+        for (var sender in senders) {
+          if (sender.track?.id == track.id) {
+            await _pc!.removeTrack(sender);
+            break;
+          }
+        }
+      }
+      _localVideoStream?.getVideoTracks().forEach((t) => t.stop());
+      await _localVideoStream?.dispose();
+      _localVideoStream = null;
+      _isVideoOn = false;
+      _session = _session.copyWith(isLocalVideoOn: false);
+    }
+    onStateChanged(_session);
+  }
+
+  Future<void> switchCamera() async {
+    if (_isVideoOn && _localVideoStream != null) {
+      await Helper.switchCamera(_localVideoStream!.getVideoTracks().first);
+    }
+  }
+
   Future<void> endCall() async {
     final wasActive = _session.state == CallState.active;
     // If still ringing (WS not yet established), notify via UDP cancel packet
@@ -443,6 +493,18 @@ class CallManager {
 
     pc.onTrack = (event) {
       // Remote audio track — flutter_webrtc handles playback automatically
+      if (event.track.kind == 'video') {
+        _remoteRenderer ??= RTCVideoRenderer();
+        _remoteRenderer!.initialize().then((_) {
+          _remoteRenderer!.srcObject = event.streams[0];
+        });
+        _session = _session.copyWith(isRemoteVideoOn: true);
+        onStateChanged(_session);
+        event.track.onEnded = () {
+          _session = _session.copyWith(isRemoteVideoOn: false);
+          onStateChanged(_session);
+        };
+      }
     };
 
     return pc;
@@ -775,11 +837,19 @@ class CallManager {
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
+      _localVideoStream?.getTracks().forEach((t) => t.stop());
+      await _localVideoStream?.dispose();
+      await _localRenderer?.dispose();
+      await _remoteRenderer?.dispose();
       await _pc?.close();
       await _signalingServer?.close();
       await _signalingWs?.close();
     } catch (_) {}
     _localStream = null;
+    _localVideoStream = null;
+    _localRenderer = null;
+    _remoteRenderer = null;
+    _isVideoOn = false;
     _pc = null;
     _signalingServer = null;
     _signalingWs = null;

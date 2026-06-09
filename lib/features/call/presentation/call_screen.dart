@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -10,20 +11,54 @@ import '../../../core/theme/app_typography.dart';
 import '../domain/call_provider.dart';
 import '../domain/call_state.dart';
 
-/// Active voice call screen — shown once WebRTC audio is connected.
-class VoiceCallScreen extends ConsumerStatefulWidget {
-  const VoiceCallScreen({super.key, this.peerName = ''});
+/// Active call screen (Voice/Video) — shown once WebRTC is connected.
+class CallScreen extends ConsumerStatefulWidget {
+  const CallScreen({super.key, this.peerName = ''});
 
   final String peerName;
 
   @override
-  ConsumerState<VoiceCallScreen> createState() => _VoiceCallScreenState();
+  ConsumerState<CallScreen> createState() => _CallScreenState();
 }
 
-class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
+class _CallScreenState extends ConsumerState<CallScreen> {
+  bool _hasMultipleCameras = false;
+  bool _wasSpeakerOnBeforeVideo = false;
+
   @override
   void initState() {
     super.initState();
+    _checkCameras();
+  }
+
+  Future<void> _checkCameras() async {
+    final devices = await navigator.mediaDevices.enumerateDevices();
+    final cameras = devices.where((d) => d.kind == 'videoinput').toList();
+    if (mounted) {
+      setState(() => _hasMultipleCameras = cameras.length > 1);
+    }
+  }
+
+  Future<void> _onToggleVideo(CallSession state) async {
+    final notifier = ref.read(callProvider.notifier);
+    try {
+      if (!state.isLocalVideoOn) {
+        _wasSpeakerOnBeforeVideo = state.isSpeakerOn;
+        await notifier.toggleVideo();
+        if (!state.isSpeakerOn) notifier.toggleSpeaker();
+      } else {
+        await notifier.toggleVideo();
+        if (state.isSpeakerOn != _wasSpeakerOnBeforeVideo) {
+          notifier.toggleSpeaker();
+        }
+      }
+    } catch (e) {
+      if (e.toString().contains('NO_CAMERA')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("This device doesn't support a camera")),
+        );
+      }
+    }
   }
 
   @override
@@ -58,6 +93,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
               .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
               .join()
         : '?';
+
+    final bool hasAnyVideo = callState.isLocalVideoOn || callState.isRemoteVideoOn;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -97,7 +134,7 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Voice Call',
+                        hasAnyVideo ? 'Video Call' : 'Voice Call',
                         style: AppTypography.labelSmall.copyWith(
                           color: AppColors.textMuted,
                         ),
@@ -106,35 +143,65 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                   ),
                 ),
                 const Spacer(),
-                // Avatar
-                Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primaryCyan, AppColors.primaryPurple],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                // Main View (Remote Video OR Avatar)
+                if (callState.isRemoteVideoOn)
+                  Expanded(
+                    flex: 8,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: RTCVideoView(
+                            ref.read(callProvider.notifier).remoteRenderer!,
+                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                          ),
+                        ),
+                        if (callState.isLocalVideoOn)
+                          Positioned(
+                            bottom: 16,
+                            right: 16,
+                            width: 120,
+                            height: 160,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: RTCVideoView(
+                                ref.read(callProvider.notifier).localRenderer!,
+                                mirror: true,
+                                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryCyan.withValues(alpha: 0.3),
-                        blurRadius: 30,
-                        spreadRadius: 6,
+                  )
+                else
+                  Container(
+                    width: 110,
+                    height: 110,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primaryCyan, AppColors.primaryPurple],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials.toUpperCase(),
-                      style: AppTypography.heading2.copyWith(
-                        color: Colors.white,
-                        fontSize: 36,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryCyan.withValues(alpha: 0.3),
+                          blurRadius: 30,
+                          spreadRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        initials.toUpperCase(),
+                        style: AppTypography.heading2.copyWith(
+                          color: Colors.white,
+                          fontSize: 36,
+                        ),
                       ),
                     ),
                   ),
-                ),
                 const SizedBox(height: 24),
                 Text(
                   callState.peerName,
@@ -160,11 +227,13 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
                   child: _ControlsPill(
                     isMuted: callState.isMuted,
                     isSpeakerOn: callState.isSpeakerOn,
-                    // Speaker/earpiece toggle is meaningful only on mobile
-                    showSpeakerToggle: Platform.isAndroid || Platform.isIOS,
+                    isLocalVideoOn: callState.isLocalVideoOn,
+                    hasMultipleCameras: _hasMultipleCameras,
+                    showSpeakerToggle: (Platform.isAndroid || Platform.isIOS) && !callState.isLocalVideoOn,
                     onMute: () => ref.read(callProvider.notifier).toggleMute(),
-                    onSpeaker: () =>
-                        ref.read(callProvider.notifier).toggleSpeaker(),
+                    onSpeaker: () => ref.read(callProvider.notifier).toggleSpeaker(),
+                    onToggleVideo: () => _onToggleVideo(callState),
+                    onSwitchCamera: () => ref.read(callProvider.notifier).switchCamera(),
                     onEnd: () {
                       ref.read(callProvider.notifier).endCall();
                     },
@@ -185,19 +254,27 @@ class _ControlsPill extends StatelessWidget {
   const _ControlsPill({
     required this.isMuted,
     required this.isSpeakerOn,
+    required this.isLocalVideoOn,
+    required this.hasMultipleCameras,
     required this.showSpeakerToggle,
     required this.onMute,
     required this.onSpeaker,
+    required this.onToggleVideo,
+    required this.onSwitchCamera,
     required this.onEnd,
   });
 
   final bool isMuted;
   final bool isSpeakerOn;
+  final bool isLocalVideoOn;
+  final bool hasMultipleCameras;
 
   /// Show speaker/earpiece toggle — true on Android/iOS only.
   final bool showSpeakerToggle;
   final VoidCallback onMute;
   final VoidCallback onSpeaker;
+  final VoidCallback onToggleVideo;
+  final VoidCallback onSwitchCamera;
   final VoidCallback onEnd;
 
   @override
@@ -229,6 +306,21 @@ class _ControlsPill extends StatelessWidget {
             color: isMuted ? Colors.redAccent : AppColors.textSecondary,
             onTap: onMute,
           ),
+          // Camera toggle
+          _PillButton(
+            icon: isLocalVideoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+            label: 'Camera',
+            color: isLocalVideoOn ? AppColors.primaryCyan : AppColors.textSecondary,
+            onTap: onToggleVideo,
+          ),
+          // Switch camera — ONLY shown if video is on and 2+ cameras exist
+          if (isLocalVideoOn && hasMultipleCameras)
+            _PillButton(
+              icon: Icons.flip_camera_ios_rounded,
+              label: 'Flip',
+              color: AppColors.textSecondary,
+              onTap: onSwitchCamera,
+            ),
           // Speaker / Earpiece — mobile only
           if (showSpeakerToggle)
             _PillButton(
