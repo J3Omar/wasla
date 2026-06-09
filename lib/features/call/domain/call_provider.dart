@@ -112,6 +112,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     required int signalingPort,
     required String callerId,
     required String callerName,
+    bool isVideo = false,
   }) async {
     // Remove cancelCallNotification from here, handled cleanly in onStateChanged
     await CallAudioService.instance.stopAll();
@@ -147,11 +148,14 @@ class CallNotifier extends AsyncNotifier<CallSession> {
         peerId: callerId,
         peerName: callerName,
         peerIp: callerIp,
+        isSpeakerOn: isVideo,
+        isRemoteVideoOn: isVideo,
       ),
     );
     await _manager!.acceptCall(
       callerIp: callerIp,
       signalingPort: signalingPort,
+      isVideo: isVideo,
     );
   }
 

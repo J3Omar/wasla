@@ -168,6 +168,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                                         signalingPort: widget.signalingPort,
                                         callerId: widget.callerId,
                                         callerName: widget.callerName,
+                                        isVideo: widget.isVideo,
                                       );
                                   debugPrint(
                                     '[IncomingCallScreen] acceptCall returned, navigating...',

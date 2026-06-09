@@ -178,16 +178,19 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     flex: 8,
                     child: Stack(
                       alignment: Alignment.center,
+                      clipBehavior: Clip.hardEdge,
                       children: [
                         // 1. Background Layer (Remote Video OR Local Video OR Avatar)
                         if (callState.isRemoteVideoOn &&
                             ref.read(callProvider.notifier).remoteRenderer !=
                                 null)
                           Positioned.fill(
-                            child: RTCVideoView(
-                              ref.read(callProvider.notifier).remoteRenderer!,
-                              objectFit: RTCVideoViewObjectFit
-                                  .RTCVideoViewObjectFitContain,
+                            child: SizedBox.expand(
+                              child: RTCVideoView(
+                                ref.read(callProvider.notifier).remoteRenderer!,
+                                objectFit: RTCVideoViewObjectFit
+                                    .RTCVideoViewObjectFitContain,
+                              ),
                             ),
                           )
                         else if (callState.isLocalVideoOn &&

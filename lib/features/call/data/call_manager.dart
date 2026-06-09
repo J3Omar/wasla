@@ -116,8 +116,16 @@ class CallManager {
       peerId: peerId,
       peerName: peerName,
       peerIp: peerIp,
+      isSpeakerOn: isVideo,
+      isLocalVideoOn: isVideo,
     );
     onStateChanged(_session);
+
+    if (isVideo && (Platform.isAndroid || Platform.isIOS)) {
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (_) {}
+    }
 
     if (isVideo) {
       await toggleVideo();
@@ -194,10 +202,17 @@ class CallManager {
   Future<void> acceptCall({
     required String callerIp,
     required int signalingPort,
+    bool isVideo = false,
   }) async {
     debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
     _session = _session.copyWith(state: CallState.connecting);
     onStateChanged(_session);
+
+    if (isVideo && (Platform.isAndroid || Platform.isIOS)) {
+      try {
+        await Helper.setSpeakerphoneOn(true);
+      } catch (_) {}
+    }
 
     debugPrint('[CallManager] acceptCall: Enabling background service...');
     try {
@@ -544,6 +559,15 @@ class CallManager {
       }
     };
 
+    pc.onRemoveTrack = (stream, track) {
+      if (track.kind == 'video') {
+        debugPrint('[CallManager] Remote video track removed.');
+        _remoteRenderer?.srcObject = null;
+        _session = _session.copyWith(isRemoteVideoOn: false);
+        onStateChanged(_session);
+      }
+    };
+
     return pc;
   }
 
@@ -624,6 +648,16 @@ class CallManager {
         // Check if this is a mid-call Renegotiation
         if (_pc != null) {
           debugPrint('[CallManager] Handling MID-CALL Renegotiation Offer...');
+
+          // ANTI-GLARE SHIELD: If we are already negotiating, ignore the incoming offer
+          if (_pc!.signalingState !=
+              RTCSignalingState.RTCSignalingStateStable) {
+            debugPrint(
+              '[CallManager] GLARE DETECTED: Ignoring offer to prevent crash. State: ${_pc!.signalingState}',
+            );
+            return;
+          }
+
           await _pc!.setRemoteDescription(description);
           _remoteDescSet = true;
           for (final c in _pendingCandidates) {
