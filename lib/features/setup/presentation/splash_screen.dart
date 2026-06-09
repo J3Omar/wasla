@@ -64,10 +64,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
 
     // Start animation and async initialization concurrently
-    Future.wait([
-      _ctrl.forward(),
-      _initializeApp(),
-    ]).then((_) => _routeUser());
+    Future.wait([_ctrl.forward(), _initializeApp()]).then((_) => _routeUser());
   }
 
   // Holds the routing decision state
@@ -76,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _initializeApp() async {
     // 1. Open Database asynchronously
     try {
-      await ChatDatabase.instance.open(); 
+      await ChatDatabase.instance.open();
     } catch (e) {
       debugPrint('CRITICAL: Failed to open ChatDatabase: $e');
     }
@@ -93,14 +90,15 @@ class _SplashScreenState extends State<SplashScreen>
       } else {
         final brand = await RomDetector.getRestrictiveBrand();
         if (brand != null) {
-           _nextRoute = AppRoutes.batteryPrompt;
-           return;
+          _nextRoute = AppRoutes.batteryPrompt;
+          return;
         }
       }
     }
 
     final name = await storage.read(key: _kNameKey);
-    final needsSetup = name == null || name.isEmpty || name.startsWith('Device-');
+    final needsSetup =
+        name == null || name.isEmpty || name.startsWith('Device-');
     _nextRoute = needsSetup ? AppRoutes.onboarding : AppRoutes.home;
   }
 

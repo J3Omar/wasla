@@ -40,8 +40,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     const storage = FlutterSecureStorage();
     _selfUuid = await storage.read(key: _kUuidKey) ?? '';
     final rawName = await storage.read(key: _kNameKey);
-    _selfName = (rawName == null || rawName.trim().isEmpty) 
-        ? 'Wasla User' 
+    _selfName = (rawName == null || rawName.trim().isEmpty)
+        ? 'Wasla User'
         : rawName.trim();
 
     await _startInviteListener();
@@ -322,7 +322,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             // Only react if we are the caller and are in outgoing state
             if (current?.state == CallState.outgoing) {
               final count = (current?.declineCount ?? 0) + 1;
-              await CallAudioService.instance.stopAll(); // stop ringback on caller
+              await CallAudioService.instance
+                  .stopAll(); // stop ringback on caller
               _manager?.dispose();
               _manager = null;
               state = AsyncData(

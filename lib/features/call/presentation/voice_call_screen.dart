@@ -47,8 +47,8 @@ class _VoiceCallScreenState extends ConsumerState<VoiceCallScreen> {
         callState.state == CallState.connecting ||
         callState.state == CallState.incoming;
 
-    final rawName = callState.peerName.isNotEmpty 
-        ? callState.peerName 
+    final rawName = callState.peerName.isNotEmpty
+        ? callState.peerName
         : widget.peerName;
     final String cleanName = rawName.trim();
     final String initials = cleanName.isNotEmpty

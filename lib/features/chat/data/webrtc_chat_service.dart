@@ -402,8 +402,7 @@ class WebRtcChatService {
 
     // Guard: ignore duplicate UDP invites if session
     // with this peer is already active
-    if (_sessions.containsKey(fromUuid) &&
-        _sessions[fromUuid]!.isConnected) {
+    if (_sessions.containsKey(fromUuid) && _sessions[fromUuid]!.isConnected) {
       debugPrint('[Chat] Ignoring duplicate invite from $fromUuid');
       return;
     }
