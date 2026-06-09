@@ -24,11 +24,31 @@ class CallScreen extends ConsumerStatefulWidget {
 class _CallScreenState extends ConsumerState<CallScreen> {
   bool _hasMultipleCameras = false;
   bool _wasSpeakerOnBeforeVideo = false;
+  bool _showControls = true;
+  Timer? _controlsTimer;
 
   @override
   void initState() {
     super.initState();
     _checkCameras();
+    _startControlsTimer();
+  }
+
+  void _startControlsTimer() {
+    _controlsTimer?.cancel();
+    setState(() => _showControls = true);
+    _controlsTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _showControls = false);
+    });
+  }
+
+  void _toggleControls() {
+    if (_showControls) {
+      _controlsTimer?.cancel();
+      setState(() => _showControls = false);
+    } else {
+      _startControlsTimer();
+    }
   }
 
   Future<void> _checkCameras() async {
@@ -64,6 +84,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   @override
   void dispose() {
+    _controlsTimer?.cancel();
     super.dispose();
   }
 
@@ -100,70 +121,132 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
-      body: Stack(
-        children: [
-          // Background gradient
-          Container(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.topCenter,
-                radius: 1.2,
-                colors: [
-                  AppColors.primaryCyan.withValues(alpha: 0.10),
-                  AppColors.bgPrimary,
-                ],
+      body: GestureDetector(
+        onTap: _toggleControls,
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          children: [
+            // Background gradient
+            Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.topCenter,
+                  radius: 1.2,
+                  colors: [
+                    AppColors.primaryCyan.withValues(alpha: 0.10),
+                    AppColors.bgPrimary,
+                  ],
+                ),
               ),
             ),
-          ),
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 16,
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_ios,
-                          color: AppColors.textMuted,
-                        ),
-                        onPressed: () => context.go('/home'),
-                        tooltip: 'Minimize call',
+            SafeArea(
+              child: Column(
+                children: [
+                  // Header
+                  AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 16,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        hasAnyVideo ? 'Video Call' : 'Voice Call',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: AppColors.textMuted,
-                        ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.arrow_back_ios,
+                              color: AppColors.textMuted,
+                            ),
+                            onPressed: () => context.go('/home'),
+                            tooltip: 'Minimize call',
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            hasAnyVideo ? 'Video Call' : 'Voice Call',
+                            style: AppTypography.labelSmall.copyWith(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                const Spacer(),
-                // Main View (Remote Video OR Avatar)
-                if (callState.isRemoteVideoOn)
+                  const Spacer(),
+                  // Main View (Remote Video OR Avatar)
                   Expanded(
                     flex: 8,
                     child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        Positioned.fill(
-                          child: RTCVideoView(
-                            ref.read(callProvider.notifier).remoteRenderer!,
-                            objectFit: RTCVideoViewObjectFit
-                                .RTCVideoViewObjectFitCover,
+                        // 1. Background Layer (Remote Video OR Local Video OR Avatar)
+                        if (callState.isRemoteVideoOn &&
+                            ref.read(callProvider.notifier).remoteRenderer !=
+                                null)
+                          Positioned.fill(
+                            child: RTCVideoView(
+                              ref.read(callProvider.notifier).remoteRenderer!,
+                              objectFit: RTCVideoViewObjectFit
+                                  .RTCVideoViewObjectFitCover,
+                            ),
+                          )
+                        else if (callState.isLocalVideoOn &&
+                            ref.read(callProvider.notifier).localRenderer !=
+                                null &&
+                            !callState.isRemoteVideoOn)
+                          Positioned.fill(
+                            child: RTCVideoView(
+                              ref.read(callProvider.notifier).localRenderer!,
+                              mirror: true,
+                              objectFit: RTCVideoViewObjectFit
+                                  .RTCVideoViewObjectFitCover,
+                            ),
+                          )
+                        else
+                          Container(
+                            width: 110,
+                            height: 110,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                colors: [
+                                  AppColors.primaryCyan,
+                                  AppColors.primaryPurple,
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primaryCyan.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                  blurRadius: 30,
+                                  spreadRadius: 6,
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: Text(
+                                initials.toUpperCase(),
+                                style: AppTypography.heading2.copyWith(
+                                  color: Colors.white,
+                                  fontSize: 36,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                        if (callState.isLocalVideoOn)
+
+                        // 2. PiP Layer (Local Video when Remote is ON)
+                        if (callState.isLocalVideoOn &&
+                            callState.isRemoteVideoOn &&
+                            ref.read(callProvider.notifier).localRenderer !=
+                                null)
                           Positioned(
-                            bottom: 16,
+                            top: 16,
                             right: 16,
-                            width: 120,
-                            height: 160,
+                            width: 100,
+                            height: 140,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: RTCVideoView(
@@ -176,84 +259,58 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           ),
                       ],
                     ),
-                  )
-                else
-                  Container(
-                    width: 110,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [
-                          AppColors.primaryCyan,
-                          AppColors.primaryPurple,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primaryCyan.withValues(alpha: 0.3),
-                          blurRadius: 30,
-                          spreadRadius: 6,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        initials.toUpperCase(),
-                        style: AppTypography.heading2.copyWith(
-                          color: Colors.white,
-                          fontSize: 36,
-                        ),
-                      ),
-                    ),
                   ),
-                const SizedBox(height: 24),
-                Text(
-                  callState.peerName,
-                  style: AppTypography.heading2.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Show "Connecting…" until WebRTC is active, then show timer
-                if (isConnecting)
+                  const SizedBox(height: 24),
                   Text(
-                    'Connecting…',
-                    style: AppTypography.bodyMedium.copyWith(
-                      color: AppColors.primaryCyan,
+                    callState.peerName,
+                    style: AppTypography.heading2.copyWith(
+                      color: AppColors.textPrimary,
                     ),
-                  )
-                else
-                  CallTimerWidget(startedAt: callState.startedAt),
-                const Spacer(),
-                // ── Controls pill ──────────────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 60),
-                  child: _ControlsPill(
-                    isMuted: callState.isMuted,
-                    isSpeakerOn: callState.isSpeakerOn,
-                    isLocalVideoOn: callState.isLocalVideoOn,
-                    hasMultipleCameras: _hasMultipleCameras,
-                    showSpeakerToggle:
-                        (Platform.isAndroid || Platform.isIOS) &&
-                        !callState.isLocalVideoOn,
-                    onMute: () => ref.read(callProvider.notifier).toggleMute(),
-                    onSpeaker: () =>
-                        ref.read(callProvider.notifier).toggleSpeaker(),
-                    onToggleVideo: () => _onToggleVideo(callState),
-                    onSwitchCamera: () =>
-                        ref.read(callProvider.notifier).switchCamera(),
-                    onEnd: () {
-                      ref.read(callProvider.notifier).endCall();
-                    },
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  // Show "Connecting…" until WebRTC is active, then show timer
+                  if (isConnecting)
+                    Text(
+                      'Connecting…',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.primaryCyan,
+                      ),
+                    )
+                  else
+                    CallTimerWidget(startedAt: callState.startedAt),
+                  const Spacer(),
+                  // ── Controls pill ──────────────────────────────────────────────────
+                  AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 60),
+                      child: _ControlsPill(
+                        isMuted: callState.isMuted,
+                        isSpeakerOn: callState.isSpeakerOn,
+                        isLocalVideoOn: callState.isLocalVideoOn,
+                        hasMultipleCameras: _hasMultipleCameras,
+                        showSpeakerToggle:
+                            (Platform.isAndroid || Platform.isIOS) &&
+                            !callState.isLocalVideoOn,
+                        onMute: () =>
+                            ref.read(callProvider.notifier).toggleMute(),
+                        onSpeaker: () =>
+                            ref.read(callProvider.notifier).toggleSpeaker(),
+                        onToggleVideo: () => _onToggleVideo(callState),
+                        onSwitchCamera: () =>
+                            ref.read(callProvider.notifier).switchCamera(),
+                        onEnd: () {
+                          ref.read(callProvider.notifier).endCall();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
