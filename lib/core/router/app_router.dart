@@ -91,6 +91,7 @@ final GoRouter appRouter = GoRouter(
           callerName: (extra['callerName'] as String?) ?? 'Unknown',
           callerIp: (extra['callerIp'] as String?) ?? '',
           signalingPort: (extra['signalingPort'] as int?) ?? 0,
+          isVideo: (extra['isVideo'] as bool?) ?? false,
         );
       },
     ),

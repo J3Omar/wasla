@@ -279,8 +279,12 @@ class CallManager {
       if (!hasCamera) throw Exception('NO_CAMERA');
 
       _localVideoStream = await navigator.mediaDevices.getUserMedia({
-        'video': true,
-        'audio': false,
+        'video': {
+          'width': {'ideal': 640, 'max': 1280},
+          'height': {'ideal': 480, 'max': 720},
+          'frameRate': {'ideal': 30, 'max': 30},
+        },
+        'audio': false, // Audio is handled separately
       });
       _localRenderer ??= RTCVideoRenderer();
       await _localRenderer!.initialize();
@@ -495,6 +499,11 @@ class CallManager {
     // Fix 2C — debug logging so we can track exactly which state it stalls at
     pc.onIceConnectionState = (state) {
       debugPrint('[Call] ICE connection state: $state');
+      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+          state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+        endCall();
+      }
     };
     pc.onIceGatheringState = (state) {
       debugPrint('[Call] ICE gathering state: $state');
@@ -569,6 +578,13 @@ class CallManager {
     for (final track in _localStream!.getAudioTracks()) {
       _pc!.addTrack(track, _localStream!);
     }
+
+    // Add Video if active
+    if (_localVideoStream != null) {
+      for (final track in _localVideoStream!.getVideoTracks()) {
+        _pc!.addTrack(track, _localVideoStream!);
+      }
+    }
     final offer = await _pc!.createOffer();
     await _pc!.setLocalDescription(offer);
     _signalingWs?.add(jsonEncode({'type': 'offer', 'sdp': offer.toMap()}));
@@ -599,6 +615,13 @@ class CallManager {
         _pc = await _createPeerConnection();
         for (final track in _localStream!.getAudioTracks()) {
           _pc!.addTrack(track, _localStream!);
+        }
+
+        // Add Video if active
+        if (_localVideoStream != null) {
+          for (final track in _localVideoStream!.getVideoTracks()) {
+            _pc!.addTrack(track, _localVideoStream!);
+          }
         }
         await _pc!.setRemoteDescription(
           RTCSessionDescription(
@@ -741,6 +764,7 @@ class CallManager {
           // callerIp lets the callee use the correct interface IP explicitly;
           // falls back to UDP source address if missing
           'callerIp': localIp,
+          'isVideo': _session.isLocalVideoOn,
         }),
       );
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);

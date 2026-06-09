@@ -18,12 +18,14 @@ class IncomingCallScreen extends ConsumerStatefulWidget {
     required this.callerName,
     required this.callerIp,
     required this.signalingPort,
+    required this.isVideo,
   });
 
   final String callerId;
   final String callerName;
   final String callerIp;
   final int signalingPort;
+  final bool isVideo;
 
   static bool isActive = false;
 
@@ -98,9 +100,11 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Incoming voice call',
+                  widget.isVideo
+                      ? 'Incoming Video Call...'
+                      : 'Incoming Voice Call...',
                   style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textMuted,
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 const Spacer(),

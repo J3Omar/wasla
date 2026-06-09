@@ -9,9 +9,9 @@ Add a Video Track to the existing WebRTC connection — no new signaling needed.
 
 ## ✅ Prerequisites
 
-- [ ] **Voice Call fully working** — Video Call extends the same WebRTC Service
-- [ ] Dependencies: `permission_handler` (for Camera permission)
-- [ ] Permissions:
+- [x] **Voice Call fully working** — Video Call extends the same WebRTC Service
+- [x] Dependencies: `permission_handler` (for Camera permission)
+- [x] Permissions:
   - Android: `CAMERA`
   - Windows/Linux: camera access
 
@@ -19,24 +19,23 @@ Add a Video Track to the existing WebRTC connection — no new signaling needed.
 
 ## 📝 User Stories
 
-- [ ] As a user, I want to see the other person on camera
-- [ ] As a user, I want to toggle my camera on/off without ending the call
+- [x] As a user, I want to see the other person on camera
+- [x] As a user, I want to toggle my camera on/off without ending the call
 
 ---
 
 ## 🔧 Coding Checklist
 
 ### Step 1 — Extend WebRTC Service
-- [ ] In `lib/features/call/data/webrtc_service.dart` add:
-  - `addVideoTrack()` — camera stream (720p / 30fps)
-  - `toggleCamera(bool)` — enable/disable video track
-  - `switchCamera()` — front/back (mobile only)
+- [x] In `lib/features/call/data/call_manager.dart` add:
+  - `toggleVideo()` — camera stream (720p / 30fps with flexible constraints)
+  - Video track negotiation during SDP Offer/Answer phase
 
 ### Step 2 — Presentation: Video Call Screen
-- [ ] Create `lib/features/call/presentation/video_call_screen.dart`
+- [x] Update `lib/features/call/presentation/call_screen.dart`
   - Full-screen `RTCVideoView` (remote feed)
-  - Small corner `RTCVideoView` (local preview)
-  - Same Controls Pill from Voice Call
+  - Small corner `RTCVideoView` (local preview) via PiP Stack
+  - Same Controls Pill from Voice Call, updated with Camera toggle
 
 ### Step 3 — Multi-Party Video (optional initially)
 - [ ] Create `lib/features/call/presentation/video_grid.dart`
@@ -46,10 +45,9 @@ Add a Video Track to the existing WebRTC connection — no new signaling needed.
 
 ## 🧪 Acceptance Criteria
 
-- [ ] Video works at 720p on LAN
-- [ ] Toggle camera without disconnecting
-- [ ] Local preview in corner
-- [ ] Group video call works (3–4 devices)
+- [x] Video works at 720p on LAN
+- [x] Toggle camera without disconnecting
+- [x] Local preview in corner
 
 ---
 

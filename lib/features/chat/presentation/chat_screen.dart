@@ -192,7 +192,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext buildCtx) {
     // Message received sound logic has been centralized in main_shell.dart
 
     // Outer build() is now nearly static — only rebuilds when _selectedFile
@@ -618,9 +618,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ? () => context.push('/call/active')
               : () async {
                   debugPrint('[ChatScreen] Call button tapped');
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogCtx) => AlertDialog(
+                      backgroundColor: AppColors.bgSecondary,
+                      title: Text(
+                        'Start Voice Call',
+                        style: AppTypography.heading3,
+                      ),
+                      content: Text(
+                        'Do you want to start a Voice call with ${_args.peerName}?',
+                        style: AppTypography.bodyMedium,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(color: AppColors.textMuted),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text(
+                            'Yes',
+                            style: TextStyle(color: AppColors.statusOnline),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true) return;
                   try {
-                    // Fix 2E — require microphone before initiating
-                    if (!context.mounted) return;
+                    if (!mounted) return;
                     final granted = await SmartPermissionHandler.request(
                       context,
                       Permission.microphone,
@@ -642,18 +672,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     debugPrint(
                       '[ChatScreen] startCall completed, navigating...',
                     );
-                    if (mounted) {
-                      if (success) {
-                        context.push('/call/outgoing');
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Cannot place call. You are currently in another call.',
-                            ),
+                    if (!mounted) return;
+                    if (success) {
+                      context.push('/call/outgoing');
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Cannot place call. You are currently in another call.',
                           ),
-                        );
-                      }
+                        ),
+                      );
                     }
                   } catch (e, stack) {
                     debugPrint(
@@ -665,10 +694,88 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         IconButton(
           icon: const Icon(
             Icons.videocam_rounded,
-            color: AppColors.textSecondary,
+            color: AppColors.primaryPurple,
             size: 22,
           ),
-          onPressed: () => _showComingSoon(context, 'Video call'),
+          onPressed: () async {
+            debugPrint('[ChatScreen] Video Call button tapped');
+            final confirm = await showDialog<bool>(
+              context: context,
+              builder: (dialogCtx) => AlertDialog(
+                backgroundColor: AppColors.bgSecondary,
+                title: Text('Start Video Call', style: AppTypography.heading3),
+                content: Text(
+                  'Do you want to start a Video call with ${_args.peerName}?',
+                  style: AppTypography.bodyMedium,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text(
+                      'Yes',
+                      style: TextStyle(color: AppColors.primaryPurple),
+                    ),
+                  ),
+                ],
+              ),
+            );
+            if (confirm != true) return;
+            try {
+              if (!mounted) return;
+              final micGranted = await SmartPermissionHandler.request(
+                context,
+                Permission.microphone,
+                'Microphone',
+                'to make video calls',
+              );
+              if (!micGranted) return;
+
+              if (!mounted) return;
+              final camGranted = await SmartPermissionHandler.request(
+                context,
+                Permission.camera,
+                'Camera',
+                'to make video calls',
+              );
+              if (!camGranted) return;
+
+              final peerIp = _bestPeerIp();
+              final success = await ref
+                  .read(callProvider.notifier)
+                  .startCall(
+                    peerId: _args.peerId,
+                    peerName: _args.peerName,
+                    peerIp: peerIp,
+                    isVideo: true,
+                  );
+              debugPrint(
+                '[ChatScreen] Video startCall completed, navigating...',
+              );
+              if (!mounted) return;
+              if (success) {
+                context.push('/call/outgoing');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Cannot place call. You are currently in another call.',
+                    ),
+                  ),
+                );
+              }
+            } catch (e, stack) {
+              debugPrint(
+                '[ChatScreen] Error initiating video call: $e\n$stack',
+              );
+            }
+          },
         ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
@@ -688,12 +795,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ],
     );
-  }
-
-  void _showComingSoon(BuildContext ctx, String feature) {
-    ScaffoldMessenger.of(
-      ctx,
-    ).showSnackBar(SnackBar(content: Text('$feature — coming soon!')));
   }
 
   static bool _sameDay(DateTime a, DateTime b) =>

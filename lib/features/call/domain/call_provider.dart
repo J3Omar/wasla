@@ -221,6 +221,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             // The embedded callerIp is wrong when sender is a hotspot host.
             final callerIp = dg.address.address;
             final signalingPort = json['signalingPort'] as int;
+            final isVideo = json['isVideo'] as bool? ?? false;
 
             final currentState = state.valueOrNull?.state ?? CallState.idle;
             final currentPeerId = state.valueOrNull?.peerId;
@@ -286,6 +287,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
                 peerId: peerId,
                 peerName: peerName,
                 peerIp: callerIp,
+                isRemoteVideoOn: isVideo,
               ),
             );
 
@@ -295,6 +297,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               callerId: peerId,
               callerIp: callerIp,
               signalingPort: signalingPort,
+              isVideo: isVideo,
             );
             // Part 3 — play ringtone on notificationRingtone stream
             // (respects system silent/vibrate mode)
@@ -305,6 +308,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
               'peerName': peerName,
               'callerIp': callerIp,
               'signalingPort': signalingPort,
+              'isVideo': isVideo,
             });
           }
           // ── Caller cancelled before callee answered ───────────────────────

@@ -118,6 +118,7 @@ class _MainShellState extends ConsumerState<MainShell> {
             'callerName': info['peerName'] as String,
             'callerIp': info['callerIp'] as String,
             'signalingPort': info['signalingPort'] as int,
+            'isVideo': info['isVideo'] as bool? ?? false,
           },
         );
       };

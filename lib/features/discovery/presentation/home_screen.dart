@@ -248,8 +248,46 @@ class _DeviceCard extends ConsumerWidget {
                                   debugPrint(
                                     '[HomeScreen] Call button tapped for ${device.displayName}',
                                   );
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogCtx) => AlertDialog(
+                                      backgroundColor: AppColors.bgSecondary,
+                                      title: Text(
+                                        'Start Voice Call',
+                                        style: AppTypography.heading3,
+                                      ),
+                                      content: Text(
+                                        'Do you want to start a Voice call with ${device.displayName}?',
+                                        style: AppTypography.bodyMedium,
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
+                                          child: const Text(
+                                            'Cancel',
+                                            style: TextStyle(
+                                              color: AppColors.textMuted,
+                                            ),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text(
+                                            'Yes',
+                                            style: TextStyle(
+                                              color: AppColors.statusOnline,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm != true) return;
                                   try {
-                                    // Fix 2E — require microphone before initiating
+                                    if (!context.mounted) return;
+                                    // ignore: use_build_context_synchronously
                                     final granted =
                                         await SmartPermissionHandler.request(
                                           context,
@@ -271,20 +309,21 @@ class _DeviceCard extends ConsumerWidget {
                                     debugPrint(
                                       '[HomeScreen] startCall completed, navigating to outgoing...',
                                     );
-                                    if (context.mounted) {
-                                      if (success) {
-                                        context.push('/call/outgoing');
-                                      } else {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Cannot place call right now.',
-                                            ),
+                                    if (!context.mounted) return;
+                                    if (success) {
+                                      // ignore: use_build_context_synchronously
+                                      context.push('/call/outgoing');
+                                    } else {
+                                      // ignore: use_build_context_synchronously
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Cannot place call right now.',
                                           ),
-                                        );
-                                      }
+                                        ),
+                                      );
                                     }
                                   } catch (e, stack) {
                                     debugPrint(
@@ -300,7 +339,104 @@ class _DeviceCard extends ConsumerWidget {
                           icon: Icons.videocam_outlined,
                           label: 'Video',
                           color: AppColors.primaryPurple,
-                          onTap: () {},
+                          onTap: isSelfInCall
+                              ? () {
+                                  context.push('/call/active');
+                                }
+                              : () async {
+                                  debugPrint(
+                                    '[HomeScreen] Video Call button tapped for ${device.displayName}',
+                                  );
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogCtx) => AlertDialog(
+                                      backgroundColor: AppColors.bgSecondary,
+                                      title: Text(
+                                        'Start Video Call',
+                                        style: AppTypography.heading3,
+                                      ),
+                                      content: Text(
+                                        'Do you want to start a Video call with ${device.displayName}?',
+                                        style: AppTypography.bodyMedium,
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
+                                          child: const Text(
+                                            'Cancel',
+                                            style: TextStyle(
+                                              color: AppColors.textMuted,
+                                            ),
+                                          ),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text(
+                                            'Yes',
+                                            style: TextStyle(
+                                              color: AppColors.primaryPurple,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm != true) return;
+                                  try {
+                                    if (!context.mounted) return;
+                                    // ignore: use_build_context_synchronously
+                                    final micGranted =
+                                        await SmartPermissionHandler.request(
+                                          context,
+                                          Permission.microphone,
+                                          'Microphone',
+                                          'to make video calls',
+                                        );
+                                    if (!micGranted) return;
+
+                                    if (!context.mounted) return;
+                                    // ignore: use_build_context_synchronously
+                                    final camGranted =
+                                        await SmartPermissionHandler.request(
+                                          context,
+                                          Permission.camera,
+                                          'Camera',
+                                          'to make video calls',
+                                        );
+                                    if (!camGranted) return;
+
+                                    final success = await ref
+                                        .read(callProvider.notifier)
+                                        .startCall(
+                                          peerId: device.uuid,
+                                          peerName: device.displayName,
+                                          peerIp: device.localIp,
+                                          isVideo: true,
+                                        );
+                                    if (!context.mounted) return;
+                                    if (success) {
+                                      // ignore: use_build_context_synchronously
+                                      context.push('/call/outgoing');
+                                    } else {
+                                      // ignore: use_build_context_synchronously
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Cannot place call right now.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e, stack) {
+                                    debugPrint(
+                                      '[HomeScreen] Error initiating video call: $e\n$stack',
+                                    );
+                                  }
+                                },
                         ),
                       ),
                     ],

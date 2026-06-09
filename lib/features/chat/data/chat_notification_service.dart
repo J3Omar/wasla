@@ -136,6 +136,7 @@ class ChatNotificationService {
     required String callerId,
     required String callerIp,
     required int signalingPort,
+    required bool isVideo,
   }) async {
     if (!_initialized) return;
 
@@ -170,11 +171,12 @@ class ChatNotificationService {
       'callerName': callerName,
       'callerIp': callerIp,
       'signalingPort': signalingPort,
+      'isVideo': isVideo,
     };
 
     await _plugin.show(
       _kCallNotifId,
-      '📞 Incoming call',
+      isVideo ? '📹 Incoming video call' : '📞 Incoming call',
       '$callerName is calling…',
       details,
       payload: jsonEncode(payloadMap),
