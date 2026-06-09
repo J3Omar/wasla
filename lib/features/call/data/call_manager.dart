@@ -277,7 +277,10 @@ class CallManager {
         'audio': false,
       });
       if (_pc != null) {
-        await _pc!.addTrack(_localVideoStream!.getVideoTracks().first, _localVideoStream!);
+        await _pc!.addTrack(
+          _localVideoStream!.getVideoTracks().first,
+          _localVideoStream!,
+        );
       }
       _isVideoOn = true;
       _session = _session.copyWith(isLocalVideoOn: true);

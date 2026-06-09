@@ -54,6 +54,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       }
     } catch (e) {
       if (e.toString().contains('NO_CAMERA')) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("This device doesn't support a camera")),
         );
@@ -94,7 +95,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
               .join()
         : '?';
 
-    final bool hasAnyVideo = callState.isLocalVideoOn || callState.isRemoteVideoOn;
+    final bool hasAnyVideo =
+        callState.isLocalVideoOn || callState.isRemoteVideoOn;
 
     return Scaffold(
       backgroundColor: AppColors.bgPrimary,
@@ -152,7 +154,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                         Positioned.fill(
                           child: RTCVideoView(
                             ref.read(callProvider.notifier).remoteRenderer!,
-                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                            objectFit: RTCVideoViewObjectFit
+                                .RTCVideoViewObjectFitCover,
                           ),
                         ),
                         if (callState.isLocalVideoOn)
@@ -166,7 +169,8 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                               child: RTCVideoView(
                                 ref.read(callProvider.notifier).localRenderer!,
                                 mirror: true,
-                                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                                objectFit: RTCVideoViewObjectFit
+                                    .RTCVideoViewObjectFitCover,
                               ),
                             ),
                           ),
@@ -180,7 +184,10 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
-                        colors: [AppColors.primaryCyan, AppColors.primaryPurple],
+                        colors: [
+                          AppColors.primaryCyan,
+                          AppColors.primaryPurple,
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -229,11 +236,15 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     isSpeakerOn: callState.isSpeakerOn,
                     isLocalVideoOn: callState.isLocalVideoOn,
                     hasMultipleCameras: _hasMultipleCameras,
-                    showSpeakerToggle: (Platform.isAndroid || Platform.isIOS) && !callState.isLocalVideoOn,
+                    showSpeakerToggle:
+                        (Platform.isAndroid || Platform.isIOS) &&
+                        !callState.isLocalVideoOn,
                     onMute: () => ref.read(callProvider.notifier).toggleMute(),
-                    onSpeaker: () => ref.read(callProvider.notifier).toggleSpeaker(),
+                    onSpeaker: () =>
+                        ref.read(callProvider.notifier).toggleSpeaker(),
                     onToggleVideo: () => _onToggleVideo(callState),
-                    onSwitchCamera: () => ref.read(callProvider.notifier).switchCamera(),
+                    onSwitchCamera: () =>
+                        ref.read(callProvider.notifier).switchCamera(),
                     onEnd: () {
                       ref.read(callProvider.notifier).endCall();
                     },
@@ -308,9 +319,13 @@ class _ControlsPill extends StatelessWidget {
           ),
           // Camera toggle
           _PillButton(
-            icon: isLocalVideoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+            icon: isLocalVideoOn
+                ? Icons.videocam_rounded
+                : Icons.videocam_off_rounded,
             label: 'Camera',
-            color: isLocalVideoOn ? AppColors.primaryCyan : AppColors.textSecondary,
+            color: isLocalVideoOn
+                ? AppColors.primaryCyan
+                : AppColors.textSecondary,
             onTap: onToggleVideo,
           ),
           // Switch camera — ONLY shown if video is on and 2+ cameras exist
