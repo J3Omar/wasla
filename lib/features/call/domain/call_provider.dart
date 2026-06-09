@@ -207,11 +207,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
 
             final peerId = json['from'] as String;
             final peerName = json['fromName'] as String? ?? 'Unknown';
-            // Prefer the embedded callerIp (set via getBestLocalIpFor) over
-            // UDP source address — critical for hotspot hosts
-            final callerIp = (json['callerIp'] as String?)?.isNotEmpty == true
-                ? json['callerIp'] as String
-                : dg.address.address;
+            // Always trust the real UDP source address (like discovery does).
+            // The embedded callerIp is wrong when sender is a hotspot host.
+            final callerIp = dg.address.address;
             final signalingPort = json['signalingPort'] as int;
 
             final currentState = state.valueOrNull?.state ?? CallState.idle;

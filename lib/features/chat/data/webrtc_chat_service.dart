@@ -389,7 +389,9 @@ class WebRtcChatService {
   // ── WebRTC Connection Handling (Callee side) ──────────────────────────────
 
   void _handleChatInvite(Map<String, dynamic> json, String fromIp) async {
-    final sigIp = json['signalingIp'] as String? ?? fromIp;
+    // Always trust the real UDP source address (like discovery does).
+    // The embedded signalingIp is wrong when sender is a hotspot host.
+    final sigIp = fromIp;
     final sigPort = json['signalingPort'] as int?;
     final fromUuid = json['fromUuid'] as String?;
 
