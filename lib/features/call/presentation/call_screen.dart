@@ -197,7 +197,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           Positioned.fill(
                             child: RTCVideoView(
                               ref.read(callProvider.notifier).localRenderer!,
-                              mirror: true,
+                              mirror: callState.isFrontCamera,
                               objectFit: RTCVideoViewObjectFit
                                   .RTCVideoViewObjectFitCover,
                             ),
@@ -251,7 +251,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                               borderRadius: BorderRadius.circular(12),
                               child: RTCVideoView(
                                 ref.read(callProvider.notifier).localRenderer!,
-                                mirror: true,
+                                mirror: callState.isFrontCamera,
                                 objectFit: RTCVideoViewObjectFit
                                     .RTCVideoViewObjectFitCover,
                               ),

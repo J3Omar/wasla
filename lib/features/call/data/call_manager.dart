@@ -280,11 +280,11 @@ class CallManager {
 
       _localVideoStream = await navigator.mediaDevices.getUserMedia({
         'video': {
-          'width': {'ideal': 640, 'max': 1280},
-          'height': {'ideal': 480, 'max': 720},
-          'frameRate': {'ideal': 30, 'max': 30},
+          'width': {'ideal': 1280},
+          'height': {'ideal': 720},
+          'facingMode': 'user',
         },
-        'audio': false, // Audio is handled separately
+        'audio': false,
       });
       _localRenderer ??= RTCVideoRenderer();
       await _localRenderer!.initialize();
@@ -308,6 +308,7 @@ class CallManager {
           }
         }
       }
+      _localRenderer?.srcObject = null;
       _localVideoStream?.getVideoTracks().forEach((t) => t.stop());
       await _localVideoStream?.dispose();
       _localVideoStream = null;
@@ -320,6 +321,8 @@ class CallManager {
   Future<void> switchCamera() async {
     if (_isVideoOn && _localVideoStream != null) {
       await Helper.switchCamera(_localVideoStream!.getVideoTracks().first);
+      _session = _session.copyWith(isFrontCamera: !_session.isFrontCamera);
+      onStateChanged(_session);
     }
   }
 
@@ -510,6 +513,18 @@ class CallManager {
     };
     pc.onSignalingState = (state) {
       debugPrint('[Call] Signaling state: $state');
+    };
+
+    pc.onRenegotiationNeeded = () async {
+      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable)
+        return;
+      try {
+        final offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        _signalingWs?.add(jsonEncode({'type': 'offer', 'sdp': offer.toMap()}));
+      } catch (e) {
+        debugPrint('[Call] Renegotiation error: $e');
+      }
     };
 
     pc.onTrack = (event) {
