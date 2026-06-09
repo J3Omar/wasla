@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' hide MessageType;
 
@@ -395,7 +396,15 @@ class WebRtcChatService {
     final sigPort = json['signalingPort'] as int?;
     final fromUuid = json['fromUuid'] as String?;
 
-    if (sigPort == null || fromUuid == null) return;
+    if (fromUuid == null || sigPort == null) return;
+
+    // Guard: ignore duplicate UDP invites if session
+    // with this peer is already active
+    if (_sessions.containsKey(fromUuid) &&
+        _sessions[fromUuid]!.isConnected) {
+      debugPrint('[Chat] Ignoring duplicate invite from $fromUuid');
+      return;
+    }
 
     // Clean up any stale session with this peer
     await _closeSession(fromUuid);

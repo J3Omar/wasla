@@ -54,7 +54,12 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
       final s = next.valueOrNull;
       if (s == null) return;
       if (s.state == CallState.active) {
-        if (mounted) context.pushReplacement('/call/active');
+        if (mounted) {
+          context.pushReplacement(
+            '/call/active',
+            extra: {'peerName': widget.callerName},
+          );
+        }
       } else if (s.state == CallState.ended) {
         // Caller cancelled before we answered — pop immediately
         if (mounted) context.pop();
@@ -171,7 +176,10 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
                                         ?.state;
                                     if (currentState != CallState.ended &&
                                         currentState != CallState.idle) {
-                                      context.pushReplacement('/call/active');
+                                      context.pushReplacement(
+                                        '/call/active',
+                                        extra: {'peerName': widget.callerName},
+                                      );
                                     } else {
                                       ScaffoldMessenger.of(
                                         context,
