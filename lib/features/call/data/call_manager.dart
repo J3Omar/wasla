@@ -516,8 +516,9 @@ class CallManager {
     };
 
     pc.onRenegotiationNeeded = () async {
-      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable)
+      if (pc.signalingState != RTCSignalingState.RTCSignalingStateStable) {
         return;
+      }
       try {
         final offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -615,6 +616,30 @@ class CallManager {
         _missedHeartbeats = 0;
         break;
       case 'offer':
+        final description = RTCSessionDescription(
+          signal['sdp']['sdp'] as String,
+          signal['sdp']['type'] as String,
+        );
+
+        // Check if this is a mid-call Renegotiation
+        if (_pc != null) {
+          debugPrint('[CallManager] Handling MID-CALL Renegotiation Offer...');
+          await _pc!.setRemoteDescription(description);
+          _remoteDescSet = true;
+          for (final c in _pendingCandidates) {
+            await _pc?.addCandidate(c);
+          }
+          _pendingCandidates.clear();
+
+          final answer = await _pc!.createAnswer();
+          await _pc!.setLocalDescription(answer);
+          _signalingWs?.add(
+            jsonEncode({'type': 'answer', 'sdp': answer.toMap()}),
+          );
+          return; // Exit here. Do NOT restart the call.
+        }
+
+        debugPrint('[CallManager] Handling INITIAL Offer...');
         // Strict audio handoff sequence (Phase 1 Fix):
         // Stop looping audio → release AudioFocus → WebRTC takes over AudioManager
         await CallAudioService.instance.stopAll();
@@ -638,12 +663,7 @@ class CallManager {
             _pc!.addTrack(track, _localVideoStream!);
           }
         }
-        await _pc!.setRemoteDescription(
-          RTCSessionDescription(
-            signal['sdp']['sdp'] as String,
-            signal['sdp']['type'] as String,
-          ),
-        );
+        await _pc!.setRemoteDescription(description);
         // Fix 2D — remote desc is now set; flush any ICE candidates that
         // arrived while the offer was being processed.
         _remoteDescSet = true;

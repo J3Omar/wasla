@@ -187,7 +187,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                             child: RTCVideoView(
                               ref.read(callProvider.notifier).remoteRenderer!,
                               objectFit: RTCVideoViewObjectFit
-                                  .RTCVideoViewObjectFitCover,
+                                  .RTCVideoViewObjectFitContain,
                             ),
                           )
                         else if (callState.isLocalVideoOn &&
