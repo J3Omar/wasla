@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -300,129 +301,146 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             // 2. FOREGROUND UI (Safe Area for Notch/Status Bar)
             Positioned.fill(
               child: SafeArea(
-                child: Column(
-                  children: [
-                    // Header
-                    AnimatedOpacity(
-                      opacity: _showControls ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 16,
-                        ),
-                        child: Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(
-                                Icons.arrow_back_ios,
-                                color: AppColors.textMuted,
-                              ),
-                              onPressed: () => context.go('/home'),
-                              tooltip: 'Minimize call',
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              hasAnyVideo ? 'Video Call' : 'Voice Call',
-                              style: AppTypography.labelSmall.copyWith(
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: SizedBox(
+                    height: math.max(
+                      600.0,
+                      MediaQuery.of(context).size.height -
+                          MediaQuery.of(context).padding.top -
+                          MediaQuery.of(context).padding.bottom,
                     ),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          // Name and Timer
-                          AnimatedOpacity(
-                            opacity: _showControls ? 1.0 : 0.0,
-                            duration: const Duration(milliseconds: 300),
-                            child: Column(
+                    child: Column(
+                      children: [
+                        // Header
+                        AnimatedOpacity(
+                          opacity: _showControls ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 300),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 16,
+                            ),
+                            child: Row(
                               children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.arrow_back_ios,
+                                    color: AppColors.textMuted,
+                                  ),
+                                  onPressed: () => context.go('/home'),
+                                  tooltip: 'Minimize call',
+                                ),
+                                const SizedBox(width: 8),
                                 Text(
-                                  callState.peerName,
-                                  style: AppTypography.heading2.copyWith(
-                                    color: Colors.white,
-                                    shadows: [
-                                      const Shadow(
-                                        blurRadius: 10.0,
-                                        color: Colors.black54,
-                                        offset: Offset(0, 2),
-                                      ),
-                                    ],
+                                  hasAnyVideo ? 'Video Call' : 'Voice Call',
+                                  style: AppTypography.labelSmall.copyWith(
+                                    color: AppColors.textMuted,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                if (isConnecting)
-                                  Text(
-                                    'Connecting…',
-                                    style: AppTypography.bodyMedium.copyWith(
-                                      color: AppColors.primaryCyan,
-                                      shadows: [
-                                        const Shadow(
-                                          blurRadius: 10.0,
-                                          color: Colors.black54,
-                                          offset: Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                else
-                                  CallTimerWidget(
-                                    startedAt: callState.startedAt,
-                                  ),
-                                const SizedBox(height: 24),
                               ],
                             ),
                           ),
-
-                          // Controls pill
-                          AnimatedOpacity(
-                            opacity: _showControls ? 1.0 : 0.0,
-                            duration: const Duration(milliseconds: 300),
-                            child: SafeArea(
-                              top: false,
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: _ControlsPill(
-                                  isMuted: callState.isMuted,
-                                  isSpeakerOn: callState.isSpeakerOn,
-                                  isLocalVideoOn: callState.isLocalVideoOn,
-                                  isScreenSharing: callState.isScreenSharing,
-                                  isVideoToggling: _isVideoToggling,
-                                  isScreenShareToggling: _isScreenShareToggling,
-                                  hasMultipleCameras: _hasMultipleCameras,
-                                  showSpeakerToggle:
-                                      (Platform.isAndroid || Platform.isIOS) &&
-                                      !callState.isLocalVideoOn &&
-                                      !callState.isScreenSharing,
-                                  onMute: () => ref
-                                      .read(callProvider.notifier)
-                                      .toggleMute(),
-                                  onSpeaker: () => ref
-                                      .read(callProvider.notifier)
-                                      .toggleSpeaker(),
-                                  onToggleVideo: () =>
-                                      _onToggleVideo(callState),
-                                  onToggleScreenShare: () =>
-                                      _onToggleScreenShare(callState),
-                                  onSwitchCamera: () => ref
-                                      .read(callProvider.notifier)
-                                      .switchCamera(),
-                                  onEnd: () {
-                                    ref.read(callProvider.notifier).endCall();
-                                  },
+                        ),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              // Name and Timer
+                              AnimatedOpacity(
+                                opacity: _showControls ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 300),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      callState.peerName,
+                                      style: AppTypography.heading2.copyWith(
+                                        color: Colors.white,
+                                        shadows: [
+                                          const Shadow(
+                                            blurRadius: 10.0,
+                                            color: Colors.black54,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (isConnecting)
+                                      Text(
+                                        'Connecting…',
+                                        style: AppTypography.bodyMedium
+                                            .copyWith(
+                                              color: AppColors.primaryCyan,
+                                              shadows: [
+                                                const Shadow(
+                                                  blurRadius: 10.0,
+                                                  color: Colors.black54,
+                                                  offset: Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                      )
+                                    else
+                                      CallTimerWidget(
+                                        startedAt: callState.startedAt,
+                                      ),
+                                    const SizedBox(height: 24),
+                                  ],
                                 ),
                               ),
-                            ),
+
+                              // Controls pill
+                              AnimatedOpacity(
+                                opacity: _showControls ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 300),
+                                child: SafeArea(
+                                  top: false,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _ControlsPill(
+                                      isMuted: callState.isMuted,
+                                      isSpeakerOn: callState.isSpeakerOn,
+                                      isLocalVideoOn: callState.isLocalVideoOn,
+                                      isScreenSharing:
+                                          callState.isScreenSharing,
+                                      isVideoToggling: _isVideoToggling,
+                                      isScreenShareToggling:
+                                          _isScreenShareToggling,
+                                      hasMultipleCameras: _hasMultipleCameras,
+                                      showSpeakerToggle:
+                                          (Platform.isAndroid ||
+                                              Platform.isIOS) &&
+                                          !callState.isLocalVideoOn &&
+                                          !callState.isScreenSharing,
+                                      onMute: () => ref
+                                          .read(callProvider.notifier)
+                                          .toggleMute(),
+                                      onSpeaker: () => ref
+                                          .read(callProvider.notifier)
+                                          .toggleSpeaker(),
+                                      onToggleVideo: () =>
+                                          _onToggleVideo(callState),
+                                      onToggleScreenShare: () =>
+                                          _onToggleScreenShare(callState),
+                                      onSwitchCamera: () => ref
+                                          .read(callProvider.notifier)
+                                          .switchCamera(),
+                                      onEnd: () {
+                                        ref
+                                            .read(callProvider.notifier)
+                                            .endCall();
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -298,7 +298,8 @@ class CallManager {
         'video': {
           'width': {'ideal': 1280},
           'height': {'ideal': 720},
-          'facingMode': 'user',
+          'frameRate': {'ideal': 60, 'max': 60},
+          'facingMode': _session.isFrontCamera ? 'user' : 'environment',
         },
         'audio': false,
       });
@@ -315,6 +316,7 @@ class CallManager {
               RTCRtpEncoding(
                 maxBitrate: 2500000,
                 minBitrate: 1000000,
+                maxFramerate: 60,
               ), // Force 1-2.5 Mbps
             ],
           ),
@@ -679,8 +681,10 @@ class CallManager {
             _iceEndCallTimer?.cancel();
             _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
               if (_isReconnecting) {
-                debugPrint('[CallManager] ICE Recovery Failed. Ending call.');
-                await endCall();
+                debugPrint(
+                  '[CallManager] ICE Recovery Failed. Attempting full re-signaling.',
+                );
+                await _attemptReconnect();
               }
             });
           });
@@ -801,7 +805,11 @@ class CallManager {
             direction: TransceiverDirection.SendRecv,
             streams: [_localVideoStream!],
             sendEncodings: [
-              RTCRtpEncoding(maxBitrate: 2500000, minBitrate: 1000000),
+              RTCRtpEncoding(
+                maxBitrate: 2500000,
+                minBitrate: 1000000,
+                maxFramerate: 60,
+              ),
             ],
           ),
         );
@@ -1064,6 +1072,34 @@ class CallManager {
     _remoteDescSet = false;
     _pendingCandidates.clear();
     await _connectToSignalingServer(callerIp, newPort);
+  }
+
+  Future<void> _attemptReconnect() async {
+    debugPrint('[CallManager] Attempting UDP re-signaling reconnect...');
+
+    try {
+      // 1. Close old peer connection
+      await _pc?.close();
+      _pc = null;
+      _remoteDescSet = false;
+      _pendingCandidates.clear();
+
+      // 2. If we are the initiator (caller), start a new
+      //    signaling server and send a new UDP invite
+      if (_isInitiator) {
+        final newPort = 46100 + Random().nextInt(100);
+        await _startSignalingServer(newPort, isInitiator: true);
+        await _sendCallInvite(
+          peerIp: _session.peerIp,
+          signalingPort: newPort,
+          peerId: _session.peerId,
+          peerName: _session.peerName,
+        );
+      }
+    } catch (e) {
+      debugPrint('[CallManager] Reconnect failed: $e');
+      await endCall();
+    }
   }
 
   Future<void> dispose() async {
