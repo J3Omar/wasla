@@ -93,7 +93,7 @@ jobs:
           echo "Version: 1.0.0" >> "$STAGE_DIR/DEBIAN/control"
           echo "Architecture: amd64" >> "$STAGE_DIR/DEBIAN/control"
           echo "Maintainer: Wasla App <wasla@local>" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0, libgstreamer1.0-0, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire" >> "$STAGE_DIR/DEBIAN/control"
+          echo "Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0, libgstreamer1.0-0, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire, pulseaudio-utils" >> "$STAGE_DIR/DEBIAN/control"
           echo "Section: net" >> "$STAGE_DIR/DEBIAN/control"
           echo "Priority: standard" >> "$STAGE_DIR/DEBIAN/control"
           echo "Description: Local P2P Communication Application." >> "$STAGE_DIR/DEBIAN/control"

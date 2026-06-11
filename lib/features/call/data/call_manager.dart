@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
 import 'call_audio_service.dart';
+import 'linux_audio_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/utils/background_service_manager.dart';
 
@@ -393,6 +394,11 @@ class CallManager {
           }
         }
       }
+
+      if (Platform.isLinux) {
+        debugPrint('[CallManager] Linux deactivating screen share. Cleaning up Virtual Sink...');
+        await LinuxAudioService().disableSystemAudioCapture();
+      }
     } else {
       // START SCREEN SHARE
       try {
@@ -417,6 +423,14 @@ class CallManager {
                 '[CallManager] No screen source found for desktop capturer.',
               );
               return;
+            }
+
+            if (Platform.isLinux && withAudio) {
+              debugPrint('[CallManager] Linux detected with audio. Activating Virtual Null Sink...');
+              await LinuxAudioService().enableSystemAudioCapture();
+              
+              // To force WebRTC to capture our new virtual loopback device, we tell PulseAudio to set it as default source temporarily
+              await Process.run('pactl', ['set-default-source', 'WaslaAudio.monitor']);
             }
 
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -1155,6 +1169,11 @@ class CallManager {
       await _signalingServer?.close();
       await _signalingWs?.close(); // Safe now, _isDisposing blocks the loop
     } catch (_) {}
+
+    if (Platform.isLinux) {
+      await LinuxAudioService().disableSystemAudioCapture();
+    }
+
     _localStream = null;
     _localVideoStream = null;
     _localRenderer = null;
