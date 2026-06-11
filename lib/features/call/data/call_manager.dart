@@ -77,6 +77,7 @@ class CallManager {
   bool _isDisposing = false;
   Timer? _iceDisconnectTimer;
   Timer? _iceEndCallTimer;
+  MediaStreamTrack? _originalAudioTrack;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -364,9 +365,11 @@ class CallManager {
       if (_pc != null) {
         final senders = await _pc!.getSenders();
         for (var sender in senders) {
-          // Remove both the screen video track AND the screen audio track
-          if (sender.track?.kind == 'video' || (sender.track?.kind == 'audio' && sender.track?.id != _localStream?.getAudioTracks().first.id)) {
+          if (sender.track?.kind == 'video') {
             await _pc!.removeTrack(sender);
+          } else if (sender.track?.kind == 'audio' && _originalAudioTrack != null) {
+            await sender.replaceTrack(_originalAudioTrack!);
+            _originalAudioTrack = null;
           }
         }
       }
@@ -374,15 +377,45 @@ class CallManager {
       // START SCREEN SHARE
       try {
         try {
-          _screenStream = await navigator.mediaDevices.getDisplayMedia({
-            'video': {
-              'width': {'ideal': 1280},
-              'height': {'ideal': 720},
-              'frameRate': {'ideal': 60, 'max': 60},
-              'cursor': 'always',
-            },
-            'audio': withAudio,
-          });
+          final audioConstraint = (Platform.isAndroid && withAudio)
+              ? true
+              : withAudio;
+
+          if (Platform.isLinux || Platform.isWindows) {
+            final sources = await desktopCapturer.getSources(types: [SourceType.Screen, SourceType.Window]);
+            DesktopCapturerSource? screenSource;
+            for (final source in sources) {
+              if (source.type == SourceType.Screen) {
+                screenSource = source;
+                break;
+              }
+            }
+            if (screenSource == null) {
+              debugPrint('[CallManager] No screen source found for desktop capturer.');
+              return;
+            }
+
+            _screenStream = await navigator.mediaDevices.getDisplayMedia({
+              'video': {
+                'deviceId': {'exact': screenSource.id},
+                'width': {'ideal': 1280, 'max': 1920},
+                'height': {'ideal': 720, 'max': 1080},
+                'frameRate': {'ideal': 60, 'max': 60},
+              },
+              'audio': audioConstraint,
+            });
+            debugPrint('[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}');
+          } else {
+            _screenStream = await navigator.mediaDevices.getDisplayMedia({
+              'video': {
+                'width': {'ideal': 960, 'max': 1280},
+                'height': {'ideal': 540, 'max': 720},
+                'frameRate': {'ideal': 45, 'max': 60},
+                'cursor': 'always',
+              },
+              'audio': audioConstraint,
+            });
+          }
         } catch (e) {
           if (withAudio) {
             debugPrint(
@@ -405,6 +438,7 @@ class CallManager {
 
         final screenTrack = _screenStream!.getVideoTracks().first;
         final screenAudioTracks = _screenStream!.getAudioTracks();
+        debugPrint('[CallManager] Screen audio tracks found: ${screenAudioTracks.length}');
 
         if (_pc != null) {
           final senders = await _pc!.getSenders();
@@ -423,10 +457,19 @@ class CallManager {
             // Note: This specific path will require renegotiation handled by onRenegotiationNeeded
           }
 
-          // Add screen audio track if the OS provided it
+          // Re-fetch senders after video replacement to get current state
+          final freshSenders = await _pc!.getSenders();
+
+          // Replace screen audio track instead of adding it
           if (screenAudioTracks.isNotEmpty) {
-            debugPrint('[CallManager] Screen audio track found. Adding to PeerConnection.');
-            await _pc!.addTrack(screenAudioTracks.first, _screenStream!);
+            debugPrint('[CallManager] Screen audio track found. Replacing existing audio track.');
+            for (var sender in freshSenders) {
+              if (sender.track?.kind == 'audio') {
+                _originalAudioTrack = sender.track;
+                await sender.replaceTrack(screenAudioTracks.first);
+                break;
+              }
+            }
           }
         }
 
@@ -539,6 +582,8 @@ class CallManager {
 
         if (_isReconnecting) {
           _isReconnecting = false;
+          _iceEndCallTimer?.cancel();
+          debugPrint('[CallManager] ICE restart succeeded.');
           // 500ms delay before stopping —
           // lets the 1-second loop finish naturally
           await Future.delayed(const Duration(milliseconds: 500));
@@ -602,17 +647,22 @@ class CallManager {
         if (!_isReconnecting) {
           _isReconnecting = true;
           CallAudioService.instance.playReconnecting();
-        }
-
-        _heartbeatTimer?.cancel();
-        _heartbeatTimer = null;
-        _missedHeartbeats = 0;
-
-        // Wait 4 seconds — might self-recover on same network
-        await Future.delayed(const Duration(seconds: 4));
-        if (_pc?.connectionState ==
-            RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-          await _attemptReconnect();
+          
+          _heartbeatTimer?.cancel();
+          _heartbeatTimer = null;
+          _missedHeartbeats = 0;
+          
+          // ICE Restart reconnect logic
+          _pc!.restartIce();
+          
+          // 15-second grace period
+          _iceEndCallTimer?.cancel();
+          _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
+            if (_isReconnecting) {
+              debugPrint('[CallManager] ICE restart timeout. Attempting full re-signaling.');
+              await _attemptReconnect();
+            }
+          });
         }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         // Failed is terminal — end immediately
@@ -1059,6 +1109,8 @@ class CallManager {
     debugPrint('[CallManager] Disposing resources...');
     await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
+    _iceEndCallTimer?.cancel();
+    _originalAudioTrack = null;
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
       try {

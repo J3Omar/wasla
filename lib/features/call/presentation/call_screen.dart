@@ -212,16 +212,19 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                       ref.read(callProvider.notifier).remoteRenderer != null)
                     Positioned.fill(
                       child: SizedBox.expand(
-                        child: RTCVideoView(
-                          ref.read(callProvider.notifier).remoteRenderer!,
-                          objectFit:
-                              (Platform.isLinux ||
-                                  Platform.isWindows ||
-                                  Platform.isMacOS)
-                              ? RTCVideoViewObjectFit
-                                    .RTCVideoViewObjectFitContain
-                              : RTCVideoViewObjectFit
-                                    .RTCVideoViewObjectFitCover,
+                        child: OrientationBuilder(
+                          builder: (context, orientation) {
+                            return RTCVideoView(
+                              ref.read(callProvider.notifier).remoteRenderer!,
+                              objectFit: (Platform.isLinux ||
+                                          Platform.isWindows ||
+                                          Platform.isMacOS)
+                                  ? RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
+                                  : (orientation == Orientation.landscape
+                                      ? RTCVideoViewObjectFit.RTCVideoViewObjectFitCover
+                                      : RTCVideoViewObjectFit.RTCVideoViewObjectFitContain),
+                            );
+                          },
                         ),
                       ),
                     )
@@ -372,32 +375,35 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     AnimatedOpacity(
                       opacity: _showControls ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 300),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 30),
-                        child: _ControlsPill(
-                          isMuted: callState.isMuted,
-                          isSpeakerOn: callState.isSpeakerOn,
-                          isLocalVideoOn: callState.isLocalVideoOn,
-                          isScreenSharing: callState.isScreenSharing,
-                          isVideoToggling: _isVideoToggling,
-                          isScreenShareToggling: _isScreenShareToggling,
-                          hasMultipleCameras: _hasMultipleCameras,
-                          showSpeakerToggle:
-                              (Platform.isAndroid || Platform.isIOS) &&
-                              !callState.isLocalVideoOn &&
-                              !callState.isScreenSharing,
-                          onMute: () =>
-                              ref.read(callProvider.notifier).toggleMute(),
-                          onSpeaker: () =>
-                              ref.read(callProvider.notifier).toggleSpeaker(),
-                          onToggleVideo: () => _onToggleVideo(callState),
-                          onToggleScreenShare: () =>
-                              _onToggleScreenShare(callState),
-                          onSwitchCamera: () =>
-                              ref.read(callProvider.notifier).switchCamera(),
-                          onEnd: () {
-                            ref.read(callProvider.notifier).endCall();
-                          },
+                      child: SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _ControlsPill(
+                            isMuted: callState.isMuted,
+                            isSpeakerOn: callState.isSpeakerOn,
+                            isLocalVideoOn: callState.isLocalVideoOn,
+                            isScreenSharing: callState.isScreenSharing,
+                            isVideoToggling: _isVideoToggling,
+                            isScreenShareToggling: _isScreenShareToggling,
+                            hasMultipleCameras: _hasMultipleCameras,
+                            showSpeakerToggle:
+                                (Platform.isAndroid || Platform.isIOS) &&
+                                !callState.isLocalVideoOn &&
+                                !callState.isScreenSharing,
+                            onMute: () =>
+                                ref.read(callProvider.notifier).toggleMute(),
+                            onSpeaker: () =>
+                                ref.read(callProvider.notifier).toggleSpeaker(),
+                            onToggleVideo: () => _onToggleVideo(callState),
+                            onToggleScreenShare: () =>
+                                _onToggleScreenShare(callState),
+                            onSwitchCamera: () =>
+                                ref.read(callProvider.notifier).switchCamera(),
+                            onEnd: () {
+                              ref.read(callProvider.notifier).endCall();
+                            },
+                          ),
                         ),
                       ),
                     ),
@@ -493,75 +499,93 @@ class _ControlsPill extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Mute toggle — always shown
-            _PillButton(
-              icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-              label: isMuted ? 'Unmute' : 'Mute',
-              color: isMuted ? Colors.redAccent : AppColors.textSecondary,
-              onTap: onMute,
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16.0 : 6.0),
+              child: _PillButton(
+                icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                label: isMuted ? 'Unmute' : 'Mute',
+                color: isMuted ? Colors.redAccent : AppColors.textSecondary,
+                onTap: onMute,
+              ),
             ),
             // Camera toggle
-            _PillButton(
-              icon: isLocalVideoOn
-                  ? Icons.videocam_rounded
-                  : Icons.videocam_off_rounded,
-              label: isVideoToggling ? 'Wait...' : 'Camera',
-              color: isVideoToggling
-                  ? AppColors.textMuted
-                  : isLocalVideoOn
-                  ? AppColors.primaryCyan
-                  : AppColors.textSecondary,
-              onTap: isVideoToggling ? () {} : onToggleVideo,
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16.0 : 6.0),
+              child: _PillButton(
+                icon: isLocalVideoOn
+                    ? Icons.videocam_rounded
+                    : Icons.videocam_off_rounded,
+                label: isVideoToggling ? 'Wait...' : 'Camera',
+                color: isVideoToggling
+                    ? AppColors.textMuted
+                    : isLocalVideoOn
+                    ? AppColors.primaryCyan
+                    : AppColors.textSecondary,
+                onTap: isVideoToggling ? () {} : onToggleVideo,
+              ),
             ),
             // Screen Share toggle
-            _PillButton(
-              icon: isScreenSharing
-                  ? Icons.stop_screen_share_rounded
-                  : Icons.present_to_all_rounded,
-              label: isScreenShareToggling ? 'Wait...' : 'Screen',
-              color: isScreenShareToggling
-                  ? AppColors.textMuted
-                  : isScreenSharing
-                  ? AppColors.primaryCyan
-                  : AppColors.textSecondary,
-              onTap: isScreenShareToggling ? () {} : onToggleScreenShare,
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16.0 : 6.0),
+              child: _PillButton(
+                icon: isScreenSharing
+                    ? Icons.stop_screen_share_rounded
+                    : Icons.present_to_all_rounded,
+                label: isScreenShareToggling ? 'Wait...' : 'Screen',
+                color: isScreenShareToggling
+                    ? AppColors.textMuted
+                    : isScreenSharing
+                    ? AppColors.primaryCyan
+                    : AppColors.textSecondary,
+                onTap: isScreenShareToggling ? () {} : onToggleScreenShare,
+              ),
             ),
             // Switch camera — ONLY shown if video is on and 2+ cameras exist
             if (isLocalVideoOn && hasMultipleCameras)
-              _PillButton(
-                icon: Icons.flip_camera_ios_rounded,
-                label: 'Flip',
-                color: AppColors.textSecondary,
-                onTap: onSwitchCamera,
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16.0 : 6.0),
+                child: _PillButton(
+                  icon: Icons.flip_camera_ios_rounded,
+                  label: 'Flip',
+                  color: AppColors.textSecondary,
+                  onTap: onSwitchCamera,
+                ),
               ),
             // Speaker / Earpiece — mobile only
             if (showSpeakerToggle)
-              _PillButton(
-                icon: isSpeakerOn
-                    ? Icons.volume_up_rounded
-                    : Icons.hearing_rounded,
-                label: isSpeakerOn ? 'Speaker' : 'Earpiece',
-                color: isSpeakerOn
-                    ? AppColors.primaryCyan
-                    : AppColors.textSecondary,
-                onTap: onSpeaker,
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16.0 : 6.0),
+                child: _PillButton(
+                  icon: isSpeakerOn
+                      ? Icons.volume_up_rounded
+                      : Icons.hearing_rounded,
+                  label: isSpeakerOn ? 'Speaker' : 'Earpiece',
+                  color: isSpeakerOn
+                      ? AppColors.primaryCyan
+                      : AppColors.textSecondary,
+                  onTap: onSpeaker,
+                ),
               ),
             // End call — always shown
-            GestureDetector(
-              onTap: onEnd,
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: const BoxDecoration(
-                  color: Colors.redAccent,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.call_end_rounded,
-                  color: Colors.white,
-                  size: 26,
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16.0 : 6.0),
+              child: GestureDetector(
+                onTap: onEnd,
+                child: Container(
+                  width: isDesktop ? 72.0 : 60.0,
+                  height: isDesktop ? 72.0 : 60.0,
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.call_end_rounded,
+                    color: Colors.white,
+                    size: isDesktop ? 30.0 : 26.0,
+                  ),
                 ),
               ),
             ),
@@ -594,20 +618,21 @@ class _PillButton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: isDesktop ? 64 : 52,
-            height: isDesktop ? 64 : 52,
+            width: isDesktop ? 64.0 : 52.0,
+            height: isDesktop ? 64.0 : 52.0,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,
               border: Border.all(color: color.withValues(alpha: 0.3)),
             ),
-            child: Icon(icon, color: color, size: 22),
+            child: Icon(icon, color: color, size: isDesktop ? 28.0 : 22.0),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: isDesktop ? 8.0 : 4.0),
           Text(
             label,
             style: AppTypography.labelSmall.copyWith(
               color: AppColors.textMuted,
+              fontSize: isDesktop ? 13.0 : 11.0,
             ),
           ),
         ],
