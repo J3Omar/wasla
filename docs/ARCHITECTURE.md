@@ -1,27 +1,27 @@
-# ARCHITECTURE — وصلة (Wasla)
+# SYSTEM ARCHITECTURE — Wasla
 
-> التصميم التقني الكامل للتطبيق | مايو 2026
-
----
-
-## نظرة عامة
-
-وصلة هو تطبيق P2P كامل يعمل على الـ LAN فقط — **بدون أي خروج للإنترنت**.
+> Technical Systems Design & Architecture | June 2026
 
 ---
 
-## 🏗️ البنية الكاملة
+## 1. Executive Summary
 
-```
+Wasla is a fully decentralized, Peer-to-Peer (P2P) communication application engineered exclusively for Local Area Networks (LAN). It operates with **zero internet egress**, ensuring that all signaling, media, and data channels remain physically bound to the local subnet.
+
+---
+
+## 2. High-Level Topology
+
+```text
 ┌──────────────────────────────────────────────────────┐
-│                    Wasla App (Flutter)                │
+│                    Wasla App (Flutter)               │
 ├──────────────────────────────────────────────────────┤
 │                                                      │
-│   ┌─────────────┐    ┌─────────────┐                │
-│   │  Discovery  │    │  Signaling  │                │
-│   │   (mDNS /   │    │  (Local WS  │                │
-│   │   UDP BC)   │    │   Server)   │                │
-│   └──────┬──────┘    └──────┬──────┘                │
+│   ┌─────────────┐    ┌─────────────┐                 │
+│   │  Discovery  │    │  Signaling  │                 │
+│   │   (mDNS /   │    │  (Local WS  │                 │
+│   │   UDP BC)   │    │   Server)   │                 │
+│   └──────┬──────┘    └──────┬──────┘                 │
 │          │                  │                        │
 │          └────────┬─────────┘                        │
 │                   │ LAN Only                         │
@@ -33,193 +33,169 @@
 │                                                      │
 │   ┌─────────────────────────────────────┐            │
 │   │     Local Storage (Drift/SQLite)    │            │
-│   │   Chat History + Device Registry   │            │
+│   │   Chat History + Device Registry    │            │
 │   └─────────────────────────────────────┘            │
 └──────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔍 Device Discovery
+## 3. Core Subsystems
 
-**البروتوكول:** mDNS (Multicast DNS) + UDP Broadcast fallback
+### 3.1 Device Discovery
+**Protocols:** mDNS (Multicast DNS) + UDP Broadcast fallback
 
-```
-كل جهاز يعلن عن نفسه كل 5 ثواني:
+Nodes advertise their presence via UDP broadcast on port `45678` (or configured port). The broadcast payload is emitted every 5 seconds:
+```json
 {
   "uuid": "unique-device-id",
-  "name": "اسم الجهاز",
+  "name": "Display Name",
   "status": "available | in_call | busy",
   "ip": "192.168.1.x",
-  "port": 8765  ← WebSocket Signaling Port
+  "port": 8765
 }
 ```
 
-- **اكتشاف:** خلال 5 ثواني من الفتح
-- **اختفاء:** بعد 10 ثواني من الإغلاق
-- **يشتغل على:** نفس الـ Subnet بدون إنترنت
+- **Discovery:** Achieved within 5 seconds of the application opening.
+- **Eviction:** Disconnected peers disappear after 10 seconds of missing heartbeats.
+- **Network Scope:** Operates exclusively on the local Subnet without internet access.
 
 ---
 
-## 📡 Signaling (محلي 100%)
+## 4. Signaling (100% Localized)
 
-**الـ Caller** ينشئ WebSocket Server مؤقت على بورت عشوائي.
+The **Caller** dynamically instantiates an ephemeral WebSocket Server on a randomized port.
 
-```
+```text
 Caller (WS Server)  ←→  Callee (WS Client)
         │                       │
-        │    SDP Offer           │
+        │    SDP Offer          │
         │──────────────────────►│
-        │    SDP Answer          │
+        │    SDP Answer         │
         │◄──────────────────────│
-        │    ICE Candidates      │
+        │    ICE Candidates     │
         │◄─────────────────────►│
         │                       │
-        │   WebRTC P2P Connected │
+        │   WebRTC P2P Linked   │
         │◄═════════════════════►│
 ```
 
-بعد الاتصال، الـ WebSocket Server بيتقفل — P2P مباشر.
+Following the successful exchange of SDP offers and ICE host candidates, the WebSocket Server is terminated. The remaining connection is a direct P2P socket.
 
 ---
 
-## 🎥 WebRTC Tracks
+## 5. WebRTC Tracks
 
-| النوع | الاستخدام |
-|-------|-----------|
-| Audio Track | المكالمة الصوتية |
-| Video Track | مكالمة الفيديو (720p/30fps) |
-| Screen Track | Screen Share |
-| Data Channel | Chat + File Transfer |
-
----
-
-## 💬 Chat & Storage
-
-- **Database:** Drift (SQLite wrapper — actively maintained)
-- **Encryption:** Android Keystore / Windows DPAPI
-- **Transport:** WebRTC Data Channel
-- **مسار الحفظ:**
-  ```
-  Android → /storage/emulated/0/Wasla/
-  Windows → C:\Users\[name]\Documents\Wasla\
-  Linux   → ~/Wasla/
-  ```
+| Track Type | Usage & Specifications |
+|---|---|
+| **Audio Track** | Voice calling (Hardware Echo Cancellation enabled) |
+| **Video Track** | Video calling (Aggressive 60 FPS constraint / 1-2.5 Mbps target) |
+| **Screen Track** | Screen sharing (Includes graceful Linux `audio: false` fallback) |
+| **Data Channel** | SCTP overlay for Chat & binary File Transfers |
 
 ---
 
-## 📁 هيكل الـ Code
+## 6. Chat & Storage Persistence
 
-```
+- **Database:** Drift (SQLite wrapper).
+- **Encryption:** Payload encryption via Android Keystore / Windows DPAPI.
+- **Transport:** WebRTC SCTP Data Channel.
+- **Storage Paths:**
+  - Android: `/storage/emulated/0/Wasla/`
+  - Windows: `C:\Users\[name]\Documents\Wasla\`
+  - Linux: `~/Wasla/`
+
+---
+
+## 7. Codebase Directory Architecture
+
+The repository adheres strictly to feature-first layer isolation:
+
+```text
 lib/
 ├── core/
-│   ├── config/
-│   │   └── app_config.dart       ← Constants, ports
-│   ├── theme/
-│   │   ├── app_colors.dart       ← Color palette
-│   │   ├── app_typography.dart   ← Text styles
-│   │   └── app_theme.dart        ← ThemeData
-│   ├── router/
-│   │   └── app_router.dart       ← go_router
-│   └── utils/
-│       ├── logger.dart
-│       └── formatters.dart
+│   ├── config/              ← Environment constants, port configurations
+│   ├── network/             ← Base network utilities, IP resolvers
+│   ├── router/              ← AppRouter (go_router definitions)
+│   ├── theme/               ← AppColors, AppTypography, ThemeData
+│   └── utils/               ← Shared loggers, formatters
 │
 └── features/
-    ├── onboarding/
+    ├── call/                ← Unified Media (Voice/Video/Signaling)
     │   ├── data/
-    │   │   └── device_storage.dart  ← uuid + name in secure storage
-    │   └── presentation/
-    │       └── onboarding_screen.dart
-    │
-    ├── discovery/
-    │   ├── data/
-    │   │   ├── mdns_service.dart
-    │   │   └── udp_broadcast.dart
     │   ├── domain/
-    │   │   └── device_model.dart
     │   └── presentation/
-    │       └── home_screen.dart
     │
-    ├── chat/
+    ├── chat/                ← SQLite storage + Data Channels
     │   ├── data/
-    │   │   ├── chat_repository.dart
-    │   │   └── chat_database.dart
     │   ├── domain/
-    │   │   └── message_model.dart
     │   └── presentation/
-    │       └── chat_screen.dart
     │
-    ├── call/
+    ├── discovery/           ← mDNS & UDP broadcast engines
     │   ├── data/
-    │   │   ├── webrtc_service.dart
-    │   │   └── signaling_server.dart
     │   ├── domain/
-    │   │   └── call_state.dart
     │   └── presentation/
-    │       ├── outgoing_call_screen.dart
-    │       ├── incoming_call_screen.dart
-    │       ├── voice_call_screen.dart
-    │       └── video_call_screen.dart
     │
-    ├── file_sharing/
+    ├── file_sharing/        ← Chunked binary TCP/SCTP transfers
     │   ├── data/
-    │   │   └── file_transfer_service.dart
+    │   ├── domain/
     │   └── presentation/
-    │       └── file_progress_widget.dart
     │
-    └── screen_share/
-        ├── data/
-        │   └── screen_capture_service.dart
+    ├── profile/             ← Profile viewing / Local configurations
+    │   └── presentation/
+    │
+    ├── screen_share/        ← Native OS capture APIs
+    │   ├── data/
+    │   ├── domain/
+    │   └── presentation/
+    │
+    ├── setup/               ← First-time Onboarding & Identity Generation
+    │   └── presentation/
+    │
+    └── shell/               ← Application layout root (Home, Navigation)
         └── presentation/
-            └── screen_share_overlay.dart
 ```
 
 ---
 
-## 📦 Dependencies
+## 8. Dependencies Ecosystem
 
 ```yaml
 dependencies:
-  flutter_webrtc: ^0.14.1         # WebRTC
-  drift: ^2.25.0                  # SQLite DB
-  sqlite3_flutter_libs: ^0.5.30   # SQLite native libs
-  flutter_secure_storage: ^9.2.4  # UUID + Keys
-  go_router: ^14.6.2              # Navigation
-  multicast_dns: ^0.3.2+3         # mDNS discovery
-  network_info_plus: ^6.1.4       # Local IP
-  web_socket_channel: ^3.0.3      # Signaling
-  path_provider: ^2.1.5           # File paths
-  permission_handler: ^11.4.0     # Permissions
-  file_picker: ^8.3.7             # File selection
-  flutter_riverpod: ^2.6.1        # State management
-  uuid: ^4.5.1                    # UUID generation
-
-dev_dependencies:
-  drift_dev: ^2.25.0              # Drift codegen
-  build_runner: ^2.4.15           # Code generation
+  flutter_webrtc: ^0.14.1         # Native WebRTC bindings
+  drift: ^2.25.0                  # Persistent SQLite Datastore
+  sqlite3_flutter_libs: ^0.5.30   # Platform SQLite binaries
+  flutter_secure_storage: ^9.2.4  # Hardware-backed UUID / Keys
+  go_router: ^14.6.2              # Declarative routing
+  multicast_dns: ^0.3.2+3         # Zero-conf networking (mDNS)
+  network_info_plus: ^6.1.4       # Active Subnet IP resolution
+  web_socket_channel: ^3.0.3      # Handshake signaling 
+  path_provider: ^2.1.5           # Directory path resolutions
+  permission_handler: ^11.4.0     # Hardware permission grants
+  file_picker: ^8.3.7             # OS Native file selection
+  flutter_riverpod: ^2.6.1        # Reactive state management
+  uuid: ^4.5.1                    # V4 Identity Generation
 ```
 
 ---
 
-## 🔐 الأمان
+## 9. Security Posture
 
-| الطبقة | التقنية |
-|--------|---------|
-| WebRTC Media | DTLS-SRTP (automatic encryption) |
-| Chat Storage | Drift + SQLite (local, encrypted) |
-| Device Keys | Android Keystore / Windows DPAPI |
-| Signaling | 100% local — never leaves the LAN |
+| Layer | Implementation |
+|---|---|
+| **Media Transport** | DTLS-SRTP (Datagram Transport Layer Security / Secure Real-Time Transport Protocol) is enforced natively by WebRTC for all media tracks. |
+| **Data Channels** | Encrypted via WebRTC SCTP overlay. |
+| **Signaling** | Ephemeral, LAN-bound local WebSocket channels. Packets are physically restricted by router NAT from public internet exposure. |
+| **Identity Storage** | Peer UUIDs and Cryptographic keys reside in hardware-backed secure storage. |
 
 ---
 
-## 🎯 Performance Targets
+## 10. Performance & SLA Targets
 
-| المقياس | الهدف |
-|---------|-------|
-| Call Setup Time | < 3 ثواني |
-| Audio Latency | < 150ms على LAN |
-| Video Quality | 720p / 30fps |
-| Device Discovery | < 5 ثواني |
-| Device Timeout | < 10 ثواني |
-| Message Delivery | < 500ms |
+| Metric | Threshold |
+|---|---|
+| **Call Setup Latency** | `< 2.5 seconds` |
+| **Audio Jitter/Latency** | `< 150ms` (Subnet constrained) |
+| **Video Encoding** | `720p @ 60 FPS` (Hardware Accelerated) |
+| **Discovery TTL** | `5 seconds` |
+| **Data Delivery** | `< 500ms` |

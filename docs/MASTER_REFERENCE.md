@@ -1,377 +1,133 @@
-# LanConnect — Master Reference Document
-> آخر تحديث: مايو 2026 | الحالة: 🟡 Phase 0 — التصميم
+# MASTER REFERENCE DOCUMENT — Wasla
+
+> Last Updated: June 2026 | Status: 🟢 Phase 2 — Implementation & Polish
 
 ---
 
-## 📌 الفكرة
+## 📌 Project Philosophy
 
-تطبيق Flutter للتواصل داخل الشبكة المنزلية (LAN) بدون استهلاك إنترنت.  
-الهدف: صوت + فيديو + screen share + chat + ملفات — كلها على الـ WiFi الداخلي فقط.
-
-**السبب:** النت في مصر محدود، وأي مكالمة تليجرام بتاكل من الباقة.
+**Wasla** is a highly optimized, fully decentralized Local Area Network (LAN) communication platform built with Flutter.
+**Primary Objective:** Deliver zero-latency Voice, Video, Screen Sharing, File Transfer, and Chat capabilities entirely offline, circumventing metered internet connections and external cloud servers.
 
 ---
 
-## 💻 الأجهزة المستهدفة
+## 💻 Target Environments
 
-| الجهاز | النظام |
-|--------|--------|
-| لاب | Windows 11 |
-| لاب | Linux Mint |
-| تابلت | Android 8.1.0 |
-| تليفون | Android 12 |
+| Device Type | Operating System | Minimum OS Version |
+|-------------|------------------|--------------------|
+| Laptop/Desktop | Windows (64-bit) | Windows 10 |
+| Laptop/Desktop | Linux | Any distribution supporting GTK 3.0+ |
+| Mobile/Tablet | Android | Android 5.0 (API 21) |
 
-> أي جهاز تاني ينزّل التطبيق هيشتغل — مش محكور على الأجهزة دي.
-
----
-
-## 🧱 الـ Stack التقني
-
-| الطبقة | التقنية | السبب |
-|--------|---------|-------|
-| UI + Logic | Flutter | cross-platform لكل الأجهزة بكود واحد |
-| صوت / فيديو / screen | `flutter_webrtc` | معيار الصناعة، مشفر by default |
-| Signaling | Supabase Realtime | مجاني، سريع، بدون سيرفر خاص |
-| Auth | Supabase Auth | Email + Password |
-| Presence | Supabase Presence | مين أونلاين على الشبكة |
-| Chat History | Supabase DB | حفظ الرسائل |
-| التصميم | Google Stitch | AI يولد UI من prompt |
-| IDE | Antigravity | يقرأ Stitch عبر MCP ويكتب Flutter code |
+> *Note: iOS/macOS compilation is theoretically supported by the codebase but falls outside the V1.0 official scope.*
 
 ---
 
-## 🏗️ Architecture
+## 🧱 Technical Stack
 
-```
-┌─────────────────────────────────────────────┐
-│         Supabase (إنترنت — بضع KB فقط)       │
-│  Auth + Signaling + Presence + Chat History  │
-└─────────────┬───────────────────────────────┘
-              │ تبادل بيانات الاتصال فقط
-┌─────────────▼───────────────────────────────┐
-│           WebRTC P2P — على الـ LAN           │
-│   صوت + فيديو + screen share + ملفات         │
-│     مش بيخرج أي ميديا للإنترنت خالص          │
-└─────────────────────────────────────────────┘
-```
-
-**الأمان:**
-- WebRTC بيشفر كل الميديا تلقائياً بـ DTLS-SRTP
-- Supabase Auth بيمنع أي حد من برا يوصل للـ Signaling
-- الـ ICE Candidates هتكون LAN IPs بس — مش محتاج STUN/TURN
+| Layer | Technology | Justification |
+|-------|------------|---------------|
+| **UI & Business Logic** | Flutter / Dart | Single codebase compilation across Android, Windows, and Linux. |
+| **Media Transport** | `flutter_webrtc` | Industry-standard WebRTC API; provides hardware-accelerated VP8/H264 encoding and DTLS-SRTP encryption natively. |
+| **Signaling** | Ephemeral Local WebSockets | Eliminates reliance on external cloud servers (e.g., Firebase, Supabase). |
+| **Device Discovery** | `multicast_dns` & UDP Broadcast | Emits heartbeat payloads (`uuid`, `name`, `ip`) dynamically across the active subnet. |
+| **State Management** | Riverpod | Predictable, reactive dependency injection. |
+| **Persistence** | Drift (SQLite) | High-performance local SQL datastore for Chat histories, encrypted at rest via SQLCipher. |
+| **Identity & Security** | `flutter_secure_storage` | Hardware-backed keystores for persisting user UUIDs and AES encryption keys. |
 
 ---
 
-## 📱 الشاشات (١١ شاشة)
+## 📱 Application Screens
 
-| # | الشاشة | الوصف |
-|---|--------|-------|
-| ١ | Splash Screen | لوجو + اسم التطبيق |
-| ٢ | Register Screen | Email + Password + Confirm |
-| ٣ | Login Screen | Email + Password |
-| ٤ | Home Screen | قائمة الأجهزة الأونلاين على الـ LAN |
-| ٥ | Chat Screen | المحادثة مع جهاز معين |
-| ٦ | Outgoing Call Screen | شاشة "جاري الاتصال بـ..." |
-| ٧ | Incoming Call Screen | شاشة "فيه حد بيتصل بيك" |
-| ٨ | Active Voice Call | المكالمة الصوتية شغالة |
-| ٩ | Active Video Call | المكالمة بالفيديو شغالة |
-| ١٠ | Screen Share Screen | عرض الشاشة |
-| ١١ | Settings Screen | اسم الجهاز + logout |
+| # | Screen | Description |
+|---|--------|-------------|
+| 1 | **Splash Screen** | App initialization and permissions check. |
+| 2 | **Onboarding Screen** | First-run setup: Captures Display Name and generates UUID. |
+| 3 | **Home Screen (Discovery)** | Dynamic dashboard displaying all active peers on the LAN. |
+| 4 | **Chat Screen** | P2P text interface with SQLite history synchronization. |
+| 5 | **Outgoing Call Screen** | Connects to peer and awaits SDP Answer. |
+| 6 | **Incoming Call Screen** | Triggers upon UDP `call_invite`. Accepts/Declines calls. |
+| 7 | **Call Screen (Voice/Video)** | Unified media interface featuring responsive scaling, hardware acceleration, and seamless `facingMode` toggling. |
+| 8 | **Screen Share Overlay** | Floating PIP overlay managing cross-platform bidirectional screen casting. |
+| 9 | **Settings Screen** | Profile management and network diagnostics. |
 
 ---
 
-## 🔧 الفيتشرز — مرتبة حسب المراحل
+## 🎛️ Critical Architectural Behaviors
 
-### المرحلة ١ — الأساس
-- [ ] Splash Screen
-- [ ] Auth — Register / Login بـ Email
-- [ ] Device Discovery — مين فاتح البرنامج على نفس الـ LAN
-- [ ] Home Screen — قائمة الأجهزة
+### Device Discovery Engine
+- **Active State Required:** The app must be active (or running a valid Android foreground service) to broadcast presence.
+- **Subnet Bound:** Discovery operates strictly within the `255.255.255.0` (or local) subnet boundary. 
 
-### المرحلة ٢ — التواصل
-- [ ] Chat — رسائل نصية
-- [ ] Voice Call
-- [ ] Video Call
-- [ ] Incoming / Outgoing Call Screens
+### Call State Machine
+- **Glare Protection:** Simultaneous incoming/outgoing calls instantly trigger a gracefully handled `Call Rejected` loop.
+- **Declination Threshold:** 3 consecutive call rejections from a peer enforce an automatic "Busy" status block.
 
-### المرحلة ٣ — الميديا
-- [ ] File Sharing — أثناء المحادثة
-- [ ] Screen Share — bidirectional (لاب ← → موبايل)
-- [ ] حفظ الملفات الواردة على الجهاز
+### Active Media Constraints (WebRTC)
+- **Aggressive 60 FPS:** Forced via `getUserMedia` `frameRate: {'ideal': 60, 'max': 60}`.
+- **Bitrate Enforcement:** WebRTC `addTransceiver` locks limits between `1 Mbps` and `2.5 Mbps` to prevent quality degradation.
+- **Linux Fallbacks:** Screen sharing captures gracefully default to `{'video': true, 'audio': false}` if X11/Wayland lack loopback capabilities.
+- **UDP Healing:** 15-second timer invokes `_attemptReconnect` via UDP if the WebSocket signaling pipe shatters. Re-injects the existing `Session ID` to avoid Ghost Calls.
 
-### المرحلة ٤ — مستقبلاً
-- [ ] Friends System
-- [ ] Remote Control
-- [ ] Device Vibration
+### File Storage Policies
+- Android: `/storage/emulated/0/Wasla/`
+- Windows: `C:\Users\[User]\Documents\Wasla\`
+- Linux: `~/Wasla/`
 
 ---
 
-## 🎛️ تفاصيل تقنية مهمة
+## 🗂️ Unified Directory Structure
 
-### Device Discovery
-- البرنامج لازم يكون **فاتح** عشان الجهاز يظهر
-- بيظهر بس الأجهزة اللي على **نفس الـ LAN**
-- مش زي WhatsApp — مفيش "online" لو البرنامج مغلق
-
-### سلوك المكالمة
-- الطرف المتصل يشوف Incoming Call Screen
-- لو رفض ٣ مرات → رسالة "الجهاز مشغول"
-- المكالمة الحالية لازم تخلص الأول عشان تبدأ جديدة
-
-### أثناء المكالمة
-- ✅ Mute / Unmute ميكروفون
-- ✅ تشغيل / إيقاف كاميرا
-- ✅ بدء / إيقاف Screen Share
-- ✅ مشاركة صوت الجهاز مع Screen Share أو لأ (اختياري)
-- ✅ إرسال رسائل نصية
-- ✅ إرسال ملفات
-
-### حفظ الملفات
-```
-Android → /storage/emulated/0/LanConnect/
-Windows → C:\Users\[name]\Documents\LanConnect\
-Linux   → ~/LanConnect/
-```
-Packages: `path_provider` + `permission_handler`
-
-### الحد الأدنى للأنظمة
-| النظام | الحد الأدنى |
-|--------|------------|
-| Android | 5.0 (API 21) |
-| iOS | 12.0+ |
-| Linux | أي توزيعة عندها GTK 3.0+ |
-| Windows | Windows 10+ |
-
----
-
-## 🎨 التصميم — Google Stitch
-
-### ما هو Stitch؟
-- AI tool من Google Labs يحول text prompts أو wireframes لـ UI
-- مجاني: 350 Standard + 200 Pro generation في الشهر
-- بيتبع Material Design 3 — مثالي لـ Flutter
-- الرابط: https://stitch.withgoogle.com
-
-### ربط Stitch بـ Antigravity عبر MCP
-```
-١. افتح Antigravity
-٢. Settings → Extensions → ابحث عن "Stitch" → Install
-٣. افتح stitch.withgoogle.com
-٤. Profile → Stitch Settings → API Section → Create Key
-٥. انسخ الـ API Key في Antigravity
-٦. تحقق: اكتب في Antigravity: "List my Stitch projects"
-```
-
-### Prompt Template لكل شاشة
-```
-A mobile app [اسم الشاشة] for a LAN communication app 
-called "LanConnect". Dark theme, modern minimal design,
-Material Design 3 style. [وصف تفاصيل الشاشة]
+```text
+lib/
+├── core/
+│   ├── config/              ← Environment, ports, constants
+│   ├── theme/               ← System tokens, colors, typography
+│   ├── router/              ← go_router declarations
+│   └── utils/               ← Loggers, formatters
+└── features/
+    ├── onboarding/          ← Cryptographic identity generation
+    ├── discovery/           ← mDNS & UDP broadcast engines
+    ├── chat/                ← SQLite storage + Data Channels
+    ├── call/                ← Unified Media (Audio/Video/Signaling)
+    ├── file_sharing/        ← Chunked binary TCP/SCTP transfers
+    └── screen_share/        ← Native OS capture APIs
 ```
 
 ---
 
-## 🗂️ هيكل ملفات المشروع
+## 📋 Standardized Documentation Templates
 
-```
-lan_connect/
-│
-├── docs/
-│   ├── PRD.md
-│   ├── ARCHITECTURE.md
-│   └── features/
-│       ├── auth/
-│       │   ├── spec.md
-│       │   └── progress.md
-│       ├── device_discovery/
-│       │   ├── spec.md
-│       │   └── progress.md
-│       ├── chat/
-│       │   ├── spec.md
-│       │   └── progress.md
-│       ├── voice_call/
-│       │   ├── spec.md
-│       │   └── progress.md
-│       ├── video_call/
-│       │   ├── spec.md
-│       │   └── progress.md
-│       ├── file_sharing/
-│       │   ├── spec.md
-│       │   └── progress.md
-│       └── screen_share/
-│           ├── spec.md
-│           └── progress.md
-│
-├── design/
-│   ├── design_reference.md      ← الألوان + الخطوط + الـ vibe
-│   ├── inspiration/             ← screenshots من Stitch
-│   └── theme/                   ← output من Material Theme Builder
-│
-├── lib/
-│   ├── core/
-│   │   ├── config/              ← supabase, env
-│   │   ├── theme/               ← colors, text styles
-│   │   ├── router/              ← navigation
-│   │   └── utils/
-│   └── features/
-│       ├── auth/
-│       │   ├── data/
-│       │   ├── domain/
-│       │   └── presentation/
-│       ├── discovery/
-│       ├── chat/
-│       ├── voice_call/
-│       ├── video_call/
-│       ├── file_sharing/
-│       └── screen_share/
-│
-├── .env                         ← Supabase keys (مش في GitHub)
-├── .gitignore
-└── README.md
-```
-
----
-
-## 📋 Template — spec.md
-
+### `spec.md` (Feature Specification)
 ```markdown
-# Feature: [اسم الفيتشر]
+# Feature: [Feature Name]
 
-## الهدف
-[وصف قصير]
+## Objective
+[Brief architectural goal]
 
-## User Stories
-- [ ] كـ مستخدم، عايز أـ...
+## Technical Specifications
+- Transport: [WebRTC / UDP / TCP]
+- Storage: [Drift / Secure Storage]
 
-## Screens
-- [اسم الشاشة]
+## State Machine / Flow
+1. ...
+2. ...
 
-## Supabase Tables / Channels
-- table: ``
-- channel: `` (Realtime)
-
-## الملفات اللي هتتعمل
-- lib/features/[feature]/
-  - data/
-  - domain/
-  - presentation/
-
-## اختبارات القبول
+## Acceptance Criteria
 - [ ] ...
 ```
 
----
-
-## 📋 Template — progress.md
-
+### `progress.md` (Feature Tracking)
 ```markdown
-# Progress: [اسم الفيتشر]
+# Progress: [Feature Name]
 
-## Status: 🔴 Not Started
+## Status: 🟢 Implemented
 
-## Changelog
-| Date | What | Who | Status |
-|------|------|-----|--------|
-| -    | -    | -   | -      |
+## Subsystems
+- [x] Logic layer
+- [x] UI/UX
+- [x] Hardware Fallbacks
 
-## Issues
-- لا يوجد
-
-## Testing Results
-- [ ] Windows → Android:
-- [ ] Android → Windows:
-- [ ] Android → Android:
-- [ ] Linux → Android:
+## Known Issues / Technical Debt
+- None
 ```
-
----
-
-## 🗺️ الـ Workflow الكامل
-
-```
-PHASE 0 — التصميم ✅ ← أنت هنا
-│
-├── ١. 🟡 افتح Stitch → اعمل prompt للـ ١١ شاشة
-├── ٢. ⬜ راجع التصاميم وعدّل بالـ chat
-└── ٣. ⬜ اعمل design_reference.md (ألوان + خطوط + vibe)
-
-PHASE 1 — الإعداد التقني
-│
-├── ٤. ⬜ افتح Antigravity → ربط Stitch بالـ MCP
-├── ٥. ⬜ اكتب ملفات الـ docs (PRD + ARCHITECTURE + specs)
-├── ٦. ⬜ flutter create lan_connect في Antigravity
-├── ٧. ⬜ GitHub repo + .gitignore + README
-├── ٨. ⬜ Supabase project → Tables + Auth setup
-└── ٩. ⬜ .env + ربط Supabase بالمشروع
-
-PHASE 2 — التنفيذ (فيتشر فيتشر)
-│
-├── لكل فيتشر:
-│   ├── ⬜ Antigravity يقرأ spec.md
-│   ├── ⬜ يجيب التصميم من Stitch بالـ MCP
-│   ├── ⬜ يكتب الكود
-│   ├── ⬜ اختبار على الأجهزة
-│   ├── ⬜ تحديث progress.md
-│   └── ⬜ git commit
-
-PHASE 3 — الرفع والنشر
-│
-├── ⬜ GitHub Actions → builds لكل platform
-│   ├── Windows .exe
-│   ├── Linux .deb / .AppImage
-│   └── Android .apk
-├── ⬜ README كامل مع screenshots
-└── ⬜ LinkedIn post
-```
-
----
-
-## ⏭️ الخطوة الحالية
-
-### 🟡 Phase 0 — الخطوة ١: التصميم في Google Stitch
-
-**المطلوب منك دلوقتي:**
-
-١. افتح https://stitch.withgoogle.com
-٢. اعمل **New Project** واسمه `LanConnect`
-٣. اعمل prompt لكل شاشة من الـ ١١ دول واحدة واحدة
-
-**مثال على الـ Splash Screen:**
-```
-A mobile app splash screen for a LAN communication app 
-called "LanConnect". Dark theme, modern minimal design, 
-logo with a network/connection symbol, app name centered.
-Material Design 3 style. Purple or deep blue accent color.
-```
-
-**بعد ما تخلص الـ ١١ شاشة:**
-- خد screenshot لكل شاشة
-- لاحظ الألوان اللي Stitch اختارها
-- ارجع وقولي وهنعمل الـ `design_reference.md` سوا
-
----
-
-## ❓ قرارات لسا معلقة
-
-| القرار | الخيارات | الاختيار |
-|--------|----------|----------|
-| Auth type | Email فقط / + Google Sign-in مستقبلاً | Email أولاً ✅ |
-| Friends system | كل المسجلين / Friends فقط | مستقبلاً ⏳ |
-| Chat offline | يتحفظ في Supabase / محلي بس | Supabase ✅ |
-| Notifications background | Background service / مش مطلوب دلوقتي | مستقبلاً ⏳ |
-
----
-
-## 📎 روابط مهمة
-
-| الأداة | الرابط |
-|--------|--------|
-| Google Stitch | https://stitch.withgoogle.com |
-| Supabase | https://supabase.com |
-| Flutter Docs | https://flutter.dev/docs |
-| flutter_webrtc | https://pub.dev/packages/flutter_webrtc |
-| Material Theme Builder | https://m3.material.io/theme-builder |
-
----
-
-*الملف ده هو المرجع الرئيسي للمشروع — حدّثه مع كل خطوة.*
