@@ -19,7 +19,7 @@
 
 ## Testing Results
 
-- [] Windows → Android
-- [] Android → Windows
+- [x] Windows → Android
+- [x] Android → Windows
 - [x] Android → Android
 - [x] Linux → Android

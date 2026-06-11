@@ -186,6 +186,8 @@ class CallNotifier extends AsyncNotifier<CallSession> {
   void toggleSpeaker() => _manager?.toggleSpeaker();
 
   Future<void> toggleVideo() async => await _manager?.toggleVideo();
+  Future<void> toggleScreenShare({bool withAudio = false}) async =>
+      await _manager?.toggleScreenShare(withAudio: withAudio);
   Future<void> switchCamera() async => await _manager?.switchCamera();
 
   RTCVideoRenderer? get localRenderer => _manager?.localRenderer;

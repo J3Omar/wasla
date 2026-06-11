@@ -18,6 +18,7 @@ class CallSession {
     this.declineCount = 0,
     this.isLocalVideoOn = false,
     this.isRemoteVideoOn = false,
+    this.isScreenSharing = false,
     this.isFrontCamera = true,
   });
 
@@ -31,6 +32,7 @@ class CallSession {
   final bool isSpeakerOn;
   final bool isLocalVideoOn;
   final bool isRemoteVideoOn;
+  final bool isScreenSharing;
   final bool isFrontCamera;
 
   /// How many times the remote peer has declined (3 → busy message).
@@ -54,6 +56,7 @@ class CallSession {
     bool? isSpeakerOn,
     bool? isLocalVideoOn,
     bool? isRemoteVideoOn,
+    bool? isScreenSharing,
     bool? isFrontCamera,
     int? declineCount,
   }) {
@@ -68,6 +71,7 @@ class CallSession {
       isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
       isLocalVideoOn: isLocalVideoOn ?? this.isLocalVideoOn,
       isRemoteVideoOn: isRemoteVideoOn ?? this.isRemoteVideoOn,
+      isScreenSharing: isScreenSharing ?? this.isScreenSharing,
       isFrontCamera: isFrontCamera ?? this.isFrontCamera,
       declineCount: declineCount ?? this.declineCount,
     );

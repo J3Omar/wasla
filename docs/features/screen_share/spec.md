@@ -27,27 +27,18 @@ Add a Screen Track to the WebRTC connection — bidirectional between all platfo
 
 ## 🔧 Coding Checklist
 
-### Step 1 — Data: Screen Capture Service
-- [ ] Create `lib/features/screen_share/data/screen_capture_service.dart`
-  - `startScreenShare()`:
-    ```dart
-    final stream = await navigator.mediaDevices.getDisplayMedia({
-      'video': {'cursor': 'always'},
-      'audio': false,  // optional
-    });
-    ```
-  - Add stream as a second Video Track to the WebRTC connection
-  - `stopScreenShare()` — remove the track
+### Step 1 — Core Logic (call_manager.dart)
+- [x] Create `toggleScreenShare()` in `call_manager.dart`
+  - Use `navigator.mediaDevices.getDisplayMedia` with ideal `1280x720` at `60fps`.
+  - Use `sender.replaceTrack()` to seamlessly swap the Camera track for the Screen track. Do NOT add a second video track (prevents WebRTC Glare/renegotiation storms).
+  - Handle OS-level stop button (e.g., Android floating bar) via track `onEnded` listener.
 
-### Step 2 — Domain: Screen Share State
-- [ ] Create `lib/features/screen_share/domain/screen_share_state.dart`
-  ```dart
-  enum ScreenShareState { inactive, sharing, viewing }
-  ```
+### Step 2 — Domain (call_state.dart)
+- [x] Add `isScreenSharing` to `CallSession` state.
 
-### Step 3 — Presentation
-- [ ] Update `call_controls_bar.dart` — activate Screen Share button
-- [ ] When remote peer shares: display their stream in the Video View
+### Step 3 — Presentation & OS Permissions
+- [ ] Update `AndroidManifest.xml` to include `mediaProjection` foreground service type for Android 14+.
+- [ ] Update `call_controls_bar.dart` — activate Screen Share button.
 - [ ] Overlay indicator: "You are sharing your screen"
 
 ---

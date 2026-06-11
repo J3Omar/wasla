@@ -42,6 +42,7 @@ class CallManager {
   MediaStream? _localStream;
 
   MediaStream? _localVideoStream;
+  MediaStream? _screenStream;
   RTCVideoRenderer? _localRenderer;
   RTCVideoRenderer? _remoteRenderer;
   bool _isVideoOn = false;
@@ -74,6 +75,8 @@ class CallManager {
   bool _isInitiator = false;
   bool _isReconnecting = false;
   bool _isDisposing = false;
+  Timer? _iceDisconnectTimer;
+  Timer? _iceEndCallTimer;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -342,6 +345,84 @@ class CallManager {
     }
   }
 
+  Future<void> toggleScreenShare({bool withAudio = false}) async {
+    if (_session.isScreenSharing) {
+      // STOP SCREEN SHARE: Revert to Camera
+      _screenStream?.getTracks().forEach((t) => t.stop());
+      _screenStream = null;
+
+      _session = _session.copyWith(isScreenSharing: false);
+      onStateChanged(_session);
+
+      // If camera was originally on, replace track back to camera
+      if (_session.isLocalVideoOn && _localVideoStream != null && _pc != null) {
+        final track = _localVideoStream!.getVideoTracks().first;
+        final senders = await _pc!.getSenders();
+        for (var sender in senders) {
+          if (sender.track?.kind == 'video') {
+            await sender.replaceTrack(track);
+            _localRenderer?.srcObject = _localVideoStream;
+            break;
+          }
+        }
+      } else {
+        // If camera was off, just remove the video track entirely
+        await toggleVideo(); // This will handle cleanup
+      }
+    } else {
+      // START SCREEN SHARE
+      try {
+        _screenStream = await navigator.mediaDevices.getDisplayMedia({
+          'video': {
+            'width': {'ideal': 1280},
+            'height': {'ideal': 720},
+            'frameRate': {'ideal': 60, 'max': 60},
+            'cursor': 'always',
+          },
+          'audio': withAudio, // Request system audio if OS allows
+        });
+
+        // Listen for OS-level stop button (e.g., Android floating bar)
+        _screenStream!.getVideoTracks().first.onEnded = () {
+          debugPrint('[CallManager] OS-level screen share stop detected.');
+          toggleScreenShare(); // Trigger local cleanup
+        };
+
+        final screenTrack = _screenStream!.getVideoTracks().first;
+
+        if (_pc != null) {
+          final senders = await _pc!.getSenders();
+          bool trackReplaced = false;
+          for (var sender in senders) {
+            if (sender.track?.kind == 'video') {
+              // Replace existing camera track with screen track
+              await sender.replaceTrack(screenTrack);
+              trackReplaced = true;
+              break;
+            }
+          }
+          if (!trackReplaced) {
+            // If no video track existed (Audio-only call), add it.
+            await _pc!.addTrack(screenTrack, _screenStream!);
+            // Note: This specific path will require renegotiation handled by onRenegotiationNeeded
+          }
+        }
+
+        // Preview local screen
+        _localRenderer?.srcObject = _screenStream;
+        _session = _session.copyWith(isScreenSharing: true);
+
+        // Ensure regular video flag is considered off
+        if (_session.isLocalVideoOn) {
+          _session = _session.copyWith(isLocalVideoOn: false);
+        }
+        onStateChanged(_session);
+      } catch (e) {
+        debugPrint('[CallManager] Screen share failed or denied: $e');
+      }
+    }
+  }
+
   Future<void> endCall() async {
     final wasActive = _session.state == CallState.active;
     // If still ringing (WS not yet established), notify via UDP cancel packet
@@ -518,9 +599,34 @@ class CallManager {
     // Fix 2C — debug logging so we can track exactly which state it stalls at
     pc.onIceConnectionState = (state) {
       debugPrint('[Call] ICE connection state: $state');
-      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
-          state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        // Recovered! Cancel timers and stop reconnect sound.
+        _iceDisconnectTimer?.cancel();
+        _iceEndCallTimer?.cancel();
+        CallAudioService.instance.stopReconnecting();
+      } else if (state ==
+          RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
+        // Give it 5 seconds to recover silently...
+        _iceDisconnectTimer?.cancel();
+        _iceDisconnectTimer = Timer(const Duration(seconds: 5), () {
+          debugPrint(
+            '[CallManager] Connection weak. Playing reconnecting sound...',
+          );
+          CallAudioService.instance.playReconnecting();
+
+          // If 15 more seconds pass (20s total), kill it.
+          _iceEndCallTimer?.cancel();
+          _iceEndCallTimer = Timer(const Duration(seconds: 15), () {
+            debugPrint('[CallManager] ICE Recovery Failed. Ending call.');
+            endCall();
+          });
+        });
+      } else if (state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
           state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+        _iceDisconnectTimer?.cancel();
+        _iceEndCallTimer?.cancel();
         endCall();
       }
     };
@@ -944,6 +1050,10 @@ class CallManager {
     _maxDurationTimer = null;
     _isReconnecting = false;
     CallAudioService.instance.stopReconnecting();
+
+    // Give the end-call sound 1 second to play before destroying the WebRTC streams
+    await Future.delayed(const Duration(seconds: 1));
+
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();

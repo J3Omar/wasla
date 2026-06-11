@@ -26,6 +26,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   bool _wasSpeakerOnBeforeVideo = false;
   bool _showControls = true;
   bool _isVideoToggling = false;
+  bool _isScreenShareToggling = false;
   Timer? _controlsTimer;
 
   @override
@@ -85,6 +86,61 @@ class _CallScreenState extends ConsumerState<CallScreen> {
       }
     } finally {
       if (mounted) setState(() => _isVideoToggling = false);
+    }
+  }
+
+  Future<void> _onToggleScreenShare(CallSession state) async {
+    if (_isScreenShareToggling) return;
+
+    if (!state.isScreenSharing) {
+      final isCamOn = state.isLocalVideoOn;
+      final result = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.bgSecondary,
+          title: Text('Share Screen', style: AppTypography.heading3),
+          content: Text(
+            isCamOn 
+              ? 'Sharing your screen will replace your camera feed.\n\nDo you want to include device audio?' 
+              : 'Do you want to include device audio?',
+            style: AppTypography.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'cancel'),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'no_audio'),
+              child: const Text('No Audio', style: TextStyle(color: AppColors.primaryPurple)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'with_audio'),
+              child: const Text('With Audio', style: TextStyle(color: AppColors.statusOnline)),
+            ),
+          ],
+        ),
+      );
+
+      if (result == null || result == 'cancel') return;
+
+      setState(() => _isScreenShareToggling = true);
+      try {
+        final notifier = ref.read(callProvider.notifier);
+        await notifier.toggleScreenShare(withAudio: result == 'with_audio');
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Screen share failed')));
+      } finally {
+        if (mounted) setState(() => _isScreenShareToggling = false);
+      }
+    } else {
+      // If already sharing, just toggle it off directly without asking
+      setState(() => _isScreenShareToggling = true);
+      try {
+        await ref.read(callProvider.notifier).toggleScreenShare();
+      } finally {
+        if (mounted) setState(() => _isScreenShareToggling = false);
+      }
     }
   }
 
@@ -309,16 +365,21 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           isMuted: callState.isMuted,
                           isSpeakerOn: callState.isSpeakerOn,
                           isLocalVideoOn: callState.isLocalVideoOn,
+                          isScreenSharing: callState.isScreenSharing,
                           isVideoToggling: _isVideoToggling,
+                          isScreenShareToggling: _isScreenShareToggling,
                           hasMultipleCameras: _hasMultipleCameras,
                           showSpeakerToggle:
                               (Platform.isAndroid || Platform.isIOS) &&
-                              !callState.isLocalVideoOn,
+                              !callState.isLocalVideoOn &&
+                              !callState.isScreenSharing,
                           onMute: () =>
                               ref.read(callProvider.notifier).toggleMute(),
                           onSpeaker: () =>
                               ref.read(callProvider.notifier).toggleSpeaker(),
                           onToggleVideo: () => _onToggleVideo(callState),
+                          onToggleScreenShare: () =>
+                              _onToggleScreenShare(callState),
                           onSwitchCamera: () =>
                               ref.read(callProvider.notifier).switchCamera(),
                           onEnd: () {
@@ -364,12 +425,15 @@ class _ControlsPill extends StatelessWidget {
     required this.isMuted,
     required this.isSpeakerOn,
     required this.isLocalVideoOn,
+    required this.isScreenSharing,
     required this.isVideoToggling,
+    required this.isScreenShareToggling,
     required this.hasMultipleCameras,
     required this.showSpeakerToggle,
     required this.onMute,
     required this.onSpeaker,
     required this.onToggleVideo,
+    required this.onToggleScreenShare,
     required this.onSwitchCamera,
     required this.onEnd,
   });
@@ -377,7 +441,9 @@ class _ControlsPill extends StatelessWidget {
   final bool isMuted;
   final bool isSpeakerOn;
   final bool isLocalVideoOn;
+  final bool isScreenSharing;
   final bool isVideoToggling;
+  final bool isScreenShareToggling;
   final bool hasMultipleCameras;
 
   /// Show speaker/earpiece toggle — true on Android/iOS only.
@@ -385,6 +451,7 @@ class _ControlsPill extends StatelessWidget {
   final VoidCallback onMute;
   final VoidCallback onSpeaker;
   final VoidCallback onToggleVideo;
+  final VoidCallback onToggleScreenShare;
   final VoidCallback onSwitchCamera;
   final VoidCallback onEnd;
 
@@ -429,6 +496,19 @@ class _ControlsPill extends StatelessWidget {
                 ? AppColors.primaryCyan
                 : AppColors.textSecondary,
             onTap: isVideoToggling ? () {} : onToggleVideo,
+          ),
+          // Screen Share toggle
+          _PillButton(
+            icon: isScreenSharing
+                ? Icons.stop_screen_share_rounded
+                : Icons.present_to_all_rounded,
+            label: isScreenShareToggling ? 'Wait...' : 'Screen',
+            color: isScreenShareToggling
+                ? AppColors.textMuted
+                : isScreenSharing
+                ? AppColors.primaryCyan
+                : AppColors.textSecondary,
+            onTap: isScreenShareToggling ? () {} : onToggleScreenShare,
           ),
           // Switch camera — ONLY shown if video is on and 2+ cameras exist
           if (isLocalVideoOn && hasMultipleCameras)

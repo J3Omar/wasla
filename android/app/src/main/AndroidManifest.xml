@@ -76,7 +76,7 @@
             android:name="de.julianassmann.flutter_background.IsolateHolderService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|microphone|mediaPlayback" />
+            android:foregroundServiceType="dataSync|microphone|mediaPlayback|mediaProjection" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

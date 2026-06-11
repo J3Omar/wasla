@@ -1,6 +1,6 @@
 # Progress: Screen Share
 
-## Status: 🔴 Not Started
+## Status: 🟡 In Progress
 
 ---
 
@@ -8,7 +8,8 @@
 
 | Date | What | Status |
 |------|------|--------|
-| -    | -    | -      |
+| 2026-06-11 | WebRTC `replaceTrack` implementation, Session State | ✅ Done |
+| 2026-06-11 | Android 14 permissions & UI Integration | 🔴 Not Started |
 
 ---
 
