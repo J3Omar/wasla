@@ -45,7 +45,7 @@ jobs:
       - name: Install Linux Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libsecret-1-dev pkg-config ninja-build dpkg-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+          sudo apt-get install -y libgtk-3-dev libsecret-1-dev pkg-config ninja-build dpkg-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-pipewire
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -93,7 +93,7 @@ jobs:
           echo "Version: 1.0.0" >> "$STAGE_DIR/DEBIAN/control"
           echo "Architecture: amd64" >> "$STAGE_DIR/DEBIAN/control"
           echo "Maintainer: Wasla App <wasla@local>" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0, libgstreamer1.0-0, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, libgstreamer-plugins-base1.0-0" >> "$STAGE_DIR/DEBIAN/control"
+          echo "Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0, libgstreamer1.0-0, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire" >> "$STAGE_DIR/DEBIAN/control"
           echo "Section: net" >> "$STAGE_DIR/DEBIAN/control"
           echo "Priority: standard" >> "$STAGE_DIR/DEBIAN/control"
           echo "Description: Local P2P Communication Application." >> "$STAGE_DIR/DEBIAN/control"

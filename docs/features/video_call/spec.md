@@ -37,10 +37,6 @@ Add a Video Track to the existing WebRTC connection — no new signaling needed.
   - Small corner `RTCVideoView` (local preview) via PiP Stack
   - Same Controls Pill from Voice Call, updated with Camera toggle
 
-### Step 3 — Multi-Party Video (optional initially)
-- [ ] Create `lib/features/call/presentation/video_grid.dart`
-  - Layout adapts: 1x1 / 2x1 / 2x2 based on participant count
-
 ---
 
 ## 🧪 Acceptance Criteria

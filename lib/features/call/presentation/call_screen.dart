@@ -100,23 +100,32 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           backgroundColor: AppColors.bgSecondary,
           title: Text('Share Screen', style: AppTypography.heading3),
           content: Text(
-            isCamOn 
-              ? 'Sharing your screen will replace your camera feed.\n\nDo you want to include device audio?' 
-              : 'Do you want to include device audio?',
+            isCamOn
+                ? 'Sharing your screen will replace your camera feed.\n\nDo you want to include device audio?'
+                : 'Do you want to include device audio?',
             style: AppTypography.bodyMedium,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, 'cancel'),
-              child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, 'no_audio'),
-              child: const Text('No Audio', style: TextStyle(color: AppColors.primaryPurple)),
+              child: const Text(
+                'No Audio',
+                style: TextStyle(color: AppColors.primaryPurple),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, 'with_audio'),
-              child: const Text('With Audio', style: TextStyle(color: AppColors.statusOnline)),
+              child: const Text(
+                'With Audio',
+                style: TextStyle(color: AppColors.statusOnline),
+              ),
             ),
           ],
         ),
@@ -129,7 +138,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         final notifier = ref.read(callProvider.notifier);
         await notifier.toggleScreenShare(withAudio: result == 'with_audio');
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Screen share failed')));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Screen share failed')));
+        }
       } finally {
         if (mounted) setState(() => _isScreenShareToggling = false);
       }
@@ -458,8 +471,8 @@ class _ControlsPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 32),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         color: AppColors.bgSecondary.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(40),
@@ -474,80 +487,84 @@ class _ControlsPill extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Mute toggle — always shown
-          _PillButton(
-            icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-            label: isMuted ? 'Unmute' : 'Mute',
-            color: isMuted ? Colors.redAccent : AppColors.textSecondary,
-            onTap: onMute,
-          ),
-          // Camera toggle
-          _PillButton(
-            icon: isLocalVideoOn
-                ? Icons.videocam_rounded
-                : Icons.videocam_off_rounded,
-            label: isVideoToggling ? 'Wait...' : 'Camera',
-            color: isVideoToggling
-                ? AppColors.textMuted
-                : isLocalVideoOn
-                ? AppColors.primaryCyan
-                : AppColors.textSecondary,
-            onTap: isVideoToggling ? () {} : onToggleVideo,
-          ),
-          // Screen Share toggle
-          _PillButton(
-            icon: isScreenSharing
-                ? Icons.stop_screen_share_rounded
-                : Icons.present_to_all_rounded,
-            label: isScreenShareToggling ? 'Wait...' : 'Screen',
-            color: isScreenShareToggling
-                ? AppColors.textMuted
-                : isScreenSharing
-                ? AppColors.primaryCyan
-                : AppColors.textSecondary,
-            onTap: isScreenShareToggling ? () {} : onToggleScreenShare,
-          ),
-          // Switch camera — ONLY shown if video is on and 2+ cameras exist
-          if (isLocalVideoOn && hasMultipleCameras)
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // Mute toggle — always shown
             _PillButton(
-              icon: Icons.flip_camera_ios_rounded,
-              label: 'Flip',
-              color: AppColors.textSecondary,
-              onTap: onSwitchCamera,
+              icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              label: isMuted ? 'Unmute' : 'Mute',
+              color: isMuted ? Colors.redAccent : AppColors.textSecondary,
+              onTap: onMute,
             ),
-          // Speaker / Earpiece — mobile only
-          if (showSpeakerToggle)
+            // Camera toggle
             _PillButton(
-              icon: isSpeakerOn
-                  ? Icons.volume_up_rounded
-                  : Icons.hearing_rounded,
-              label: isSpeakerOn ? 'Speaker' : 'Earpiece',
-              color: isSpeakerOn
+              icon: isLocalVideoOn
+                  ? Icons.videocam_rounded
+                  : Icons.videocam_off_rounded,
+              label: isVideoToggling ? 'Wait...' : 'Camera',
+              color: isVideoToggling
+                  ? AppColors.textMuted
+                  : isLocalVideoOn
                   ? AppColors.primaryCyan
                   : AppColors.textSecondary,
-              onTap: onSpeaker,
+              onTap: isVideoToggling ? () {} : onToggleVideo,
             ),
-          // End call — always shown
-          GestureDetector(
-            onTap: onEnd,
-            child: Container(
-              width: 60,
-              height: 60,
-              decoration: const BoxDecoration(
-                color: Colors.redAccent,
-                shape: BoxShape.circle,
+            // Screen Share toggle
+            _PillButton(
+              icon: isScreenSharing
+                  ? Icons.stop_screen_share_rounded
+                  : Icons.present_to_all_rounded,
+              label: isScreenShareToggling ? 'Wait...' : 'Screen',
+              color: isScreenShareToggling
+                  ? AppColors.textMuted
+                  : isScreenSharing
+                  ? AppColors.primaryCyan
+                  : AppColors.textSecondary,
+              onTap: isScreenShareToggling ? () {} : onToggleScreenShare,
+            ),
+            // Switch camera — ONLY shown if video is on and 2+ cameras exist
+            if (isLocalVideoOn && hasMultipleCameras)
+              _PillButton(
+                icon: Icons.flip_camera_ios_rounded,
+                label: 'Flip',
+                color: AppColors.textSecondary,
+                onTap: onSwitchCamera,
               ),
-              child: const Icon(
-                Icons.call_end_rounded,
-                color: Colors.white,
-                size: 26,
+            // Speaker / Earpiece — mobile only
+            if (showSpeakerToggle)
+              _PillButton(
+                icon: isSpeakerOn
+                    ? Icons.volume_up_rounded
+                    : Icons.hearing_rounded,
+                label: isSpeakerOn ? 'Speaker' : 'Earpiece',
+                color: isSpeakerOn
+                    ? AppColors.primaryCyan
+                    : AppColors.textSecondary,
+                onTap: onSpeaker,
+              ),
+            // End call — always shown
+            GestureDetector(
+              onTap: onEnd,
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: const BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.call_end_rounded,
+                  color: Colors.white,
+                  size: 26,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

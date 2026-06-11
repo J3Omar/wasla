@@ -347,40 +347,57 @@ class CallManager {
 
   Future<void> toggleScreenShare({bool withAudio = false}) async {
     if (_session.isScreenSharing) {
-      // STOP SCREEN SHARE: Revert to Camera
+      // STOP SCREEN SHARE: Revert to Audio-Only Call
       _screenStream?.getTracks().forEach((t) => t.stop());
       _screenStream = null;
+      _localRenderer?.srcObject = null;
 
-      _session = _session.copyWith(isScreenSharing: false);
+      _session = _session.copyWith(
+        isScreenSharing: false,
+        isLocalVideoOn: false,
+      );
       onStateChanged(_session);
 
-      // If camera was originally on, replace track back to camera
-      if (_session.isLocalVideoOn && _localVideoStream != null && _pc != null) {
-        final track = _localVideoStream!.getVideoTracks().first;
+      if (_pc != null) {
         final senders = await _pc!.getSenders();
         for (var sender in senders) {
           if (sender.track?.kind == 'video') {
-            await sender.replaceTrack(track);
-            _localRenderer?.srcObject = _localVideoStream;
+            await _pc!.removeTrack(sender); // Fully remove video track
             break;
           }
         }
-      } else {
-        // If camera was off, just remove the video track entirely
-        await toggleVideo(); // This will handle cleanup
       }
     } else {
       // START SCREEN SHARE
       try {
-        _screenStream = await navigator.mediaDevices.getDisplayMedia({
-          'video': {
-            'width': {'ideal': 1280},
-            'height': {'ideal': 720},
-            'frameRate': {'ideal': 60, 'max': 60},
-            'cursor': 'always',
-          },
-          'audio': withAudio, // Request system audio if OS allows
-        });
+        try {
+          _screenStream = await navigator.mediaDevices.getDisplayMedia({
+            'video': {
+              'width': {'ideal': 1280},
+              'height': {'ideal': 720},
+              'frameRate': {'ideal': 60, 'max': 60},
+              'cursor': 'always',
+            },
+            'audio': withAudio,
+          });
+        } catch (e) {
+          if (withAudio) {
+            debugPrint(
+              '[CallManager] getDisplayMedia failed with audio. Retrying without audio...',
+            );
+            _screenStream = await navigator.mediaDevices.getDisplayMedia({
+              'video': {
+                'width': {'ideal': 1280},
+                'height': {'ideal': 720},
+                'frameRate': {'ideal': 60, 'max': 60},
+                'cursor': 'always',
+              },
+              'audio': false, // Fallback for Linux/Systems without loopback
+            });
+          } else {
+            rethrow; // Re-throw if it failed even without audio
+          }
+        }
 
         // Listen for OS-level stop button (e.g., Android floating bar)
         _screenStream!.getVideoTracks().first.onEnded = () {
