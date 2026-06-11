@@ -155,6 +155,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
     await _manager!.acceptCall(
       callerIp: callerIp,
       signalingPort: signalingPort,
+      callerId: callerId,
+      callerName: callerName,
+      sessionId: state.valueOrNull?.sessionId ?? '',
       isVideo: isVideo,
     );
   }
@@ -228,6 +231,7 @@ class CallNotifier extends AsyncNotifier<CallSession> {
             final callerIp = dg.address.address;
             final signalingPort = json['signalingPort'] as int;
             final isVideo = json['isVideo'] as bool? ?? false;
+            final incomingSessionId = json['sessionId'] as String? ?? '';
 
             final currentState = state.valueOrNull?.state ?? CallState.idle;
             final currentPeerId = state.valueOrNull?.peerId;
@@ -293,7 +297,9 @@ class CallNotifier extends AsyncNotifier<CallSession> {
                 peerId: peerId,
                 peerName: peerName,
                 peerIp: callerIp,
+                isLocalVideoOn: isVideo,
                 isRemoteVideoOn: isVideo,
+                sessionId: incomingSessionId,
               ),
             );
 

@@ -11,6 +11,7 @@ class CallSession {
     required this.peerId,
     required this.peerName,
     required this.peerIp,
+    this.sessionId = '',
     this.startedAt,
     this.endReason,
     this.isMuted = false,
@@ -26,6 +27,7 @@ class CallSession {
   final String peerId;
   final String peerName;
   final String peerIp;
+  final String sessionId;
   final DateTime? startedAt;
   final CallEndReason? endReason;
   final bool isMuted;
@@ -43,6 +45,7 @@ class CallSession {
     peerId: '',
     peerName: '',
     peerIp: '',
+    sessionId: '',
   );
 
   CallSession copyWith({
@@ -50,6 +53,7 @@ class CallSession {
     String? peerId,
     String? peerName,
     String? peerIp,
+    String? sessionId,
     DateTime? startedAt,
     CallEndReason? endReason,
     bool? isMuted,
@@ -65,6 +69,7 @@ class CallSession {
       peerId: peerId ?? this.peerId,
       peerName: peerName ?? this.peerName,
       peerIp: peerIp ?? this.peerIp,
+      sessionId: sessionId ?? this.sessionId,
       startedAt: startedAt ?? this.startedAt,
       endReason: endReason ?? this.endReason,
       isMuted: isMuted ?? this.isMuted,

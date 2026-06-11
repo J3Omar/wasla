@@ -119,6 +119,7 @@ class CallManager {
       peerIp: peerIp,
       isSpeakerOn: isVideo,
       isLocalVideoOn: isVideo,
+      sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
     );
     onStateChanged(_session);
 
@@ -203,10 +204,21 @@ class CallManager {
   Future<void> acceptCall({
     required String callerIp,
     required int signalingPort,
+    required String callerId,
+    required String callerName,
+    required String sessionId,
     bool isVideo = false,
   }) async {
     debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
-    _session = _session.copyWith(state: CallState.connecting);
+    _session = CallSession(
+      state: CallState.connecting,
+      peerId: callerId,
+      peerName: callerName,
+      peerIp: callerIp,
+      isSpeakerOn: isVideo,
+      isRemoteVideoOn: isVideo,
+      sessionId: sessionId,
+    );
     onStateChanged(_session);
 
     if (isVideo && (Platform.isAndroid || Platform.isIOS)) {
@@ -1021,9 +1033,9 @@ class CallManager {
           'fromName': selfName,
           'signalingPort': signalingPort,
           // callerIp lets the callee use the correct interface IP explicitly;
-          // falls back to UDP source address if missing
           'callerIp': localIp,
           'isVideo': _session.isLocalVideoOn,
+          'sessionId': _session.sessionId,
         }),
       );
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
