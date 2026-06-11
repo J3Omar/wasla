@@ -470,12 +470,14 @@ class _ControlsPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 600;
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      margin: EdgeInsets.symmetric(horizontal: isDesktop ? 100 : 12),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16, vertical: isDesktop ? 24 : 16),
       decoration: BoxDecoration(
         color: AppColors.bgSecondary.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(40),
+        borderRadius: BorderRadius.circular(isDesktop ? 60 : 40),
         border: Border.all(
           color: AppColors.borderDefault.withValues(alpha: 0.6),
         ),
@@ -584,14 +586,16 @@ class _PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 600;
+
     return GestureDetector(
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: isDesktop ? 64 : 52,
+            height: isDesktop ? 64 : 52,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.15),
               shape: BoxShape.circle,

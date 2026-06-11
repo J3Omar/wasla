@@ -315,7 +315,10 @@ class CallManager {
         );
       }
       _isVideoOn = true;
-      _session = _session.copyWith(isLocalVideoOn: true);
+      if (Platform.isAndroid || Platform.isIOS) {
+        Helper.setSpeakerphoneOn(true);
+      }
+      _session = _session.copyWith(isLocalVideoOn: true, isSpeakerOn: true);
     } else {
       final track = _localVideoStream?.getVideoTracks().first;
       if (track != null && _pc != null) {
@@ -361,9 +364,9 @@ class CallManager {
       if (_pc != null) {
         final senders = await _pc!.getSenders();
         for (var sender in senders) {
-          if (sender.track?.kind == 'video') {
-            await _pc!.removeTrack(sender); // Fully remove video track
-            break;
+          // Remove both the screen video track AND the screen audio track
+          if (sender.track?.kind == 'video' || (sender.track?.kind == 'audio' && sender.track?.id != _localStream?.getAudioTracks().first.id)) {
+            await _pc!.removeTrack(sender);
           }
         }
       }
@@ -386,12 +389,7 @@ class CallManager {
               '[CallManager] getDisplayMedia failed with audio. Retrying without audio...',
             );
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
-              'video': {
-                'width': {'ideal': 1280},
-                'height': {'ideal': 720},
-                'frameRate': {'ideal': 60, 'max': 60},
-                'cursor': 'always',
-              },
+              'video': true,
               'audio': false, // Fallback for Linux/Systems without loopback
             });
           } else {
@@ -406,6 +404,7 @@ class CallManager {
         };
 
         final screenTrack = _screenStream!.getVideoTracks().first;
+        final screenAudioTracks = _screenStream!.getAudioTracks();
 
         if (_pc != null) {
           final senders = await _pc!.getSenders();
@@ -423,11 +422,20 @@ class CallManager {
             await _pc!.addTrack(screenTrack, _screenStream!);
             // Note: This specific path will require renegotiation handled by onRenegotiationNeeded
           }
+
+          // Add screen audio track if the OS provided it
+          if (screenAudioTracks.isNotEmpty) {
+            debugPrint('[CallManager] Screen audio track found. Adding to PeerConnection.');
+            await _pc!.addTrack(screenAudioTracks.first, _screenStream!);
+          }
         }
 
         // Preview local screen
         _localRenderer?.srcObject = _screenStream;
-        _session = _session.copyWith(isScreenSharing: true);
+        if (Platform.isAndroid || Platform.isIOS) {
+          Helper.setSpeakerphoneOn(true);
+        }
+        _session = _session.copyWith(isScreenSharing: true, isSpeakerOn: true);
 
         // Ensure regular video flag is considered off
         if (_session.isLocalVideoOn) {
