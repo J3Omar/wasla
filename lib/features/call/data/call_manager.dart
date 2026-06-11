@@ -396,7 +396,9 @@ class CallManager {
       }
 
       if (Platform.isLinux) {
-        debugPrint('[CallManager] Linux deactivating screen share. Cleaning up Virtual Sink...');
+        debugPrint(
+          '[CallManager] Linux deactivating screen share. Cleaning up Virtual Sink...',
+        );
         await LinuxAudioService().disableSystemAudioCapture();
       }
     } else {
@@ -425,14 +427,22 @@ class CallManager {
               return;
             }
 
+            // 1. Activate the Virtual Sink FIRST so it becomes the system's default source
             if (Platform.isLinux && withAudio) {
-              debugPrint('[CallManager] Linux detected with audio. Activating Virtual Null Sink...');
+              debugPrint(
+                '[CallManager] Linux detected with audio. Activating Virtual Null Sink...',
+              );
               await LinuxAudioService().enableSystemAudioCapture();
-              
-              // To force WebRTC to capture our new virtual loopback device, we tell PulseAudio to set it as default source temporarily
-              await Process.run('pactl', ['set-default-source', 'WaslaAudio.monitor']);
+              await Process.run('pactl', [
+                'set-default-source',
+                'WaslaAudio.monitor',
+              ]);
+              // Small delay to allow PulseAudio to switch the default source before WebRTC probes it
+              await Future.delayed(const Duration(milliseconds: 300));
             }
 
+            // 2. Get the Display (Video Only)
+            debugPrint('[CallManager] Fetching screen display...');
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
               'video': {
                 'deviceId': {'exact': screenSource.id},
@@ -440,11 +450,42 @@ class CallManager {
                 'height': {'ideal': 720, 'max': 1080},
                 'frameRate': {'ideal': 60, 'max': 60},
               },
-              'audio': audioConstraint,
+              'audio': Platform.isLinux
+                  ? false
+                  : audioConstraint, // OS display capturer handles video only on Linux
             });
             debugPrint(
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
+
+            // 3. Inject the System Audio as a separate Microphone Track
+            if (Platform.isLinux && withAudio && _screenStream != null) {
+              try {
+                debugPrint(
+                  '[CallManager] Fetching virtual system audio via getUserMedia...',
+                );
+                final systemAudioStream = await navigator.mediaDevices
+                    .getUserMedia({
+                      'video': false,
+                      'audio':
+                          true, // This will grab the WaslaAudio.monitor because we set it as default
+                    });
+
+                if (systemAudioStream.getAudioTracks().isNotEmpty) {
+                  final sysAudioTrack = systemAudioStream
+                      .getAudioTracks()
+                      .first;
+                  debugPrint(
+                    '[CallManager] Virtual system audio track obtained: ${sysAudioTrack.id}',
+                  );
+                  _screenStream!.addTrack(sysAudioTrack);
+                }
+              } catch (e) {
+                debugPrint(
+                  '[CallManager] Failed to get virtual system audio: $e',
+                );
+              }
+            }
           } else {
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
               'video': {
