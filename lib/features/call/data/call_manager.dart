@@ -67,10 +67,6 @@ class CallManager {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescSet = false;
 
-  // Bug 3: UDP reconnect guard
-  bool _reconnectAttempted = false;
-  // Bug 1 fix: cancellation token for the delayed endCall after ICE failure
-  bool _iceEndCallPending = false;
   // Bug 2 fix: track which side we are on for fallback timer sync
   bool _isInitiator = false;
   bool _isReconnecting = false;
@@ -310,9 +306,18 @@ class CallManager {
       await _localRenderer!.initialize();
       _localRenderer!.srcObject = _localVideoStream;
       if (_pc != null) {
-        await _pc!.addTrack(
-          _localVideoStream!.getVideoTracks().first,
-          _localVideoStream!,
+        await _pc!.addTransceiver(
+          track: _localVideoStream!.getVideoTracks().first,
+          init: RTCRtpTransceiverInit(
+            direction: TransceiverDirection.SendRecv,
+            streams: [_localVideoStream!],
+            sendEncodings: [
+              RTCRtpEncoding(
+                maxBitrate: 2500000,
+                minBitrate: 1000000,
+              ), // Force 1-2.5 Mbps
+            ],
+          ),
         );
       }
       _isVideoOn = true;
@@ -367,7 +372,8 @@ class CallManager {
         for (var sender in senders) {
           if (sender.track?.kind == 'video') {
             await _pc!.removeTrack(sender);
-          } else if (sender.track?.kind == 'audio' && _originalAudioTrack != null) {
+          } else if (sender.track?.kind == 'audio' &&
+              _originalAudioTrack != null) {
             await sender.replaceTrack(_originalAudioTrack!);
             _originalAudioTrack = null;
           }
@@ -382,7 +388,9 @@ class CallManager {
               : withAudio;
 
           if (Platform.isLinux || Platform.isWindows) {
-            final sources = await desktopCapturer.getSources(types: [SourceType.Screen, SourceType.Window]);
+            final sources = await desktopCapturer.getSources(
+              types: [SourceType.Screen, SourceType.Window],
+            );
             DesktopCapturerSource? screenSource;
             for (final source in sources) {
               if (source.type == SourceType.Screen) {
@@ -391,7 +399,9 @@ class CallManager {
               }
             }
             if (screenSource == null) {
-              debugPrint('[CallManager] No screen source found for desktop capturer.');
+              debugPrint(
+                '[CallManager] No screen source found for desktop capturer.',
+              );
               return;
             }
 
@@ -404,7 +414,9 @@ class CallManager {
               },
               'audio': audioConstraint,
             });
-            debugPrint('[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}');
+            debugPrint(
+              '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
+            );
           } else {
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
               'video': {
@@ -438,7 +450,9 @@ class CallManager {
 
         final screenTrack = _screenStream!.getVideoTracks().first;
         final screenAudioTracks = _screenStream!.getAudioTracks();
-        debugPrint('[CallManager] Screen audio tracks found: ${screenAudioTracks.length}');
+        debugPrint(
+          '[CallManager] Screen audio tracks found: ${screenAudioTracks.length}',
+        );
 
         if (_pc != null) {
           final senders = await _pc!.getSenders();
@@ -462,7 +476,9 @@ class CallManager {
 
           // Replace screen audio track instead of adding it
           if (screenAudioTracks.isNotEmpty) {
-            debugPrint('[CallManager] Screen audio track found. Replacing existing audio track.');
+            debugPrint(
+              '[CallManager] Screen audio track found. Replacing existing audio track.',
+            );
             for (var sender in freshSenders) {
               if (sender.track?.kind == 'audio') {
                 _originalAudioTrack = sender.track;
@@ -574,14 +590,13 @@ class CallManager {
     pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _reconnectAttempted = false; // Reset on success
-        _iceEndCallPending = false; // Cancel any pending zombie timer
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
 
         if (_isReconnecting) {
           _isReconnecting = false;
+          _iceDisconnectTimer?.cancel();
           _iceEndCallTimer?.cancel();
           debugPrint('[CallManager] ICE restart succeeded.');
           // 500ms delay before stopping —
@@ -646,64 +661,40 @@ class CallManager {
           RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         if (!_isReconnecting) {
           _isReconnecting = true;
-          CallAudioService.instance.playReconnecting();
-          
+
           _heartbeatTimer?.cancel();
           _heartbeatTimer = null;
           _missedHeartbeats = 0;
-          
-          // ICE Restart reconnect logic
-          _pc!.restartIce();
-          
-          // 15-second grace period
-          _iceEndCallTimer?.cancel();
-          _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
-            if (_isReconnecting) {
-              debugPrint('[CallManager] ICE restart timeout. Attempting full re-signaling.');
-              await _attemptReconnect();
-            }
+
+          // Give it 5s silent grace before panicking UI
+          _iceDisconnectTimer?.cancel();
+          _iceDisconnectTimer = Timer(const Duration(seconds: 5), () {
+            debugPrint(
+              '[CallManager] Connection weak. Playing reconnecting sound & Restarting ICE...',
+            );
+            CallAudioService.instance.playReconnecting();
+            _pc!.restartIce(); // Trigger renegotiation internally
+
+            // Start 15s doom timer (20s total)
+            _iceEndCallTimer?.cancel();
+            _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
+              if (_isReconnecting) {
+                debugPrint('[CallManager] ICE Recovery Failed. Ending call.');
+                await endCall();
+              }
+            });
           });
         }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        // Failed is terminal — end immediately
-        _iceEndCallPending = false;
-        await endCall();
+        _iceDisconnectTimer?.cancel();
+        _iceEndCallTimer?.cancel();
+        endCall();
       }
     };
 
     // Fix 2C — debug logging so we can track exactly which state it stalls at
     pc.onIceConnectionState = (state) {
       debugPrint('[Call] ICE connection state: $state');
-
-      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
-          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
-        // Recovered! Cancel timers and stop reconnect sound.
-        _iceDisconnectTimer?.cancel();
-        _iceEndCallTimer?.cancel();
-        CallAudioService.instance.stopReconnecting();
-      } else if (state ==
-          RTCIceConnectionState.RTCIceConnectionStateDisconnected) {
-        // Give it 5 seconds to recover silently...
-        _iceDisconnectTimer?.cancel();
-        _iceDisconnectTimer = Timer(const Duration(seconds: 5), () {
-          debugPrint(
-            '[CallManager] Connection weak. Playing reconnecting sound...',
-          );
-          CallAudioService.instance.playReconnecting();
-
-          // If 15 more seconds pass (20s total), kill it.
-          _iceEndCallTimer?.cancel();
-          _iceEndCallTimer = Timer(const Duration(seconds: 15), () {
-            debugPrint('[CallManager] ICE Recovery Failed. Ending call.');
-            endCall();
-          });
-        });
-      } else if (state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
-          state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
-        _iceDisconnectTimer?.cancel();
-        _iceEndCallTimer?.cancel();
-        endCall();
-      }
     };
     pc.onIceGatheringState = (state) {
       debugPrint('[Call] ICE gathering state: $state');
@@ -801,10 +792,19 @@ class CallManager {
       _pc!.addTrack(track, _localStream!);
     }
 
-    // Add Video if active
+    // Add Video if active with explicit bitrates
     if (_localVideoStream != null) {
       for (final track in _localVideoStream!.getVideoTracks()) {
-        _pc!.addTrack(track, _localVideoStream!);
+        await _pc!.addTransceiver(
+          track: track,
+          init: RTCRtpTransceiverInit(
+            direction: TransceiverDirection.SendRecv,
+            streams: [_localVideoStream!],
+            sendEncodings: [
+              RTCRtpEncoding(maxBitrate: 2500000, minBitrate: 1000000),
+            ],
+          ),
+        );
       }
     }
     final offer = await _pc!.createOffer();
@@ -1066,49 +1066,12 @@ class CallManager {
     await _connectToSignalingServer(callerIp, newPort);
   }
 
-  Future<void> _attemptReconnect() async {
-    if (_reconnectAttempted) return;
-    _reconnectAttempted = true;
-    debugPrint('[Call] Attempting UDP re-signaling reconnect...');
-
-    try {
-      // 1. Close old peer connection
-      await _pc?.close();
-      _pc = null;
-      _remoteDescSet = false;
-      _pendingCandidates.clear();
-
-      // 2. If we are the initiator (caller), start a new
-      //    signaling server and send a new UDP invite
-      if (_isInitiator) {
-        final newPort = 46100 + Random().nextInt(100);
-        await _startSignalingServer(newPort, isInitiator: true);
-        await _sendCallInvite(
-          peerIp: _session.peerIp,
-          signalingPort: newPort,
-          peerId: _session.peerId,
-          peerName: _session.peerName,
-        );
-      }
-
-      // 3. Set reconnect timeout
-      _iceEndCallPending = true;
-      Future.delayed(const Duration(seconds: 15), () {
-        if (_iceEndCallPending) endCall();
-      });
-    } catch (e) {
-      debugPrint('[Call] Reconnect failed: $e');
-      await endCall();
-    }
-  }
-
   Future<void> dispose() async {
     if (_isDisposing) return;
     _isDisposing = true;
 
     debugPrint('[CallManager] Disposing resources...');
     await _disableBackground(); // FIX: Await to prevent Race Condition
-    _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
     _iceEndCallTimer?.cancel();
     _originalAudioTrack = null;
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
