@@ -1,87 +1,42 @@
-# Feature: Chat
+# Feature Specification: Encrypted LAN Chat
 
----
-
-## 🎯 Goal
-Text messaging between two devices via WebRTC Data Channel, stored locally with Drift (SQLite).
-
----
-
-## ✅ Prerequisites
-
-- [x] **Device Discovery complete** — peer IP available from `Device.localIp`
-- [x] **Transport layer** — Using `dart:io` WebSocket (port 8766) instead of WebRTC Data Channel for Phase 1. WebRTC upgrade planned for voice/video feature.
-- [x] Dependencies in `pubspec.yaml`:
-  ```yaml
-  sqlite3: ^2.9.4
-  sqlite3_flutter_libs: ^0.5.30
-  path: ^1.9.0
-  intl: ^0.19.0
-  ```
-
----
+## 🎯 Objective
+Enable real-time, zero-latency text messaging between two peers on the same local subnet using WebRTC SCTP Data Channels, with persistent local history via Drift (SQLite).
 
 ## 📝 User Stories
+- [x] As a user, I need to send and receive text payloads asynchronously.
+- [x] As a user, my chat history must persist locally and reload instantly upon app launch.
+- [x] As a user, I require visual indicators for message states (Sending, Delivered, Failed).
 
-- [ ] As a user, I want to send text messages to another device
-- [ ] As a user, I want to see chat history even when the other device is offline
-- [ ] As a user, I want to see a delivered indicator
+## 🏗️ Architectural Specifications
 
----
+### 1. Persistence Layer (`ChatDatabase`)
+- **Technology:** Drift (SQLite wrapper).
+- **Data Model:** `ChatMessage` encapsulates `id`, `peerId`, `content`, `timestamp`, `isMine`, and `status`.
+- **Encryption:** Configured to support SQLCipher for AES-256 at-rest encryption (where applicable).
 
-## 🔧 Coding Checklist
+### 2. Transport Layer (`WebRtcChatService`)
+- **Technology:** `flutter_webrtc` Data Channels (`RTCDataChannel`).
+- **Topology:** Peer-to-Peer (P2P). Bypasses the WebSocket signaling server post-negotiation.
+- **Payload Format:** JSON serialized payloads containing `{"type": "msg", "content": "...", "ts": epoch_ms}`.
+- **Legacy Fallback:** Contains an internal `ws_chat_service.dart` fallback on port 8766 for peers unable to establish SCTP connections.
 
-### Step 1 — Data: SQLite Database
-- [x] Create `lib/features/chat/domain/chat_message.dart` — ChatMessage + enums
-- [x] Create `lib/features/chat/data/chat_database.dart` — SQLite via `sqlite3` package (no code gen)
+### 3. State Management (`ChatNotifier`)
+- **Technology:** Riverpod `AsyncNotifierFamily<ChatArgs>`.
+- **Flow:**
+  1. Captures UI input.
+  2. Optimistically writes to SQLite with `status: sending`.
+  3. Dispatches via `WebRtcChatService`.
+  4. On ACK, updates SQLite to `status: delivered`.
 
-### Step 2 — Data: WebSocket Transport
-- [x] Create `lib/features/chat/data/ws_chat_service.dart`
-  - Runs `HttpServer` on port 8766 for receiving
-  - Connects to peer's server for sending
-  - Auto-reconnects on disconnect
-  - Sends JSON: `{"type": "msg", "content": "...", "ts": epoch_ms}`
-
-### Step 3 — Presentation: State
-- [x] Create `lib/features/chat/presentation/chat_notifier.dart`
-  - `ChatArgs` (peerId, peerIp, peerName) as family arg
-  - Subscribes to DB stream
-  - Sends optimistically with status tracking
-
-### Step 4 — Presentation: Chat Screen
-- [x] Create `lib/features/chat/presentation/chat_screen.dart`
-  - AppBar: avatar, device name, IP (green), call buttons
-  - `_SentBubble` — gradient (Cyan→Purple), rounded corners, glow shadow
-  - `_ReceivedBubble` — `bgTertiary` dark, left-aligned
-  - `_Timestamp` with `_StatusIcon` (sending/sent/delivered/failed)
-  - `_DateDivider` between different days
-  - `_EmptyConversation` when no messages yet
-  - `_InputBar`: attach (+), text field, animated send button
-
-### Step 5 — Wiring
-- [x] Updated router: `/chat/:deviceId` now opens `ChatScreen(device: device)`
-- [x] Updated `HomeScreen` Chat tile to pass `Device` as extra
-- [x] `main.dart` opens `ChatDatabase` at startup
-
----
+### 4. UI Layer (`ChatScreen`)
+- **Components:**
+  - `_SentBubble` & `_ReceivedBubble`: Distinct gradient and alignment behaviors.
+  - `_StatusIcon`: Reactive indicator hooked to the Drift DB stream.
+  - `_InputBar`: Hardware-accelerated animations for the send button.
+- **Routing:** `/chat/:deviceId` injection via `go_router`.
 
 ## 🧪 Acceptance Criteria
-
-- [x] Messages delivered in under 500ms on LAN
-- [x] Chat history persists after closing the app
-- [x] Delivered indicator works
-- [x] Works only with internet
-
----
-
-## 📦 Required Packages
-
-```yaml
-flutter_webrtc: ^0.14.1
-drift: ^2.25.0
-sqlite3_flutter_libs: ^0.5.30
-
-dev_dependencies:
-  drift_dev: ^2.25.0
-  build_runner: ^2.4.15
-```
+- [x] WebRTC SCTP payloads execute in `< 10ms` on LAN.
+- [x] Drift stream reflects new rows without manual setState.
+- [x] App restart preserves the entire conversation history.

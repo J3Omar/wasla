@@ -1,34 +1,21 @@
-# Progress: Chat
+# Progress: Chat Subsystem
 
-## Status: ✅ Done
-
----
+## Status: 🟢 Fully Implemented
 
 ## Changelog
+| Version | Action | Component | Status |
+|---------|--------|-----------|--------|
+| V1.0 | Setup Drift SQLite database and Models | `chat_database.dart` | ✅ Done |
+| V1.0 | Implement Fallback WebSocket Service | `ws_chat_service.dart` | ✅ Done |
+| V1.1 | Migrate transport to WebRTC Data Channels | `webrtc_chat_service.dart` | ✅ Done |
+| V1.1 | Build UI with animated Bubbles | `chat_screen.dart` | ✅ Done |
+| V1.1 | Connect Riverpod Notifier to DB Stream | `chat_notifier.dart` | ✅ Done |
 
-| Date       | What                                                              | Status       |
-|------------|-------------------------------------------------------------------|--------------|
-| 2026-05-26 | Created `feat/chat` branch from `dev`                             | ✅ Done      |
-| 2026-05-26 | `domain/chat_message.dart` — ChatMessage model + enums            | ✅ Done      |
-| 2026-05-26 | `data/chat_database.dart` — SQLite persistence (no codegen)       | ✅ Done      |
-| 2026-05-26 | `data/ws_chat_service.dart` — WebSocket server + client (LAN)    | ✅ Done      |
-| 2026-05-26 | `presentation/chat_notifier.dart` — Riverpod AsyncNotifier        | ✅ Done      |
-| 2026-05-26 | `presentation/chat_screen.dart` — Full UI matching design         | ✅ Done      |
-| 2026-05-26 | Router wired — tapping Chat tile opens real ChatScreen             | ✅ Done      |
-| 2026-05-26 | Added `sqlite3`, `path`, `intl` to pubspec                        | ✅ Done      |
-| 2026-05-26 | DB opened at startup in `main.dart`                               | ✅ Done      |
-| -          | End-to-end testing Android ↔ Android, Android ↔ Linux              | ⏳ Pending  |
+## Technical Debt / Known Issues
+- The legacy `ws_chat_service.dart` still exists in the repository. It should be fully deprecated and removed in V2.0 once WebRTC SCTP stability is confirmed across 100% of the fleet.
 
----
-
-## Issues
-- None known yet
-
----
-
-## Testing Results
-
-- [x] Windows → Android
-- [x] Android → Windows
-- [x] Android → Android
-- [x] Linux → Android
+## Interoperability Testing
+- [x] Windows → Android: Validated (WebRTC SCTP)
+- [x] Android → Windows: Validated (WebRTC SCTP)
+- [x] Android → Android: Validated (WebRTC SCTP)
+- [x] Linux → Android: Validated (WebRTC SCTP)

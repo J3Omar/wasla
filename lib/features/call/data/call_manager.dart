@@ -42,6 +42,7 @@ class CallManager {
   MediaStream? _localStream;
 
   MediaStream? _localVideoStream;
+  MediaStream? _screenStream;
   RTCVideoRenderer? _localRenderer;
   RTCVideoRenderer? _remoteRenderer;
   bool _isVideoOn = false;
@@ -66,14 +67,13 @@ class CallManager {
   final List<RTCIceCandidate> _pendingCandidates = [];
   bool _remoteDescSet = false;
 
-  // Bug 3: UDP reconnect guard
-  bool _reconnectAttempted = false;
-  // Bug 1 fix: cancellation token for the delayed endCall after ICE failure
-  bool _iceEndCallPending = false;
   // Bug 2 fix: track which side we are on for fallback timer sync
   bool _isInitiator = false;
   bool _isReconnecting = false;
   bool _isDisposing = false;
+  Timer? _iceDisconnectTimer;
+  Timer? _iceEndCallTimer;
+  MediaStreamTrack? _originalAudioTrack;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -119,6 +119,7 @@ class CallManager {
       peerIp: peerIp,
       isSpeakerOn: isVideo,
       isLocalVideoOn: isVideo,
+      sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
     );
     onStateChanged(_session);
 
@@ -203,10 +204,21 @@ class CallManager {
   Future<void> acceptCall({
     required String callerIp,
     required int signalingPort,
+    required String callerId,
+    required String callerName,
+    required String sessionId,
     bool isVideo = false,
   }) async {
     debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
-    _session = _session.copyWith(state: CallState.connecting);
+    _session = CallSession(
+      state: CallState.connecting,
+      peerId: callerId,
+      peerName: callerName,
+      peerIp: callerIp,
+      isSpeakerOn: isVideo,
+      isRemoteVideoOn: isVideo,
+      sessionId: sessionId,
+    );
     onStateChanged(_session);
 
     if (isVideo && (Platform.isAndroid || Platform.isIOS)) {
@@ -298,7 +310,8 @@ class CallManager {
         'video': {
           'width': {'ideal': 1280},
           'height': {'ideal': 720},
-          'facingMode': 'user',
+          'frameRate': {'ideal': 60, 'max': 60},
+          'facingMode': _session.isFrontCamera ? 'user' : 'environment',
         },
         'audio': false,
       });
@@ -306,13 +319,26 @@ class CallManager {
       await _localRenderer!.initialize();
       _localRenderer!.srcObject = _localVideoStream;
       if (_pc != null) {
-        await _pc!.addTrack(
-          _localVideoStream!.getVideoTracks().first,
-          _localVideoStream!,
+        await _pc!.addTransceiver(
+          track: _localVideoStream!.getVideoTracks().first,
+          init: RTCRtpTransceiverInit(
+            direction: TransceiverDirection.SendRecv,
+            streams: [_localVideoStream!],
+            sendEncodings: [
+              RTCRtpEncoding(
+                maxBitrate: 2500000,
+                minBitrate: 1000000,
+                maxFramerate: 60,
+              ), // Force 1-2.5 Mbps
+            ],
+          ),
         );
       }
       _isVideoOn = true;
-      _session = _session.copyWith(isLocalVideoOn: true);
+      if (Platform.isAndroid || Platform.isIOS) {
+        Helper.setSpeakerphoneOn(true);
+      }
+      _session = _session.copyWith(isLocalVideoOn: true, isSpeakerOn: true);
     } else {
       final track = _localVideoStream?.getVideoTracks().first;
       if (track != null && _pc != null) {
@@ -339,6 +365,159 @@ class CallManager {
       await Helper.switchCamera(_localVideoStream!.getVideoTracks().first);
       _session = _session.copyWith(isFrontCamera: !_session.isFrontCamera);
       onStateChanged(_session);
+    }
+  }
+
+  Future<void> toggleScreenShare({bool withAudio = false}) async {
+    if (_session.isScreenSharing) {
+      // STOP SCREEN SHARE: Revert to Audio-Only Call
+      _screenStream?.getTracks().forEach((t) => t.stop());
+      _screenStream = null;
+      _localRenderer?.srcObject = null;
+
+      _session = _session.copyWith(
+        isScreenSharing: false,
+        isLocalVideoOn: false,
+      );
+      onStateChanged(_session);
+
+      if (_pc != null) {
+        final senders = await _pc!.getSenders();
+        for (var sender in senders) {
+          if (sender.track?.kind == 'video') {
+            await _pc!.removeTrack(sender);
+          } else if (sender.track?.kind == 'audio' &&
+              _originalAudioTrack != null) {
+            await sender.replaceTrack(_originalAudioTrack!);
+            _originalAudioTrack = null;
+          }
+        }
+      }
+    } else {
+      // START SCREEN SHARE
+      try {
+        try {
+          final audioConstraint = (Platform.isAndroid && withAudio)
+              ? true
+              : withAudio;
+
+          if (Platform.isLinux || Platform.isWindows) {
+            final sources = await desktopCapturer.getSources(
+              types: [SourceType.Screen, SourceType.Window],
+            );
+            DesktopCapturerSource? screenSource;
+            for (final source in sources) {
+              if (source.type == SourceType.Screen) {
+                screenSource = source;
+                break;
+              }
+            }
+            if (screenSource == null) {
+              debugPrint(
+                '[CallManager] No screen source found for desktop capturer.',
+              );
+              return;
+            }
+
+            _screenStream = await navigator.mediaDevices.getDisplayMedia({
+              'video': {
+                'deviceId': {'exact': screenSource.id},
+                'width': {'ideal': 1280, 'max': 1920},
+                'height': {'ideal': 720, 'max': 1080},
+                'frameRate': {'ideal': 60, 'max': 60},
+              },
+              'audio': audioConstraint,
+            });
+            debugPrint(
+              '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
+            );
+          } else {
+            _screenStream = await navigator.mediaDevices.getDisplayMedia({
+              'video': {
+                'width': {'ideal': 960, 'max': 1280},
+                'height': {'ideal': 540, 'max': 720},
+                'frameRate': {'ideal': 45, 'max': 60},
+                'cursor': 'always',
+              },
+              'audio': audioConstraint,
+            });
+          }
+        } catch (e) {
+          if (withAudio) {
+            debugPrint(
+              '[CallManager] getDisplayMedia failed with audio. Retrying without audio...',
+            );
+            _screenStream = await navigator.mediaDevices.getDisplayMedia({
+              'video': true,
+              'audio': false, // Fallback for Linux/Systems without loopback
+            });
+          } else {
+            rethrow; // Re-throw if it failed even without audio
+          }
+        }
+
+        // Listen for OS-level stop button (e.g., Android floating bar)
+        _screenStream!.getVideoTracks().first.onEnded = () {
+          debugPrint('[CallManager] OS-level screen share stop detected.');
+          toggleScreenShare(); // Trigger local cleanup
+        };
+
+        final screenTrack = _screenStream!.getVideoTracks().first;
+        final screenAudioTracks = _screenStream!.getAudioTracks();
+        debugPrint(
+          '[CallManager] Screen audio tracks found: ${screenAudioTracks.length}',
+        );
+
+        if (_pc != null) {
+          final senders = await _pc!.getSenders();
+          bool trackReplaced = false;
+          for (var sender in senders) {
+            if (sender.track?.kind == 'video') {
+              // Replace existing camera track with screen track
+              await sender.replaceTrack(screenTrack);
+              trackReplaced = true;
+              break;
+            }
+          }
+          if (!trackReplaced) {
+            // If no video track existed (Audio-only call), add it.
+            await _pc!.addTrack(screenTrack, _screenStream!);
+            // Note: This specific path will require renegotiation handled by onRenegotiationNeeded
+          }
+
+          // Re-fetch senders after video replacement to get current state
+          final freshSenders = await _pc!.getSenders();
+
+          // Replace screen audio track instead of adding it
+          if (screenAudioTracks.isNotEmpty) {
+            debugPrint(
+              '[CallManager] Screen audio track found. Replacing existing audio track.',
+            );
+            for (var sender in freshSenders) {
+              if (sender.track?.kind == 'audio') {
+                _originalAudioTrack = sender.track;
+                await sender.replaceTrack(screenAudioTracks.first);
+                break;
+              }
+            }
+          }
+        }
+
+        // Preview local screen
+        _localRenderer?.srcObject = _screenStream;
+        if (Platform.isAndroid || Platform.isIOS) {
+          Helper.setSpeakerphoneOn(true);
+        }
+        _session = _session.copyWith(isScreenSharing: true, isSpeakerOn: true);
+
+        // Ensure regular video flag is considered off
+        if (_session.isLocalVideoOn) {
+          _session = _session.copyWith(isLocalVideoOn: false);
+        }
+        onStateChanged(_session);
+      } catch (e) {
+        debugPrint('[CallManager] Screen share failed or denied: $e');
+      }
     }
   }
 
@@ -425,14 +604,15 @@ class CallManager {
     pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        _reconnectAttempted = false; // Reset on success
-        _iceEndCallPending = false; // Cancel any pending zombie timer
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
 
         if (_isReconnecting) {
           _isReconnecting = false;
+          _iceDisconnectTimer?.cancel();
+          _iceEndCallTimer?.cancel();
+          debugPrint('[CallManager] ICE restart succeeded.');
           // 500ms delay before stopping —
           // lets the 1-second loop finish naturally
           await Future.delayed(const Duration(milliseconds: 500));
@@ -495,34 +675,42 @@ class CallManager {
           RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
         if (!_isReconnecting) {
           _isReconnecting = true;
-          CallAudioService.instance.playReconnecting();
-        }
 
-        _heartbeatTimer?.cancel();
-        _heartbeatTimer = null;
-        _missedHeartbeats = 0;
+          _heartbeatTimer?.cancel();
+          _heartbeatTimer = null;
+          _missedHeartbeats = 0;
 
-        // Wait 4 seconds — might self-recover on same network
-        await Future.delayed(const Duration(seconds: 4));
-        if (_pc?.connectionState ==
-            RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-          await _attemptReconnect();
+          // Give it 5s silent grace before panicking UI
+          _iceDisconnectTimer?.cancel();
+          _iceDisconnectTimer = Timer(const Duration(seconds: 5), () {
+            debugPrint(
+              '[CallManager] Connection weak. Playing reconnecting sound & Restarting ICE...',
+            );
+            CallAudioService.instance.playReconnecting();
+            _pc!.restartIce(); // Trigger renegotiation internally
+
+            // Start 15s doom timer (20s total)
+            _iceEndCallTimer?.cancel();
+            _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
+              if (_isReconnecting) {
+                debugPrint(
+                  '[CallManager] ICE Recovery Failed. Attempting full re-signaling.',
+                );
+                await _attemptReconnect();
+              }
+            });
+          });
         }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
-        // Failed is terminal — end immediately
-        _iceEndCallPending = false;
-        await endCall();
+        _iceDisconnectTimer?.cancel();
+        _iceEndCallTimer?.cancel();
+        endCall();
       }
     };
 
     // Fix 2C — debug logging so we can track exactly which state it stalls at
     pc.onIceConnectionState = (state) {
       debugPrint('[Call] ICE connection state: $state');
-      if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
-          state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
-          state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
-        endCall();
-      }
     };
     pc.onIceGatheringState = (state) {
       debugPrint('[Call] ICE gathering state: $state');
@@ -620,10 +808,23 @@ class CallManager {
       _pc!.addTrack(track, _localStream!);
     }
 
-    // Add Video if active
+    // Add Video if active with explicit bitrates
     if (_localVideoStream != null) {
       for (final track in _localVideoStream!.getVideoTracks()) {
-        _pc!.addTrack(track, _localVideoStream!);
+        await _pc!.addTransceiver(
+          track: track,
+          init: RTCRtpTransceiverInit(
+            direction: TransceiverDirection.SendRecv,
+            streams: [_localVideoStream!],
+            sendEncodings: [
+              RTCRtpEncoding(
+                maxBitrate: 2500000,
+                minBitrate: 1000000,
+                maxFramerate: 60,
+              ),
+            ],
+          ),
+        );
       }
     }
     final offer = await _pc!.createOffer();
@@ -832,9 +1033,9 @@ class CallManager {
           'fromName': selfName,
           'signalingPort': signalingPort,
           // callerIp lets the callee use the correct interface IP explicitly;
-          // falls back to UDP source address if missing
           'callerIp': localIp,
           'isVideo': _session.isLocalVideoOn,
+          'sessionId': _session.sessionId,
         }),
       );
       socket.send(payload, InternetAddress(peerIp), kCallInviteUdpPort);
@@ -886,9 +1087,7 @@ class CallManager {
   }
 
   Future<void> _attemptReconnect() async {
-    if (_reconnectAttempted) return;
-    _reconnectAttempted = true;
-    debugPrint('[Call] Attempting UDP re-signaling reconnect...');
+    debugPrint('[CallManager] Attempting UDP re-signaling reconnect...');
 
     try {
       // 1. Close old peer connection
@@ -909,14 +1108,8 @@ class CallManager {
           peerName: _session.peerName,
         );
       }
-
-      // 3. Set reconnect timeout
-      _iceEndCallPending = true;
-      Future.delayed(const Duration(seconds: 15), () {
-        if (_iceEndCallPending) endCall();
-      });
     } catch (e) {
-      debugPrint('[Call] Reconnect failed: $e');
+      debugPrint('[CallManager] Reconnect failed: $e');
       await endCall();
     }
   }
@@ -927,7 +1120,8 @@ class CallManager {
 
     debugPrint('[CallManager] Disposing resources...');
     await _disableBackground(); // FIX: Await to prevent Race Condition
-    _iceEndCallPending = false; // Cancel any dangling ICE-restart timer
+    _iceEndCallTimer?.cancel();
+    _originalAudioTrack = null;
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
       try {
@@ -944,6 +1138,10 @@ class CallManager {
     _maxDurationTimer = null;
     _isReconnecting = false;
     CallAudioService.instance.stopReconnecting();
+
+    // Give the end-call sound 1 second to play before destroying the WebRTC streams
+    await Future.delayed(const Duration(seconds: 1));
+
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();

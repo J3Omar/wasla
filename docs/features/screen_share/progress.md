@@ -1,26 +1,21 @@
-# Progress: Screen Share
+# Progress: P2P Screen Casting
 
-## Status: 🔴 Not Started
-
----
+## Status: 🟢 Fully Implemented
 
 ## Changelog
+| Version | Action | Component | Status |
+|---------|--------|-----------|--------|
+| V1.0 | Setup `getDisplayMedia` permissions | `AndroidManifest.xml` | ✅ Done |
+| V1.0 | Implement `replaceTrack` media swap logic | `call_manager.dart` | ✅ Done |
+| V1.1 | Inject `audio: false` Linux Fallback Catch | `call_manager.dart` | ✅ Done |
+| V1.1 | Bind UI overlay state | `call_screen.dart` | ✅ Done |
 
-| Date | What | Status |
-|------|------|--------|
-| -    | -    | -      |
+## Technical Debt / Known Issues
+- While the Linux fallback solves Wayland crashes, it restricts the user from sharing system audio. Resolving this via `pactl` (PulseAudio routing) is scheduled for the Native Hardware V2.0 Roadmap.
 
----
-
-## Issues
-- None
-
----
-
-## Testing Results
+## Interoperability Testing
 
 - [ ] Windows → Android
 - [ ] Android → Windows
 - [ ] Android → Android
-- [ ] Linux → Android
-- [ ] Sharing device audio with screen
+- [x] Linux → Android

@@ -1,4 +1,4 @@
-# 📊 PROGRESS — Wasla
+# 📊 PROGRESS & TRACKING — Wasla
 
 ---
 
@@ -6,95 +6,63 @@
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 0 | Design (Google Stitch) | 🟡 In Progress |
-| Phase 1 | Technical Setup | ⬜ Pending |
-| Phase 2 | Implementation | ⬜ Pending |
-| Phase 3 | Build & Release | ⬜ Pending |
+| Phase 0 | Architecture & Design Systems | 🟢 Completed |
+| Phase 1 | P2P Networking & Discovery Setup | 🟢 Completed |
+| Phase 2 | WebRTC Engine & Core Features | 🟢 Completed |
+| Phase 3 | Hardening, Refactoring & Bug Fixes | 🟡 In Progress |
+| Phase 4 | Native Hardware Audio Integrations | ⬜ Pending |
 
 ---
 
-## 🟡 Phase 0 — Design
+## 🟢 Phase 0 — Design & Architecture
 
-### Stitch Screens
+### Application Interfaces
 
-| # | Screen | Status |
-|---|--------|--------|
-| 1 | Splash Screen | ✅ Designed |
-| 2 | Connected Devices (Home) | ✅ Designed |
-| 3 | Chat Screen | ✅ Designed |
-| 4 | Active Call Screen | ✅ Designed |
-| 5 | Incoming Call Screen | ✅ Designed |
-| 6 | Onboarding Screen | ⬜ Pending |
-| 7 | Outgoing Call Screen | ⬜ Pending |
-| 8 | Active Video Call | ✅ Designed |
-| 9 | Screen Share Screen | ⬜ Pending |
-| 10 | Settings Screen | ⬜ Pending |
+| # | Screen | Status | Architecture Notes |
+|---|--------|--------|--------------------|
+| 1 | Splash Screen | 🟢 Implemented | Handles async storage reads. |
+| 2 | Home Screen (Discovery) | 🟢 Implemented | `ListView` with animated offline pruning. |
+| 3 | Chat Screen | 🟢 Implemented | Real-time SCTP synced with Drift. |
+| 4 | Call Screen (Voice/Video) | 🟢 Implemented | Unified responsive interface (Mobile/Desktop bounds). |
+| 5 | Incoming Call Screen | 🟢 Implemented | Listens to UDP `call_invite`. |
+| 6 | Onboarding Screen | 🟢 Implemented | Generates Cryptographic UUID. |
+| 7 | Screen Share Overlay | 🟢 Implemented | Floating native overlay logic. |
+| 8 | Settings Screen | 🟢 Implemented | Local peer configurations. |
 
 ### Design System
-- [x] Design System: **Kinetic Ether**
-- [x] Colors finalized
-- [x] Fonts: Hanken Grotesk + Inter + Geist
-- [x] `design_reference.md` ready
-- [x] `design_system.md` ready (from Stitch)
+- [x] Responsive Strategy: `SingleChildScrollView` + `math.max` scaling limits.
+- [x] Desktop Bounds: Padded `_ControlsPill` optimized for widescreen.
+- [x] Typography & Palettes normalized.
 
 ---
 
-## ⬜ Phase 1 — Technical Setup
+## 🟢 Phase 1 & 2 — Feature Implementation
 
-- [x] Project folder structure
-- [x] Add dependencies to `pubspec.yaml`
-- [x] Set up Theme (colors + typography) in Flutter
-- [x] Set up Router (go_router)
-- [x] Set up Drift database
-- [x] Set up flutter_webrtc
-- [x] Set up mDNS for device discovery
-- [x] Update `.gitignore`
-- [x] GitHub repo
+- [x] **F1 — Onboarding:** Device name + UUID via secure storage.
+- [x] **F2 — Device Discovery:** mDNS + UDP Broadcast (5s interval, 10s prune).
+- [x] **F3 — Chat:** WebRTC Data Channels (Text payloads).
+- [x] **F4 — Voice Call:** VoIP over local WebSockets. 
+- [x] **F5 — Video Call:** Hardware-accelerated VP8 with aggressive 60 FPS constraints (`addTransceiver`).
+- [x] **F6 — Screen Share:** Bidirectional casting. Graceful Linux `audio: false` fallback implemented.
+- [x] **F7 — File Sharing:** Chunked transfer.
 
 ---
 
-## ⬜ Phase 2 — Implementation
+## 🟡 Phase 3 — Hardening & Recovery (Current)
 
-### Week 1
-- [x] **F1 — Onboarding:** Device name + UUID
-- [x] **F2 — Device Discovery:** mDNS + UDP Broadcast
-- [x] **Home Screen:** Device list
-
-### Week 2
-- [x] **F3 — Chat:** Text messaging
-- [x] **F4 — Voice Call:** Audio call
-
-### Week 3
-- [x] **F5 — Video Call:** Video call
-- [x] **F7 — File Sharing:** File transfer
-
-### Week 4
-- [ ] **F6 — Screen Share:** Screen sharing
-- [ ] Polish + Cross-platform testing
+- [x] **UDP Session Healing:** Added `Session ID` to state.
+- [x] **Timer Architecture:** 5s ICE disconnected grace period → ICE Restart → 15s absolute kill timer.
+- [x] **Reconnect Loop:** `_attemptReconnect` successfully binds new UDP packet with original `Session ID` to heal ghost calls.
+- [ ] **Cross-Platform Interoperability Matrix Testing:**
+  - [x] Android → Android
+  - [x] Windows → Android
+  - [x] Linux → Android
+  - [ ] Linux → Windows
 
 ---
 
-## ⬜ Phase 3 — Build & Release
+## ⬜ Phase 4 — Native Audio & Hardware Cryptography (Roadmap)
 
-- [ ] GitHub Actions → builds
-  - [x] Android `.apk`
-  - [x] Windows `.exe`
-  - [x] Linux `.deb`
-- [ ] README with screenshots
-- [ ] Release
-
----
-
-## 🧪 Cross-Platform Testing
-
-| Path | Status |
-|------|--------|
-| Windows → Android | ⬜ Not Tested |
-| Android → Windows | ⬜ Not Tested |
-| Android → Android | ⬜ Not Tested |
-| Linux → Android | ⬜ Not Tested |
-| Linux → Windows | ⬜ Not Tested |
-
----
-
-*Update this file as you complete each step.*
+- [ ] Linux System Audio Routing (`pactl` module-null-sink)
+- [ ] Android `AudioPlaybackCapture` MethodChannel
+- [ ] AES-256 Vault integration for offline contacts
