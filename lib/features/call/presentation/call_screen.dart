@@ -94,6 +94,62 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     if (_isScreenShareToggling) return;
 
     if (!state.isScreenSharing) {
+      if (Platform.isLinux) {
+        final linuxResult = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: AppColors.bgSecondary,
+            title: Text('System Audio on Linux', style: AppTypography.heading3),
+            content: Text(
+              'On Linux, you can share your screen with either system audio OR microphone — not both simultaneously. Your microphone will be muted during screen share. You can unmute it from the call controls, but system audio will stop.',
+              style: AppTypography.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'cancel'),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'no_audio'),
+                child: const Text(
+                  'Share without audio',
+                  style: TextStyle(color: AppColors.primaryPurple),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'with_audio'),
+                child: const Text(
+                  'Share with system audio',
+                  style: TextStyle(color: AppColors.statusOnline),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        if (linuxResult == null || linuxResult == 'cancel') return;
+
+        setState(() => _isScreenShareToggling = true);
+        try {
+          final notifier = ref.read(callProvider.notifier);
+          await notifier.toggleScreenShare(
+            withAudio: linuxResult == 'with_audio',
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Screen share failed')),
+            );
+          }
+        } finally {
+          if (mounted) setState(() => _isScreenShareToggling = false);
+        }
+        return;
+      }
+
       final isCamOn = state.isLocalVideoOn;
       final result = await showDialog<String>(
         context: context,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -28,6 +29,8 @@ class CallAudioService {
 
   final AudioPlayer _callPlayer = AudioPlayer();
   final AudioPlayer _notifPlayer = AudioPlayer();
+  final AudioPlayer _reconnectPlayer = AudioPlayer();
+  Timer? _reconnectTimer;
 
   // ── AudioContext helpers ───────────────────────────────────────────────────
 
@@ -102,25 +105,49 @@ class CallAudioService {
     }
   }
 
-  Future<void> playReconnecting() async {
+  void playReconnecting() {
+    debugPrint('[CallAudio] playReconnecting invoked');
     if (!_isAudioEnabled) return;
-    try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        await _callPlayer.setAudioContext(
-          _ctx(AndroidUsageType.voiceCommunication),
-        );
+    _reconnectTimer?.cancel();
+    _reconnectPlayer.stop();
+
+    Future<void> playOnce() async {
+      try {
+        // Wait for audio session to stabilize after disconnect
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        if (Platform.isAndroid || Platform.isIOS) {
+          await _reconnectPlayer.setAudioContext(
+            AudioContext(
+              android: AudioContextAndroid(
+                isSpeakerphoneOn: false,
+                stayAwake: false,
+                contentType: AndroidContentType.sonification,
+                usageType: AndroidUsageType.notificationRingtone,
+                audioFocus: AndroidAudioFocus.gain,
+              ),
+            ),
+          );
+        }
+        await _reconnectPlayer.setReleaseMode(ReleaseMode.release);
+        await _reconnectPlayer.play(AssetSource('audio/reconnecting.mp3'));
+      } catch (e) {
+        debugPrint('[CallAudio] playReconnecting error: $e');
       }
-      await _callPlayer.setReleaseMode(ReleaseMode.loop);
-      await _callPlayer.play(AssetSource('audio/reconnecting.mp3'));
-    } catch (e) {
-      debugPrint('[CallAudio] playReconnecting error: $e');
     }
+
+    playOnce();
+    _reconnectPlayer.onPlayerComplete.listen((_) {
+      _reconnectTimer = Timer(const Duration(milliseconds: 600), playOnce);
+    });
   }
 
-  Future<void> stopReconnecting() async {
-    try {
-      await _callPlayer.stop();
-    } catch (_) {}
+  /// Stop all looping call audio immediately.
+  /// Idempotent — safe to call multiple times.
+  void stopReconnecting() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectPlayer.stop();
   }
 
   /// Stop all looping call audio immediately.
@@ -219,5 +246,6 @@ class CallAudioService {
   Future<void> dispose() async {
     await _callPlayer.dispose();
     await _notifPlayer.dispose();
+    await _reconnectPlayer.dispose();
   }
 }

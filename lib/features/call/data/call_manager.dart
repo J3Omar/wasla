@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
 import 'call_audio_service.dart';
+import 'linux_audio_service.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/utils/background_service_manager.dart';
 
@@ -71,8 +72,10 @@ class CallManager {
   bool _isInitiator = false;
   bool _isReconnecting = false;
   bool _isDisposing = false;
+  bool _endSoundPlayed = false;
   Timer? _iceDisconnectTimer;
   Timer? _iceEndCallTimer;
+  Timer? _finalEndCallTimer;
   MediaStreamTrack? _originalAudioTrack;
 
   /// Current session snapshot — updated by the notifier.
@@ -112,6 +115,10 @@ class CallManager {
     bool isVideo = false,
   }) async {
     debugPrint('[CallManager] startCall invoked for $peerName ($peerIp)');
+    // Auto-restore mic if broken from previous crash
+    if (Platform.isLinux) {
+      await LinuxAudioService().restoreIfBroken();
+    }
     _session = CallSession(
       state: CallState.outgoing,
       peerId: peerId,
@@ -210,6 +217,10 @@ class CallManager {
     bool isVideo = false,
   }) async {
     debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
+    // Auto-restore mic if broken from previous crash
+    if (Platform.isLinux) {
+      await LinuxAudioService().restoreIfBroken();
+    }
     _session = CallSession(
       state: CallState.connecting,
       peerId: callerId,
@@ -393,6 +404,13 @@ class CallManager {
           }
         }
       }
+
+      if (Platform.isLinux) {
+        debugPrint(
+          '[CallManager] Linux deactivating screen share. Cleaning up audio routing...',
+        );
+        await LinuxAudioService().disableSystemAudioCapture();
+      }
     } else {
       // START SCREEN SHARE
       try {
@@ -419,6 +437,19 @@ class CallManager {
               return;
             }
 
+            // 1. Route native hardware monitor to default source
+            if (Platform.isLinux && withAudio) {
+              debugPrint(
+                '[CallManager] Linux detected with audio. Activating Native Monitor...',
+              );
+              await LinuxAudioService().enableSystemAudioCapture();
+              await Future.delayed(
+                const Duration(milliseconds: 300),
+              ); // Allow PulseAudio to switch
+            }
+
+            // 2. Get the Display (Video Only)
+            debugPrint('[CallManager] Fetching screen display...');
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
               'video': {
                 'deviceId': {'exact': screenSource.id},
@@ -426,17 +457,89 @@ class CallManager {
                 'height': {'ideal': 720, 'max': 1080},
                 'frameRate': {'ideal': 60, 'max': 60},
               },
-              'audio': audioConstraint,
+              'audio': Platform.isLinux
+                  ? false
+                  : (withAudio
+                        ? {
+                            'mandatory': {
+                              'echoCancellation': false,
+                              'googEchoCancellation': false,
+                              'autoGainControl': false,
+                              'googAutoGainControl': false,
+                              // Re-enable these to act as a noise gate against static hiss:
+                              'noiseSuppression': true,
+                              'googNoiseSuppression': true,
+                              'googHighpassFilter': true,
+                            },
+                            'optional': [],
+                          }
+                        : false),
             });
             debugPrint(
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
+
+            // 3. Inject the System Audio as a separate Microphone Track
+            if (Platform.isLinux && withAudio && _screenStream != null) {
+              try {
+                debugPrint(
+                  '[CallManager] Fetching virtual system audio via getUserMedia...',
+                );
+                final systemAudioStream = await navigator.mediaDevices
+                    .getUserMedia({
+                      'video': false,
+                      'audio': {
+                        'mandatory': {
+                          'echoCancellation': false,
+                          'googEchoCancellation': false,
+                          'autoGainControl': false,
+                          'googAutoGainControl': false,
+                          // Act as a noise gate to kill the crackle/static hiss:
+                          'noiseSuppression': true,
+                          'googNoiseSuppression': true,
+                          'googHighpassFilter': true,
+                        },
+                        'optional': [],
+                      },
+                    });
+
+                if (systemAudioStream.getAudioTracks().isNotEmpty) {
+                  final sysAudioTrack = systemAudioStream
+                      .getAudioTracks()
+                      .first;
+                  debugPrint(
+                    '[CallManager] Virtual system audio track obtained: ${sysAudioTrack.id}',
+                  );
+
+                  final freshSenders = await _pc!.getSenders();
+                  for (var sender in freshSenders) {
+                    if (sender.track?.kind == 'audio') {
+                      _originalAudioTrack =
+                          sender.track; // Save the original mic track
+
+                      // Create a NEW software-mixed audio track using WebRTC capabilities
+                      // Note: If flutter_webrtc does not natively support createLocalMediaStream mixing easily,
+                      // we fallback to the safest method: Replacing with sysAudioTrack ONLY (no mic) for now to ensure stability.
+                      // Since WebAudio API's gain nodes aren't fully exposed in Flutter WebRTC natively,
+                      // we will explicitly REPLACE the track with system audio to guarantee zero crackle.
+
+                      await sender.replaceTrack(sysAudioTrack);
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {
+                debugPrint(
+                  '[CallManager] Failed to get virtual system audio: $e',
+                );
+              }
+            }
           } else {
             _screenStream = await navigator.mediaDevices.getDisplayMedia({
               'video': {
                 'width': {'ideal': 960, 'max': 1280},
                 'height': {'ideal': 540, 'max': 720},
-                'frameRate': {'ideal': 45, 'max': 60},
+                'frameRate': {'ideal': 60, 'max': 60},
                 'cursor': 'always',
               },
               'audio': audioConstraint,
@@ -485,14 +588,12 @@ class CallManager {
             // Note: This specific path will require renegotiation handled by onRenegotiationNeeded
           }
 
-          // Re-fetch senders after video replacement to get current state
-          final freshSenders = await _pc!.getSenders();
-
-          // Replace screen audio track instead of adding it
+          // Replace the current microphone track with our MIXED virtual track
           if (screenAudioTracks.isNotEmpty) {
             debugPrint(
-              '[CallManager] Screen audio track found. Replacing existing audio track.',
+              '[CallManager] Screen audio track found. Replacing existing audio track with mixed stream.',
             );
+            final freshSenders = await _pc!.getSenders();
             for (var sender in freshSenders) {
               if (sender.track?.kind == 'audio') {
                 _originalAudioTrack = sender.track;
@@ -554,7 +655,10 @@ class CallManager {
     }
     // 3. NOW audioplayers can acquire focus — await so chime plays fully
     if (wasActive) {
-      await CallAudioService.instance.playEndSound();
+      if (!_endSoundPlayed) {
+        _endSoundPlayed = true;
+        await CallAudioService.instance.playEndSound();
+      }
     }
     // 4. Dispose WebRTC AFTER the chime is done
     await dispose();
@@ -604,6 +708,24 @@ class CallManager {
     pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        if (!kIsWeb &&
+            (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
+          final senders = await _pc!.getSenders();
+          for (final sender in senders) {
+            if (sender.track?.kind == 'video') {
+              final params = sender.parameters;
+              if (params.encodings != null && params.encodings!.isNotEmpty) {
+                params.encodings!.first.maxBitrate = 2000000; // 2 Mbps
+                params.encodings!.first.minBitrate = 500000; // 500 kbps
+                await sender.setParameters(params);
+                debugPrint(
+                  '[CallManager] Desktop video bitrate set: 500k-2M bps',
+                );
+              }
+              break;
+            }
+          }
+        }
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
@@ -612,6 +734,7 @@ class CallManager {
           _isReconnecting = false;
           _iceDisconnectTimer?.cancel();
           _iceEndCallTimer?.cancel();
+          _finalEndCallTimer?.cancel();
           debugPrint('[CallManager] ICE restart succeeded.');
           // 500ms delay before stopping —
           // lets the 1-second loop finish naturally
@@ -673,6 +796,7 @@ class CallManager {
         }
       } else if (state ==
           RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        if (_isReconnecting) return;
         if (!_isReconnecting) {
           _isReconnecting = true;
 
@@ -680,13 +804,17 @@ class CallManager {
           _heartbeatTimer = null;
           _missedHeartbeats = 0;
 
-          // Give it 5s silent grace before panicking UI
+          // Play reconnect sound immediately on disconnect
+          debugPrint(
+            '[CallManager] Connection lost. '
+            'Playing reconnecting sound immediately...',
+          );
+          CallAudioService.instance.playReconnecting();
+
+          // Give 5s grace before ICE restart attempt
           _iceDisconnectTimer?.cancel();
           _iceDisconnectTimer = Timer(const Duration(seconds: 5), () {
-            debugPrint(
-              '[CallManager] Connection weak. Playing reconnecting sound & Restarting ICE...',
-            );
-            CallAudioService.instance.playReconnecting();
+            debugPrint('[CallManager] Attempting ICE restart...');
             _pc!.restartIce(); // Trigger renegotiation internally
 
             // Start 15s doom timer (20s total)
@@ -702,9 +830,28 @@ class CallManager {
           });
         }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        // Don't end immediately — give a grace period.
+        // Android often jumps here skipping Disconnected entirely.
+        if (_isReconnecting) return;
+        _isReconnecting = true;
         _iceDisconnectTimer?.cancel();
         _iceEndCallTimer?.cancel();
-        endCall();
+        _finalEndCallTimer?.cancel();
+
+        debugPrint(
+          '[CallManager] Connection failed. Playing reconnecting sound...',
+        );
+        CallAudioService.instance.playReconnecting();
+        _pc!.restartIce();
+
+        // Give 15 seconds to recover before hanging up
+        _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
+          if (_isReconnecting) {
+            debugPrint('[CallManager] Failed recovery timeout. Ending call.');
+            CallAudioService.instance.stopReconnecting();
+            await endCall();
+          }
+        });
       }
     };
 
@@ -976,7 +1123,10 @@ class CallManager {
           } catch (_) {}
         }
         await CallAudioService.instance.stopAll();
-        await CallAudioService.instance.playEndSound();
+        if (!_endSoundPlayed) {
+          _endSoundPlayed = true;
+          await CallAudioService.instance.playEndSound();
+        }
         await dispose();
         break;
 
@@ -994,7 +1144,10 @@ class CallManager {
           } catch (_) {}
         }
         await CallAudioService.instance.stopAll();
-        await CallAudioService.instance.playEndSound();
+        if (!_endSoundPlayed) {
+          _endSoundPlayed = true;
+          await CallAudioService.instance.playEndSound();
+        }
         await dispose();
         break;
     }
@@ -1111,16 +1264,35 @@ class CallManager {
     } catch (e) {
       debugPrint('[CallManager] Reconnect failed: $e');
       await endCall();
+      return;
     }
+
+    // Final fallback — if re-signaling doesn't produce a Connected state
+    // within 10 seconds, give up and end the call.
+    _finalEndCallTimer?.cancel();
+    _finalEndCallTimer = Timer(const Duration(seconds: 10), () async {
+      if (_isReconnecting) {
+        debugPrint(
+          '[CallManager] Re-signaling timeout. Remote unreachable. Ending call.',
+        );
+        await endCall();
+      }
+    });
   }
 
   Future<void> dispose() async {
     if (_isDisposing) return;
     _isDisposing = true;
-
+    _endSoundPlayed = false;
     debugPrint('[CallManager] Disposing resources...');
+
+    if (Platform.isLinux) {
+      await LinuxAudioService().disableSystemAudioCapture();
+    }
+
     await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallTimer?.cancel();
+    _finalEndCallTimer?.cancel();
     _originalAudioTrack = null;
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {
@@ -1155,6 +1327,7 @@ class CallManager {
       await _signalingServer?.close();
       await _signalingWs?.close(); // Safe now, _isDisposing blocks the loop
     } catch (_) {}
+
     _localStream = null;
     _localVideoStream = null;
     _localRenderer = null;

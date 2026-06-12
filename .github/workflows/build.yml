@@ -45,7 +45,18 @@ jobs:
       - name: Install Linux Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libsecret-1-dev pkg-config ninja-build dpkg-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-pipewire
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libsecret-1-dev \
+            pkg-config \
+            ninja-build \
+            dpkg-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            pulseaudio-utils
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -67,43 +78,70 @@ jobs:
           mkdir -p "$STAGE_DIR/usr/lib/wasla"
           mkdir -p "$STAGE_DIR/usr/share/applications"
           mkdir -p "$STAGE_DIR/usr/share/pixmaps"
-          
-          cp -r build/linux/x64/release/bundle/* "$STAGE_DIR/usr/lib/wasla/"
-          
-          echo -e '#!/bin/bash\n/usr/lib/wasla/wasla "$@"' > "$STAGE_DIR/usr/bin/wasla"
+
+          cp -r build/linux/x64/release/bundle/* \
+            "$STAGE_DIR/usr/lib/wasla/"
+
+          echo -e '#!/bin/bash\n/usr/lib/wasla/wasla "$@"' \
+            > "$STAGE_DIR/usr/bin/wasla"
           chmod +x "$STAGE_DIR/usr/bin/wasla"
-          
+
           if [ -f "assets/images/wasla_logo.png" ]; then
-            cp assets/images/wasla_logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
+            cp assets/images/wasla_logo.png \
+              "$STAGE_DIR/usr/share/pixmaps/wasla.png"
           elif [ -f "assets/images/Wasla-logo.png" ]; then
-            cp assets/images/Wasla-logo.png "$STAGE_DIR/usr/share/pixmaps/wasla.png"
+            cp assets/images/Wasla-logo.png \
+              "$STAGE_DIR/usr/share/pixmaps/wasla.png"
           fi
-          
-          echo "[Desktop Entry]" > "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Version=1.0" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Type=Application" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Name=Wasla" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Comment=Local P2P Communication Application" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Exec=wasla" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Icon=wasla" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Terminal=false" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          echo "Categories=Network;Chat;" >> "$STAGE_DIR/usr/share/applications/wasla.desktop"
-          
-          echo "Package: wasla" > "$STAGE_DIR/DEBIAN/control"
-          echo "Version: 1.0.0" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Architecture: amd64" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Maintainer: Wasla App <wasla@local>" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Depends: libc6, libgtk-3-0, libglib2.0-0, libsecret-1-0, libgstreamer1.0-0, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Section: net" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Priority: standard" >> "$STAGE_DIR/DEBIAN/control"
-          echo "Description: Local P2P Communication Application." >> "$STAGE_DIR/DEBIAN/control"
-          echo " Wasla is a decentralized, peer-to-peer communication app" >> "$STAGE_DIR/DEBIAN/control"
-          echo " built with Flutter and WebRTC for local network use." >> "$STAGE_DIR/DEBIAN/control"
-          
+
+          cat > "$STAGE_DIR/usr/share/applications/wasla.desktop" <<EOF
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=Wasla
+          Comment=Local P2P Communication Application
+          Exec=wasla
+          Icon=wasla
+          Terminal=false
+          Categories=Network;Chat;
+          EOF
+
+          # ── control file ──────────────────────────────────────────
+          # Depends: only truly required runtime libs
+          # Recommends: PipeWire/PulseAudio audio extras — installed
+          #   if available, silently skipped if not (no install failure)
+          cat > "$STAGE_DIR/DEBIAN/control" <<EOF
+          Package: wasla
+          Version: 1.0.0
+          Architecture: amd64
+          Maintainer: Wasla App <wasla@local>
+          Depends: libc6,
+           libgtk-3-0,
+           libglib2.0-0,
+           libsecret-1-0,
+           libgstreamer1.0-0,
+           gstreamer1.0-plugins-good,
+           libgstreamer-plugins-base1.0-0,
+           pulseaudio-utils
+          Recommends: gstreamer1.0-plugins-bad,
+           gstreamer1.0-pipewire
+          Section: net
+          Priority: standard
+          Description: Local P2P Communication Application.
+           Wasla is a decentralized, peer-to-peer communication app
+           built with Flutter and WebRTC for local network use.
+           .
+           System audio sharing during screen share requires
+           PulseAudio or PipeWire (recommended). The app works
+           fully without them, but system audio capture will
+           be unavailable.
+          EOF
+
           chmod 755 "$STAGE_DIR/DEBIAN"
           chmod 644 "$STAGE_DIR/DEBIAN/control"
-          
-          dpkg-deb --build "$STAGE_DIR" "build/wasla_1.0.0_amd64.deb"
+
+          dpkg-deb --build "$STAGE_DIR" \
+            "build/wasla_1.0.0_amd64.deb"
 
       - name: Upload Linux .deb Package
         uses: actions/upload-artifact@v4
@@ -147,22 +185,22 @@ jobs:
           WizardStyle=modern
           ArchitecturesAllowed=x64
           ArchitecturesInstallIn64BitMode=x64
-          
+
           [Tasks]
           Name: "desktopicon"; Description: "Create a desktop icon"
-          
+
           [Files]
           Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-          
+
           [Icons]
           Name: "{group}\Wasla"; Filename: "{app}\wasla.exe"
           Name: "{autodesktop}\Wasla"; Filename: "{app}\wasla.exe"; Tasks: desktopicon
-          
+
           [Run]
           Filename: "{app}\wasla.exe"; Description: "Launch Wasla"; Flags: nowait postinstall skipifsilent
           "@
           Set-Content -Path wasla.iss -Value $iss
-          
+
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" wasla.iss
 
       - name: Upload Windows Setup EXE

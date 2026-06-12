@@ -1,6 +1,6 @@
-# وصلة — Wasla 🔗
+# Wasla 🔗
 
-> **LAN Communication App** — تواصل كامل بدون إنترنت، على شبكتك المنزلية
+> **LAN Communication App** — Full communication without internet, strictly on your home network.
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-blue?logo=flutter)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.x-blue?logo=dart)](https://dart.dev)
@@ -9,26 +9,26 @@
 
 ---
 
-## 💡 عن المشروع
+## 💡 About The Project
 
-**وصلة (Wasla)** هو تطبيق Flutter للتواصل داخل الشبكة المنزلية (LAN) بدون استهلاك إنترنت.
+**Wasla** is a Flutter application for Local Area Network (LAN) communication without internet consumption.
 
-**المشكلة:** النت في مصر محدود، وأي مكالمة على تليجرام أو واتساب بتستهلك من الباقة، حتى لو الشخص التاني في نفس البيت على نفس الراوتر.
+**The Problem:** Limited internet quotas. Any call on Telegram or WhatsApp consumes data, even if the other person is in the same house on the same router.
 
-**الحل:** تطبيق تواصل كامل يشتغل على الـ WiFi الداخلي فقط — **صوت + فيديو + chat + ملفات + screen share** — بدون أي خروج للإنترنت.
+**The Solution:** A full communication app that works purely on the internal WiFi — **Voice + Video + Chat + Files + Screen Share** — with zero internet egress.
 
 ---
 
-## ✨ المميزات
+## ✨ Features
 
-| الميزة | الوصف | الحالة |
+| Feature | Description | Status |
 |--------|-------|--------|
-| 🔍 Device Discovery | اكتشاف الأجهزة على الشبكة تلقائياً | 🔴 Not Started |
-| 💬 Chat | رسائل نصية محلية ومشفرة | 🔴 Not Started |
-| 📞 Voice Call | مكالمات صوتية فردية وجماعية | 🔴 Not Started |
-| 📹 Video Call | مكالمات فيديو بجودة 720p | 🔴 Not Started |
-| 🖥️ Screen Share | مشاركة الشاشة في الاتجاهين | 🔴 Not Started |
-| 📁 File Sharing | إرسال ملفات أثناء المحادثة | 🔴 Not Started |
+| 🔍 Device Discovery | Auto-discover devices on the network | 🔴 Not Started |
+| 💬 Chat | Local encrypted text messages | 🔴 Not Started |
+| 📞 Voice Call | 1-on-1 and group voice calls | 🔴 Not Started |
+| 📹 Video Call | 720p Video calls | 🔴 Not Started |
+| 🖥️ Screen Share | Bidirectional screen sharing | 🟡 In Progress (Linux ✅, Android 🔴, Windows ✅) |
+| 📁 File Sharing | Send files during chat | 🔴 Not Started |
 
 ---
 
@@ -37,43 +37,43 @@
 ```
 ┌─────────────────────────────────────────────┐
 │         Local WebSocket (Signaling)          │
-│         الـ Caller ينشئ Server مؤقت          │
+│         Caller creates an ephemeral Server   │
 └─────────────┬───────────────────────────────┘
-              │ تبادل بيانات الاتصال فقط (LAN)
+              │ Connection payload exchange only (LAN)
 ┌─────────────▼───────────────────────────────┐
-│           WebRTC P2P — على الـ LAN           │
-│   صوت + فيديو + screen share + ملفات         │
-│     100% محلي — لا يخرج أي شيء للإنترنت     │
+│           WebRTC P2P — over LAN              │
+│   Voice + Video + screen share + files       │
+│     100% Local — Zero internet routing       │
 └─────────────────────────────────────────────┘
 ```
 
-**الأمان:**
-- WebRTC يشفر كل الميديا تلقائياً بـ DTLS-SRTP
-- كل البيانات والمحادثات محفوظة محلياً ومشفرة
-- لا يوجد accounts أو servers خارجية
+**Security:**
+- WebRTC encrypts all media automatically with DTLS-SRTP.
+- All data and chats are stored locally and encrypted.
+- No external accounts or servers.
 
 ---
 
-## 🧱 التقنيات المستخدمة
+## 🧱 Tech Stack
 
-| الطبقة | التقنية |
+| Layer | Technology |
 |--------|---------|
 | UI + Logic | Flutter / Dart |
-| صوت / فيديو / screen | `flutter_webrtc` |
+| Audio/Video/Screen | `flutter_webrtc` |
 | Signaling | Local WebSocket Server |
 | Device Discovery | mDNS + UDP Broadcast |
 | Chat Storage | Drift / SQLite (local) |
 | Device ID | `flutter_secure_storage` |
-| التصميم | Google Stitch (AI UI Generator) |
+| Design | Google Stitch (AI UI Generator) |
 
 ---
 
-## 📱 الشاشات
+## 📱 Screens
 
-| # | الشاشة | الحالة |
+| # | Screen | Status |
 |---|--------|--------|
 | 1 | Splash Screen | 🟡 Designed |
-| 2 | Onboarding (اسم الجهاز) | 🔴 Pending |
+| 2 | Onboarding (Device Name) | 🔴 Pending |
 | 3 | Home — Connected Devices | 🟡 Designed |
 | 4 | Chat Screen | 🟡 Designed |
 | 5 | Outgoing Call Screen | 🔴 Pending |
@@ -85,9 +85,9 @@
 
 ---
 
-## 🖥️ الأجهزة المدعومة
+## 🖥️ Supported Platforms
 
-| الجهاز | النظام | الحد الأدنى |
+| Platform | OS | Minimum Requirement |
 |--------|--------|-------------|
 | Android | Android | 5.0 (API 21)+ |
 | Windows | Windows | 10+ |
@@ -95,14 +95,14 @@
 
 ---
 
-## 📁 هيكل المشروع
+## 📁 Project Structure
 
 ```
 wasla/
 ├── docs/
-│   ├── PRD.md                    ← متطلبات المنتج
-│   ├── ARCHITECTURE.md           ← التصميم التقني
-│   ├── PROGRESS.md               ← تقدم المشروع الكلي
+│   ├── PRD.md                    ← Product Requirements
+│   ├── ARCHITECTURE.md           ← Technical Architecture
+│   ├── PROGRESS.md               ← Overall Project Progress
 │   └── features/
 │       ├── onboarding/
 │       ├── device_discovery/
@@ -112,9 +112,9 @@ wasla/
 │       ├── file_sharing/
 │       └── screen_share/
 ├── design/
-│   ├── design_reference.md       ← نظام الألوان والخطوط
-│   ├── design_system.md          ← Design System من Stitch
-│   └── screens/                  ← Screenshots من Stitch
+│   ├── design_reference.md       ← Colors and typography
+│   ├── design_system.md          ← Stitch Design System
+│   └── screens/                  ← Stitch Screenshots
 ├── lib/
 │   ├── core/
 │   │   ├── config/
@@ -137,45 +137,45 @@ wasla/
 
 ---
 
-## 🚀 تشغيل المشروع
+## 🚀 Running the Project
 
 ```bash
-# تثبيت الـ dependencies
+# Install dependencies
 flutter pub get
 
-# تشغيل على Android
+# Run on Android
 flutter run -d android
 
-# تشغيل على Linux
+# Run on Linux
 flutter run -d linux
 
-# تشغيل على Windows
+# Run on Windows
 flutter run -d windows
 ```
 
 ---
 
-📊 **تفاصيل التقدم:** [PROGRESS.md](./docs/PROGRESS.md)
+📊 **Progress Details:** [PROGRESS.md](./docs/PROGRESS.md)
 
 ---
 
-## 🎨 التصميم
+## 🎨 Design
 
-التصميم مبني على **Google Stitch** بـ design system اسمه **Kinetic Ether**:
-- **Theme:** Dark فقط
+The design is built on **Google Stitch** with a design system named **Kinetic Ether**:
+- **Theme:** Dark Only
 - **Style:** Glassmorphism + Subtle Gradients
 - **Vibe:** Tech / Cyberpunk / Minimal
 - **Primary:** Cyan `#00DBE7`
 - **Secondary:** Purple `#7000FF`
 - **Fonts:** Hanken Grotesk + Inter + Geist
 
-📐 **التفاصيل الكاملة:** [design/design_reference.md](./design/design_reference.md)
+📐 **Full Details:** [design/design_reference.md](./design/design_reference.md)
 
 ---
 
-## 📋 الـ Features Spec
+## 📋 Features Spec
 
-| الفيتشر | Spec | Progress |
+| Feature | Spec | Progress |
 |---------|------|----------|
 | Onboarding | [spec.md](./docs/features/onboarding/spec.md) | [progress.md](./docs/features/onboarding/progress.md) |
 | Device Discovery | [spec.md](./docs/features/device_discovery/spec.md) | [progress.md](./docs/features/device_discovery/progress.md) |
@@ -185,5 +185,4 @@ flutter run -d windows
 | File Sharing | [spec.md](./docs/features/file_sharing/spec.md) | [progress.md](./docs/features/file_sharing/progress.md) |
 | Screen Share | [spec.md](./docs/features/screen_share/spec.md) | [progress.md](./docs/features/screen_share/progress.md) |
 
-
-*مشروع شخصي — لا يوجد سيرفرات خارجية، كل شيء على شبكتك المنزلية.*
+*Personal Project — No external servers, everything is kept entirely on your home network.*

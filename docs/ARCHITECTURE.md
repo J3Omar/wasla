@@ -90,8 +90,14 @@ Following the successful exchange of SDP offers and ICE host candidates, the Web
 |---|---|
 | **Audio Track** | Voice calling (Hardware Echo Cancellation enabled) |
 | **Video Track** | Video calling (Aggressive 60 FPS constraint / 1-2.5 Mbps target) |
-| **Screen Track** | Screen sharing (Includes graceful Linux `audio: false` fallback) |
+| **Screen Track** | Screen sharing with Native System Audio Capture. |
 | **Data Channel** | SCTP overlay for Chat & binary File Transfers |
+
+### 5.1 Screen Share & System Audio
+
+- **Linux:** Uses `PulseAudio`/`PipeWire` by directly capturing the hardware sink's `.monitor` source. The `LinuxAudioService` handles this dynamically with 3 cleanup layers (Normal teardown, Call `dispose()`, and a `ProcessSignal` SIGTERM/SIGINT hook in `main.dart`). Simultaneous Microphone + System Audio is restricted via an explicit dialog.
+- **Windows:** System loopback is supported natively via WASAPI.
+- **Android:** System audio capturing currently requires native `MediaProjection` and `AudioPlaybackCapture` APIs which are pending implementation.
 
 ---
 
