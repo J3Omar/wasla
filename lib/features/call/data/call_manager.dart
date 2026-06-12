@@ -72,6 +72,7 @@ class CallManager {
   bool _isInitiator = false;
   bool _isReconnecting = false;
   bool _isDisposing = false;
+  bool _endSoundPlayed = false;
   Timer? _iceDisconnectTimer;
   Timer? _iceEndCallTimer;
   MediaStreamTrack? _originalAudioTrack;
@@ -452,7 +453,20 @@ class CallManager {
               },
               'audio': Platform.isLinux
                   ? false
-                  : audioConstraint, // OS display capturer handles video only on Linux
+                  : (withAudio
+                        ? {
+                            'mandatory': {
+                              'echoCancellation': false,
+                              'noiseSuppression': false,
+                              'autoGainControl': false,
+                              'googEchoCancellation': false,
+                              'googAutoGainControl': false,
+                              'googNoiseSuppression': false,
+                              'googHighpassFilter': false,
+                            },
+                            'optional': [],
+                          }
+                        : false),
             });
             debugPrint(
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
@@ -467,8 +481,18 @@ class CallManager {
                 final systemAudioStream = await navigator.mediaDevices
                     .getUserMedia({
                       'video': false,
-                      'audio':
-                          true, // This will grab the WaslaAudio.monitor because we set it as default
+                      'audio': {
+                        'mandatory': {
+                          'echoCancellation': false,
+                          'noiseSuppression': false,
+                          'autoGainControl': false,
+                          'googEchoCancellation': false,
+                          'googAutoGainControl': false,
+                          'googNoiseSuppression': false,
+                          'googHighpassFilter': false,
+                        },
+                        'optional': [],
+                      },
                     });
 
                 if (systemAudioStream.getAudioTracks().isNotEmpty) {
@@ -478,7 +502,9 @@ class CallManager {
                   debugPrint(
                     '[CallManager] Virtual system audio track obtained: ${sysAudioTrack.id}',
                   );
-                  _screenStream!.addTrack(sysAudioTrack);
+
+                  // The senders might not be fully fetched here, wait we are inside the Linux block before getting senders.
+                  // Wait, we need to do this below when we iterate senders!
                 }
               } catch (e) {
                 debugPrint(
@@ -491,7 +517,7 @@ class CallManager {
               'video': {
                 'width': {'ideal': 960, 'max': 1280},
                 'height': {'ideal': 540, 'max': 720},
-                'frameRate': {'ideal': 45, 'max': 60},
+                'frameRate': {'ideal': 60, 'max': 60},
                 'cursor': 'always',
               },
               'audio': audioConstraint,
@@ -540,14 +566,12 @@ class CallManager {
             // Note: This specific path will require renegotiation handled by onRenegotiationNeeded
           }
 
-          // Re-fetch senders after video replacement to get current state
-          final freshSenders = await _pc!.getSenders();
-
-          // Replace screen audio track instead of adding it
+          // Replace the current microphone track with our MIXED virtual track
           if (screenAudioTracks.isNotEmpty) {
             debugPrint(
-              '[CallManager] Screen audio track found. Replacing existing audio track.',
+              '[CallManager] Screen audio track found. Replacing existing audio track with mixed stream.',
             );
+            final freshSenders = await _pc!.getSenders();
             for (var sender in freshSenders) {
               if (sender.track?.kind == 'audio') {
                 _originalAudioTrack = sender.track;
@@ -609,7 +633,10 @@ class CallManager {
     }
     // 3. NOW audioplayers can acquire focus — await so chime plays fully
     if (wasActive) {
-      await CallAudioService.instance.playEndSound();
+      if (!_endSoundPlayed) {
+        _endSoundPlayed = true;
+        await CallAudioService.instance.playEndSound();
+      }
     }
     // 4. Dispose WebRTC AFTER the chime is done
     await dispose();
@@ -659,6 +686,24 @@ class CallManager {
     pc.onConnectionState = (state) async {
       debugPrint('[Call] RTCPeerConnectionState: $state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        if (!kIsWeb &&
+            (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
+          final senders = await _pc!.getSenders();
+          for (final sender in senders) {
+            if (sender.track?.kind == 'video') {
+              final params = sender.parameters;
+              if (params.encodings != null && params.encodings!.isNotEmpty) {
+                params.encodings!.first.maxBitrate = 2000000; // 2 Mbps
+                params.encodings!.first.minBitrate = 500000; // 500 kbps
+                await sender.setParameters(params);
+                debugPrint(
+                  '[CallManager] Desktop video bitrate set: 500k-2M bps',
+                );
+              }
+              break;
+            }
+          }
+        }
         _cancelTimeout();
         // Safety net only — audio handoff already happened before getUserMedia
         await CallAudioService.instance.stopAll();
@@ -728,6 +773,7 @@ class CallManager {
         }
       } else if (state ==
           RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+        if (_isReconnecting) return;
         if (!_isReconnecting) {
           _isReconnecting = true;
 
@@ -1031,7 +1077,10 @@ class CallManager {
           } catch (_) {}
         }
         await CallAudioService.instance.stopAll();
-        await CallAudioService.instance.playEndSound();
+        if (!_endSoundPlayed) {
+          _endSoundPlayed = true;
+          await CallAudioService.instance.playEndSound();
+        }
         await dispose();
         break;
 
@@ -1049,7 +1098,10 @@ class CallManager {
           } catch (_) {}
         }
         await CallAudioService.instance.stopAll();
-        await CallAudioService.instance.playEndSound();
+        if (!_endSoundPlayed) {
+          _endSoundPlayed = true;
+          await CallAudioService.instance.playEndSound();
+        }
         await dispose();
         break;
     }
@@ -1172,7 +1224,7 @@ class CallManager {
   Future<void> dispose() async {
     if (_isDisposing) return;
     _isDisposing = true;
-
+    _endSoundPlayed = false;
     debugPrint('[CallManager] Disposing resources...');
     await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallTimer?.cancel();
