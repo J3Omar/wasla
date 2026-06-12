@@ -101,19 +101,50 @@ static void my_application_activate(GApplication* application) {
   // and run pactl synchronously before the app quits.
   g_signal_connect(window, "delete-event",
     G_CALLBACK(+[](GtkWidget*, GdkEvent*, gpointer) -> gboolean {
+      // Build env prefix so pactl can reach PulseAudio/PipeWire.
+      // system() spawns a shell that may not inherit the desktop session env.
+      const char* xdgRuntime = getenv("XDG_RUNTIME_DIR");
+      const char* pulseServer = getenv("PULSE_SERVER");
+      char envPrefix[512] = {0};
+      if (xdgRuntime) {
+        if (pulseServer) {
+          snprintf(envPrefix, sizeof(envPrefix),
+            "XDG_RUNTIME_DIR=%s PULSE_RUNTIME_PATH=%s/pulse "
+            "PULSE_SERVER=%s ",
+            xdgRuntime, xdgRuntime, pulseServer);
+        } else {
+          snprintf(envPrefix, sizeof(envPrefix),
+            "XDG_RUNTIME_DIR=%s PULSE_RUNTIME_PATH=%s/pulse ",
+            xdgRuntime, xdgRuntime);
+        }
+      }
+
+      // Helper lambda: run pactl with correct env vars
+      auto runPactl = [&envPrefix](const char* args) {
+        char finalCmd[1024] = {0};
+        snprintf(finalCmd, sizeof(finalCmd),
+          "%spactl %s 2>/dev/null", envPrefix, args);
+        return system(finalCmd);
+      };
+
       // Method 1: Direct detection — if the current default source is a
       // monitor, find a real mic and restore it immediately.
       // This handles the race condition where the recovery file hasn't
       // been written yet by the Dart VM before GTK closes.
-      FILE* check = popen("pactl get-default-source 2>/dev/null", "r");
+      char checkCmd[768] = {0};
+      snprintf(checkCmd, sizeof(checkCmd),
+        "%spactl get-default-source 2>/dev/null", envPrefix);
+      FILE* check = popen(checkCmd, "r");
       if (check) {
         char current[256] = {0};
         if (fgets(current, sizeof(current), check)) {
           if (strstr(current, ".monitor")) {
-            FILE* list = popen(
-              "pactl list short sources 2>/dev/null | "
+            char listCmd[768] = {0};
+            snprintf(listCmd, sizeof(listCmd),
+              "%spactl list short sources 2>/dev/null | "
               "grep alsa_input | grep -v monitor | "
-              "awk '{print $2}' | head -1", "r");
+              "awk '{print $2}' | head -1", envPrefix);
+            FILE* list = popen(listCmd, "r");
             if (list) {
               char mic[256] = {0};
               if (fgets(mic, sizeof(mic), list)) {
@@ -121,10 +152,10 @@ static void my_application_activate(GApplication* application) {
                 if (len > 0 && mic[len-1] == '\n')
                   mic[len-1] = '\0';
                 if (strlen(mic) > 0) {
-                  char cmd[512];
-                  snprintf(cmd, sizeof(cmd),
-                    "pactl set-default-source %s", mic);
-                  system(cmd);
+                  char args[512];
+                  snprintf(args, sizeof(args),
+                    "set-default-source %s", mic);
+                  runPactl(args);
                 }
               }
               pclose(list);
@@ -144,10 +175,10 @@ static void my_application_activate(GApplication* application) {
           if (len > 0 && source[len-1] == '\n')
             source[len-1] = '\0';
           if (strlen(source) > 0) {
-            char cmd[512];
-            snprintf(cmd, sizeof(cmd),
-              "pactl set-default-source %s", source);
-            system(cmd);
+            char args[512];
+            snprintf(args, sizeof(args),
+              "set-default-source %s", source);
+            runPactl(args);
           }
         }
         fclose(f);

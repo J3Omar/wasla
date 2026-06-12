@@ -106,6 +106,7 @@ class CallAudioService {
   }
 
   void playReconnecting() {
+    debugPrint('[CallAudio] playReconnecting invoked');
     if (!_isAudioEnabled) return;
     _reconnectTimer?.cancel();
     _reconnectPlayer.stop();

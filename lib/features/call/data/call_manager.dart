@@ -826,10 +826,28 @@ class CallManager {
           });
         }
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        // Don't end immediately — give a grace period.
+        // Android often jumps here skipping Disconnected entirely.
+        if (_isReconnecting) return;
+        _isReconnecting = true;
         _iceDisconnectTimer?.cancel();
         _iceEndCallTimer?.cancel();
         _finalEndCallTimer?.cancel();
-        endCall();
+
+        debugPrint(
+          '[CallManager] Connection failed. Playing reconnecting sound...',
+        );
+        CallAudioService.instance.playReconnecting();
+        _pc!.restartIce();
+
+        // Give 15 seconds to recover before hanging up
+        _iceEndCallTimer = Timer(const Duration(seconds: 15), () async {
+          if (_isReconnecting) {
+            debugPrint('[CallManager] Failed recovery timeout. Ending call.');
+            CallAudioService.instance.stopReconnecting();
+            await endCall();
+          }
+        });
       }
     };
 
