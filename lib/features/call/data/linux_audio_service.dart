@@ -7,6 +7,7 @@ class LinuxAudioService {
   LinuxAudioService._internal();
 
   String? _originalDefaultSource;
+  static const _recoveryFile = '/tmp/wasla_audio_recovery.txt';
 
   Future<void> enableSystemAudioCapture() async {
     if (!Platform.isLinux) return;
@@ -24,6 +25,7 @@ class LinuxAudioService {
         debugPrint(
           '[LinuxAudioService] Saved original physical mic: $_originalDefaultSource',
         );
+        await File(_recoveryFile).writeAsString(_originalDefaultSource!);
       }
 
       // 2. Find the actual hardware output (Speakers)
@@ -65,6 +67,9 @@ class LinuxAudioService {
         );
         _originalDefaultSource = null;
       }
+
+      final f = File(_recoveryFile);
+      if (await f.exists()) await f.delete();
     } catch (e) {
       debugPrint('[LinuxAudioService] Exception during cleanup: $e');
     }

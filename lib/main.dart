@@ -5,11 +5,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Global Failsafe: Ensure Linux audio is cleaned up if the app is force-killed
   if (Platform.isLinux) {
+    final recoveryFile = File('/tmp/wasla_audio_recovery.txt');
+    if (await recoveryFile.exists()) {
+      final savedSource = await recoveryFile.readAsString();
+      if (savedSource.trim().isNotEmpty) {
+        await Process.run('pactl', ['set-default-source', savedSource.trim()]);
+        await recoveryFile.delete();
+        debugPrint(
+          '[LinuxAudioService] Auto-restored mic on startup: ${savedSource.trim()}',
+        );
+      }
+    }
     ProcessSignal.sigint.watch().listen((signal) async {
       debugPrint('[Main] SIGINT received. Cleaning up Linux Audio...');
       await LinuxAudioService().disableSystemAudioCapture();
