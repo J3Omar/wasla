@@ -398,7 +398,7 @@ class CallManager {
 
       if (Platform.isLinux) {
         debugPrint(
-          '[CallManager] Linux deactivating screen share. Cleaning up Virtual Sink...',
+          '[CallManager] Linux deactivating screen share. Cleaning up audio routing...',
         );
         await LinuxAudioService().disableSystemAudioCapture();
       }

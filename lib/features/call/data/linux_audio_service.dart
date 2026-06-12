@@ -14,18 +14,15 @@ class LinuxAudioService {
 
     try {
       // 1. Save original physical mic (ensure we don't save a monitor by mistake)
-      final sourceResult = await Process.run('sh', [
-        '-c',
-        'pactl info | grep "Default Source" | cut -d":" -f2',
-      ]);
-      final currentSource = sourceResult.stdout.toString().trim();
+      final result = await Process.run('pactl', ['get-default-source']);
+      final original = result.stdout.toString().trim();
 
-      if (!currentSource.contains('.monitor')) {
-        _originalDefaultSource = currentSource;
+      if (!original.contains('.monitor')) {
+        _originalDefaultSource = original;
+        await File(_recoveryFile).writeAsString(original);
         debugPrint(
-          '[LinuxAudioService] Saved original physical mic: $_originalDefaultSource',
+          '[LinuxAudioService] Saved original physical mic: $original',
         );
-        await File(_recoveryFile).writeAsString(_originalDefaultSource!);
       }
 
       // 2. Find the actual hardware output (Speakers)
@@ -56,20 +53,22 @@ class LinuxAudioService {
     if (!Platform.isLinux) return;
 
     try {
-      if (_originalDefaultSource != null &&
-          _originalDefaultSource!.isNotEmpty) {
-        await Process.run('pactl', [
-          'set-default-source',
-          _originalDefaultSource!,
-        ]);
+      String? source = _originalDefaultSource;
+      if (source == null || source.isEmpty) {
+        final f = File(_recoveryFile);
+        if (await f.exists()) {
+          source = (await f.readAsString()).trim();
+        }
+      }
+      if (source != null && source.isNotEmpty) {
+        await Process.run('pactl', ['set-default-source', source]);
         debugPrint(
-          '[LinuxAudioService] Restored original physical mic: $_originalDefaultSource',
+          '[LinuxAudioService] Restored original physical mic: $source',
         );
         _originalDefaultSource = null;
+        final f = File(_recoveryFile);
+        if (await f.exists()) await f.delete();
       }
-
-      final f = File(_recoveryFile);
-      if (await f.exists()) await f.delete();
     } catch (e) {
       debugPrint('[LinuxAudioService] Exception during cleanup: $e');
     }
