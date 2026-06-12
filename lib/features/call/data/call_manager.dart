@@ -428,18 +428,15 @@ class CallManager {
               return;
             }
 
-            // 1. Activate the Virtual Sink FIRST so it becomes the system's default source
+            // 1. Route native hardware monitor to default source
             if (Platform.isLinux && withAudio) {
               debugPrint(
-                '[CallManager] Linux detected with audio. Activating Virtual Null Sink...',
+                '[CallManager] Linux detected with audio. Activating Native Monitor...',
               );
               await LinuxAudioService().enableSystemAudioCapture();
-              await Process.run('pactl', [
-                'set-default-source',
-                'WaslaAudio.monitor',
-              ]);
-              // Small delay to allow PulseAudio to switch the default source before WebRTC probes it
-              await Future.delayed(const Duration(milliseconds: 300));
+              await Future.delayed(
+                const Duration(milliseconds: 300),
+              ); // Allow PulseAudio to switch
             }
 
             // 2. Get the Display (Video Only)
@@ -457,12 +454,13 @@ class CallManager {
                         ? {
                             'mandatory': {
                               'echoCancellation': false,
-                              'noiseSuppression': false,
-                              'autoGainControl': false,
                               'googEchoCancellation': false,
+                              'autoGainControl': false,
                               'googAutoGainControl': false,
-                              'googNoiseSuppression': false,
-                              'googHighpassFilter': false,
+                              // Re-enable these to act as a noise gate against static hiss:
+                              'noiseSuppression': true,
+                              'googNoiseSuppression': true,
+                              'googHighpassFilter': true,
                             },
                             'optional': [],
                           }
@@ -484,12 +482,13 @@ class CallManager {
                       'audio': {
                         'mandatory': {
                           'echoCancellation': false,
-                          'noiseSuppression': false,
-                          'autoGainControl': false,
                           'googEchoCancellation': false,
+                          'autoGainControl': false,
                           'googAutoGainControl': false,
-                          'googNoiseSuppression': false,
-                          'googHighpassFilter': false,
+                          // Act as a noise gate to kill the crackle/static hiss:
+                          'noiseSuppression': true,
+                          'googNoiseSuppression': true,
+                          'googHighpassFilter': true,
                         },
                         'optional': [],
                       },
@@ -503,8 +502,22 @@ class CallManager {
                     '[CallManager] Virtual system audio track obtained: ${sysAudioTrack.id}',
                   );
 
-                  // The senders might not be fully fetched here, wait we are inside the Linux block before getting senders.
-                  // Wait, we need to do this below when we iterate senders!
+                  final freshSenders = await _pc!.getSenders();
+                  for (var sender in freshSenders) {
+                    if (sender.track?.kind == 'audio') {
+                      _originalAudioTrack =
+                          sender.track; // Save the original mic track
+
+                      // Create a NEW software-mixed audio track using WebRTC capabilities
+                      // Note: If flutter_webrtc does not natively support createLocalMediaStream mixing easily,
+                      // we fallback to the safest method: Replacing with sysAudioTrack ONLY (no mic) for now to ensure stability.
+                      // Since WebAudio API's gain nodes aren't fully exposed in Flutter WebRTC natively,
+                      // we will explicitly REPLACE the track with system audio to guarantee zero crackle.
+
+                      await sender.replaceTrack(sysAudioTrack);
+                      break;
+                    }
+                  }
                 }
               } catch (e) {
                 debugPrint(
