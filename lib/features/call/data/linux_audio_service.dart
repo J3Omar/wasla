@@ -73,4 +73,54 @@ class LinuxAudioService {
       debugPrint('[LinuxAudioService] Exception during cleanup: $e');
     }
   }
+
+  /// Checks if the current default source is a monitor (broken state from crash).
+  /// If so, restores from recovery file or resets to first physical mic found.
+  Future<void> restoreIfBroken() async {
+    try {
+      final result = await Process.run('pactl', ['get-default-source']);
+      final current = result.stdout.toString().trim();
+
+      // If current source is a monitor, the mic is broken — fix it
+      if (current.contains('.monitor')) {
+        debugPrint(
+          '[LinuxAudioService] Broken mic detected on call start: $current',
+        );
+
+        // Try recovery file first
+        final f = File(_recoveryFile);
+        if (await f.exists()) {
+          final saved = (await f.readAsString()).trim();
+          if (saved.isNotEmpty && !saved.contains('.monitor')) {
+            await Process.run('pactl', ['set-default-source', saved]);
+            await f.delete();
+            _originalDefaultSource = null;
+            debugPrint(
+              '[LinuxAudioService] Auto-restored from recovery file: $saved',
+            );
+            return;
+          }
+        }
+
+        // Fallback: find first physical mic from pactl list
+        final list = await Process.run('pactl', ['list', 'short', 'sources']);
+        final lines = list.stdout.toString().split('\n');
+        for (final line in lines) {
+          if (line.contains('alsa_input') && !line.contains('.monitor')) {
+            final parts = line.trim().split(RegExp(r'\s+'));
+            if (parts.length > 1) {
+              final micName = parts[1];
+              await Process.run('pactl', ['set-default-source', micName]);
+              debugPrint(
+                '[LinuxAudioService] Auto-restored to physical mic: $micName',
+              );
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[LinuxAudioService] restoreIfBroken error: $e');
+    }
+  }
 }

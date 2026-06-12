@@ -114,6 +114,10 @@ class CallManager {
     bool isVideo = false,
   }) async {
     debugPrint('[CallManager] startCall invoked for $peerName ($peerIp)');
+    // Auto-restore mic if broken from previous crash
+    if (Platform.isLinux) {
+      await LinuxAudioService().restoreIfBroken();
+    }
     _session = CallSession(
       state: CallState.outgoing,
       peerId: peerId,
@@ -212,6 +216,10 @@ class CallManager {
     bool isVideo = false,
   }) async {
     debugPrint('[CallManager] acceptCall invoked for $callerIp:$signalingPort');
+    // Auto-restore mic if broken from previous crash
+    if (Platform.isLinux) {
+      await LinuxAudioService().restoreIfBroken();
+    }
     _session = CallSession(
       state: CallState.connecting,
       peerId: callerId,

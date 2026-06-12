@@ -5,6 +5,10 @@
 #include <gdk/gdkx.h>
 #endif
 
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+
 #include "flutter/generated_plugin_registrant.h"
 
 struct _MyApplication {
@@ -91,6 +95,32 @@ static void my_application_activate(GApplication* application) {
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
+
+  // Restore mic on window close (X button).
+  // GTK fires delete-event instead of SIGTERM, so we intercept it here
+  // and run pactl synchronously before the app quits.
+  g_signal_connect(window, "delete-event",
+    G_CALLBACK(+[](GtkWidget*, GdkEvent*, gpointer) -> gboolean {
+      FILE* f = fopen("/tmp/wasla_audio_recovery.txt", "r");
+      if (f) {
+        char source[256] = {0};
+        if (fgets(source, sizeof(source), f)) {
+          size_t len = strlen(source);
+          if (len > 0 && source[len-1] == '\n')
+            source[len-1] = '\0';
+          if (strlen(source) > 0) {
+            char cmd[512];
+            snprintf(cmd, sizeof(cmd),
+              "pactl set-default-source %s", source);
+            system(cmd);
+          }
+        }
+        fclose(f);
+        remove("/tmp/wasla_audio_recovery.txt");
+      }
+      // Return FALSE to allow normal close to proceed
+      return FALSE;
+    }), nullptr);
 }
 
 // Implements GApplication::local_command_line.
