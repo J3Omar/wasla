@@ -804,13 +804,17 @@ class CallManager {
           _heartbeatTimer = null;
           _missedHeartbeats = 0;
 
-          // Give it 5s silent grace before panicking UI
+          // Play reconnect sound immediately on disconnect
+          debugPrint(
+            '[CallManager] Connection lost. '
+            'Playing reconnecting sound immediately...',
+          );
+          CallAudioService.instance.playReconnecting();
+
+          // Give 5s grace before ICE restart attempt
           _iceDisconnectTimer?.cancel();
           _iceDisconnectTimer = Timer(const Duration(seconds: 5), () {
-            debugPrint(
-              '[CallManager] Connection weak. Playing reconnecting sound & Restarting ICE...',
-            );
-            CallAudioService.instance.playReconnecting();
+            debugPrint('[CallManager] Attempting ICE restart...');
             _pc!.restartIce(); // Trigger renegotiation internally
 
             // Start 15s doom timer (20s total)

@@ -113,9 +113,20 @@ class CallAudioService {
 
     Future<void> playOnce() async {
       try {
+        // Wait for audio session to stabilize after disconnect
+        await Future.delayed(const Duration(milliseconds: 300));
+
         if (Platform.isAndroid || Platform.isIOS) {
           await _reconnectPlayer.setAudioContext(
-            _ctx(AndroidUsageType.voiceCommunication),
+            AudioContext(
+              android: AudioContextAndroid(
+                isSpeakerphoneOn: false,
+                stayAwake: false,
+                contentType: AndroidContentType.sonification,
+                usageType: AndroidUsageType.notificationRingtone,
+                audioFocus: AndroidAudioFocus.gain,
+              ),
+            ),
           );
         }
         await _reconnectPlayer.setReleaseMode(ReleaseMode.release);
