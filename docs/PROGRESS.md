@@ -43,7 +43,12 @@
 - [x] **F3 — Chat:** WebRTC Data Channels (Text payloads).
 - [x] **F4 — Voice Call:** VoIP over local WebSockets. 
 - [x] **F5 — Video Call:** Hardware-accelerated VP8 with aggressive 60 FPS constraints (`addTransceiver`).
-- [x] **F6 — Screen Share:** Bidirectional casting. Graceful Linux `audio: false` fallback implemented.
+- [x] **F6 — Screen Share:** Bidirectional casting.
+  - Linux screen share: ✅ Working (monitor source)
+  - Linux system audio: ✅ Working (PipeWire/PulseAudio)
+  - Android system audio: 🔴 Requires native code
+  - Windows system audio: ✅ Working (WASAPI)
+  - Mic + system audio simultaneously: 🔴 Not supported on Linux (dialog shown to user)
 - [x] **F7 — File Sharing:** Chunked transfer.
 
 ---
@@ -63,6 +68,6 @@
 
 ## ⬜ Phase 4 — Native Audio & Hardware Cryptography (Roadmap)
 
-- [ ] Linux System Audio Routing (`pactl` module-null-sink)
+- [x] Linux System Audio Routing (`pactl` native monitor routing)
 - [ ] Android `AudioPlaybackCapture` MethodChannel
 - [ ] AES-256 Vault integration for offline contacts

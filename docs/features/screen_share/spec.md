@@ -12,9 +12,11 @@ Enable high-framerate, bidirectional Screen Sharing over active WebRTC sessions 
 ### 2. Constraints & Resolutions
 - **Target Encoding:** `1280x720` (Mobile) / `1920x1080` (Desktop) at a strict `60 FPS`.
 
-### 3. Linux Fallback Mechanism (Critical)
-- **Problem:** Many Linux display servers (specifically Wayland or unconfigured X11 environments) strictly reject `getDisplayMedia` constraints if `audio: true` is passed, due to the lack of native loopback drivers. This causes the entire screen capture promise to fail.
-- **Solution:** `call_manager.dart` implements a cascading `try/catch` block. If the initial capture fails, it automatically falls back to `{'video': true, 'audio': false}` to guarantee that the video cast succeeds even if system audio capturing is unsupported by the OS.
+### 3. System Audio & OS Limitations
+- **Linux:** System audio is fully functional via PulseAudio/PipeWire `.monitor` capturing. Handled dynamically by `LinuxAudioService`, which includes robust failsafes (normal dispose + global ProcessSignal hooks). 
+  - *Known Limitation:* Sharing System Audio and Microphone simultaneously is not supported. A platform-specific warning dialog is displayed to the user prior to capturing.
+- **Windows:** Natively supports WASAPI loopback out of the box.
+- **Android:** Currently unsupported. Requires a native MethodChannel bridging `MediaProjection` and `AudioPlaybackCapture` APIs.
 
 ### 4. OS-Level Permission Handling
 - **Android 14+:** Dynamically spins up a Foreground Service of type `mediaProjection` prior to capturing, preventing OS-level memory termination.
