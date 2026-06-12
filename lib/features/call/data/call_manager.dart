@@ -1239,6 +1239,11 @@ class CallManager {
     _isDisposing = true;
     _endSoundPlayed = false;
     debugPrint('[CallManager] Disposing resources...');
+
+    if (Platform.isLinux) {
+      await LinuxAudioService().disableSystemAudioCapture();
+    }
+
     await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallTimer?.cancel();
     _originalAudioTrack = null;
@@ -1275,10 +1280,6 @@ class CallManager {
       await _signalingServer?.close();
       await _signalingWs?.close(); // Safe now, _isDisposing blocks the loop
     } catch (_) {}
-
-    if (Platform.isLinux) {
-      await LinuxAudioService().disableSystemAudioCapture();
-    }
 
     _localStream = null;
     _localVideoStream = null;

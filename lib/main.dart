@@ -10,17 +10,19 @@ void main() async {
 
   // Global Failsafe: Ensure Linux audio is cleaned up if the app is force-killed
   if (Platform.isLinux) {
-    final recoveryFile = File('/tmp/wasla_audio_recovery.txt');
-    if (await recoveryFile.exists()) {
-      final savedSource = await recoveryFile.readAsString();
-      if (savedSource.trim().isNotEmpty) {
-        await Process.run('pactl', ['set-default-source', savedSource.trim()]);
-        await recoveryFile.delete();
-        debugPrint(
-          '[LinuxAudioService] Auto-restored mic on startup: ${savedSource.trim()}',
-        );
+    try {
+      final recoveryFile = File('/tmp/wasla_audio_recovery.txt');
+      if (await recoveryFile.exists()) {
+        final savedSource = (await recoveryFile.readAsString()).trim();
+        if (savedSource.isNotEmpty) {
+          await Process.run('pactl', ['set-default-source', savedSource]);
+          await recoveryFile.delete();
+          debugPrint(
+            '[LinuxAudio] Startup recovery: restored mic to $savedSource',
+          );
+        }
       }
-    }
+    } catch (_) {}
     ProcessSignal.sigint.watch().listen((signal) async {
       debugPrint('[Main] SIGINT received. Cleaning up Linux Audio...');
       await LinuxAudioService().disableSystemAudioCapture();
