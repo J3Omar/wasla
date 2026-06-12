@@ -75,6 +75,7 @@ class CallManager {
   bool _endSoundPlayed = false;
   Timer? _iceDisconnectTimer;
   Timer? _iceEndCallTimer;
+  Timer? _finalEndCallTimer;
   MediaStreamTrack? _originalAudioTrack;
 
   /// Current session snapshot — updated by the notifier.
@@ -733,6 +734,7 @@ class CallManager {
           _isReconnecting = false;
           _iceDisconnectTimer?.cancel();
           _iceEndCallTimer?.cancel();
+          _finalEndCallTimer?.cancel();
           debugPrint('[CallManager] ICE restart succeeded.');
           // 500ms delay before stopping —
           // lets the 1-second loop finish naturally
@@ -826,6 +828,7 @@ class CallManager {
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         _iceDisconnectTimer?.cancel();
         _iceEndCallTimer?.cancel();
+        _finalEndCallTimer?.cancel();
         endCall();
       }
     };
@@ -1239,7 +1242,20 @@ class CallManager {
     } catch (e) {
       debugPrint('[CallManager] Reconnect failed: $e');
       await endCall();
+      return;
     }
+
+    // Final fallback — if re-signaling doesn't produce a Connected state
+    // within 10 seconds, give up and end the call.
+    _finalEndCallTimer?.cancel();
+    _finalEndCallTimer = Timer(const Duration(seconds: 10), () async {
+      if (_isReconnecting) {
+        debugPrint(
+          '[CallManager] Re-signaling timeout. Remote unreachable. Ending call.',
+        );
+        await endCall();
+      }
+    });
   }
 
   Future<void> dispose() async {
@@ -1254,6 +1270,7 @@ class CallManager {
 
     await _disableBackground(); // FIX: Await to prevent Race Condition
     _iceEndCallTimer?.cancel();
+    _finalEndCallTimer?.cancel();
     _originalAudioTrack = null;
     // Safety net: release WebRTC AudioManager in case dispose() fires directly
     if (!kIsWeb && Platform.isAndroid) {

@@ -101,6 +101,41 @@ static void my_application_activate(GApplication* application) {
   // and run pactl synchronously before the app quits.
   g_signal_connect(window, "delete-event",
     G_CALLBACK(+[](GtkWidget*, GdkEvent*, gpointer) -> gboolean {
+      // Method 1: Direct detection — if the current default source is a
+      // monitor, find a real mic and restore it immediately.
+      // This handles the race condition where the recovery file hasn't
+      // been written yet by the Dart VM before GTK closes.
+      FILE* check = popen("pactl get-default-source 2>/dev/null", "r");
+      if (check) {
+        char current[256] = {0};
+        if (fgets(current, sizeof(current), check)) {
+          if (strstr(current, ".monitor")) {
+            FILE* list = popen(
+              "pactl list short sources 2>/dev/null | "
+              "grep alsa_input | grep -v monitor | "
+              "awk '{print $2}' | head -1", "r");
+            if (list) {
+              char mic[256] = {0};
+              if (fgets(mic, sizeof(mic), list)) {
+                size_t len = strlen(mic);
+                if (len > 0 && mic[len-1] == '\n')
+                  mic[len-1] = '\0';
+                if (strlen(mic) > 0) {
+                  char cmd[512];
+                  snprintf(cmd, sizeof(cmd),
+                    "pactl set-default-source %s", mic);
+                  system(cmd);
+                }
+              }
+              pclose(list);
+            }
+          }
+        }
+        pclose(check);
+      }
+
+      // Method 2: Recovery file — reads the source name saved by Dart
+      // at screen-share start, as a fallback for the specific mic name.
       FILE* f = fopen("/tmp/wasla_audio_recovery.txt", "r");
       if (f) {
         char source[256] = {0};
