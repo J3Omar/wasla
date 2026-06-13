@@ -3,9 +3,11 @@ name: Build All Platforms
 on:
   push:
     branches: [ dev ]
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      branch_note:
+        description: 'Branch being tested'
+        required: false
 
 jobs:
   build-android:
@@ -36,6 +38,7 @@ jobs:
         with:
           name: wasla-android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
   build-linux:
     runs-on: ubuntu-latest
@@ -70,7 +73,7 @@ jobs:
       - name: Build Linux Application
         run: flutter build linux --release
 
-      - name: Package Application as .deb Installer
+      - name: Package as .deb
         run: |
           STAGE_DIR="build/debian_package"
           mkdir -p "$STAGE_DIR/DEBIAN"
@@ -86,10 +89,7 @@ jobs:
             > "$STAGE_DIR/usr/bin/wasla"
           chmod +x "$STAGE_DIR/usr/bin/wasla"
 
-          if [ -f "assets/images/wasla_logo.png" ]; then
-            cp assets/images/wasla_logo.png \
-              "$STAGE_DIR/usr/share/pixmaps/wasla.png"
-          elif [ -f "assets/images/Wasla-logo.png" ]; then
+          if [ -f "assets/images/Wasla-logo.png" ]; then
             cp assets/images/Wasla-logo.png \
               "$STAGE_DIR/usr/share/pixmaps/wasla.png"
           fi
@@ -106,10 +106,6 @@ jobs:
           Categories=Network;Chat;
           EOF
 
-          # ── control file ──────────────────────────────────────────
-          # Depends: only truly required runtime libs
-          # Recommends: PipeWire/PulseAudio audio extras — installed
-          #   if available, silently skipped if not (no install failure)
           cat > "$STAGE_DIR/DEBIAN/control" <<EOF
           Package: wasla
           Version: 1.0.0
@@ -128,26 +124,20 @@ jobs:
           Section: net
           Priority: standard
           Description: Local P2P Communication Application.
-           Wasla is a decentralized, peer-to-peer communication app
-           built with Flutter and WebRTC for local network use.
-           .
-           System audio sharing during screen share requires
-           PulseAudio or PipeWire (recommended). The app works
-           fully without them, but system audio capture will
-           be unavailable.
+           Wasla is a decentralized peer-to-peer communication app.
           EOF
 
           chmod 755 "$STAGE_DIR/DEBIAN"
           chmod 644 "$STAGE_DIR/DEBIAN/control"
-
           dpkg-deb --build "$STAGE_DIR" \
             "build/wasla_1.0.0_amd64.deb"
 
-      - name: Upload Linux .deb Package
+      - name: Upload Linux .deb
         uses: actions/upload-artifact@v4
         with:
           name: wasla-linux-deb
           path: build/wasla_1.0.0_amd64.deb
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
   build-windows:
     runs-on: windows-2022
@@ -200,7 +190,6 @@ jobs:
           Filename: "{app}\wasla.exe"; Description: "Launch Wasla"; Flags: nowait postinstall skipifsilent
           "@
           Set-Content -Path wasla.iss -Value $iss
-
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" wasla.iss
 
       - name: Upload Windows Setup EXE
@@ -208,3 +197,34 @@ jobs:
         with:
           name: wasla-windows-setup
           path: build/installer/Wasla_Setup.exe
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
+
+  # ── Release job: runs ONLY on main ──────────────────────────────
+  create-release:
+    needs: [build-android, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Wasla Build #${{ github.run_number }}"
+          body: |
+            Auto-release from main branch.
+            Commit: ${{ github.sha }}
+          files: |
+            release-artifacts/wasla-android-apk/app-release.apk
+            release-artifacts/wasla-linux-deb/wasla_1.0.0_amd64.deb
+            release-artifacts/wasla-windows-setup/Wasla_Setup.exe
+          draft: false
+          prerelease: false

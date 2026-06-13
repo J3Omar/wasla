@@ -479,6 +479,90 @@ class CallManager {
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
 
+            // 2b. Windows fallback: getDisplayMedia rarely
+            // provides a system-audio loopback track on
+            // Windows via flutter_webrtc. Try to find a
+            // "Stereo Mix"-style loopback recording device
+            // and use it instead.
+            if (Platform.isWindows &&
+                withAudio &&
+                _screenStream!.getAudioTracks().isEmpty) {
+              try {
+                debugPrint(
+                  '[CallManager] Windows: no audio track from '
+                  'getDisplayMedia. Searching for a loopback '
+                  'recording device (e.g. "Stereo Mix")...',
+                );
+                final devices = await navigator.mediaDevices.enumerateDevices();
+                MediaDeviceInfo? loopbackDevice;
+                for (final d in devices) {
+                  if (d.kind == 'audioinput') {
+                    final label = d.label.toLowerCase();
+                    if (label.contains('stereo mix') ||
+                        label.contains('loopback') ||
+                        label.contains('what u hear') ||
+                        label.contains('wave out') ||
+                        label.contains('rec. playback')) {
+                      loopbackDevice = d;
+                      break;
+                    }
+                  }
+                }
+                if (loopbackDevice != null) {
+                  debugPrint(
+                    '[CallManager] Found loopback device: '
+                    '${loopbackDevice.label}',
+                  );
+                  final loopbackStream = await navigator.mediaDevices
+                      .getUserMedia({
+                        'video': false,
+                        'audio': {
+                          'deviceId': {'exact': loopbackDevice.deviceId},
+                          'mandatory': {
+                            'echoCancellation': false,
+                            'googEchoCancellation': false,
+                            'autoGainControl': false,
+                            'googAutoGainControl': false,
+                            'noiseSuppression': false,
+                            'googNoiseSuppression': false,
+                          },
+                          'optional': [],
+                        },
+                      });
+                  if (loopbackStream.getAudioTracks().isNotEmpty &&
+                      _pc != null) {
+                    final loopbackTrack = loopbackStream.getAudioTracks().first;
+                    final senders = await _pc!.getSenders();
+                    for (var sender in senders) {
+                      if (sender.track?.kind == 'audio') {
+                        _originalAudioTrack ??= sender.track;
+                        await sender.replaceTrack(loopbackTrack);
+                        debugPrint(
+                          '[CallManager] Windows loopback audio '
+                          'routed to peer connection.',
+                        );
+                        break;
+                      }
+                    }
+                  }
+                } else {
+                  debugPrint(
+                    '[CallManager] No loopback/"Stereo Mix" '
+                    'device found. System audio sharing is '
+                    'unavailable on this Windows machine unless '
+                    'the user enables "Stereo Mix" (or a similar '
+                    'loopback recording device) in Windows Sound '
+                    'settings > Recording devices.',
+                  );
+                }
+              } catch (e) {
+                debugPrint(
+                  '[CallManager] Windows loopback fallback '
+                  'failed: $e',
+                );
+              }
+            }
+
             // 3. Inject the System Audio as a separate Microphone Track
             if (Platform.isLinux && withAudio && _screenStream != null) {
               try {

@@ -150,40 +150,6 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         return;
       }
 
-      if (Platform.isWindows) {
-        // Show Windows audio tip — user needs to tick "Share system audio"
-        // in the Windows screen picker that follows.
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AppColors.bgSecondary,
-            title: Text(
-              'Screen Share on Windows',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: Text(
-              'To share system audio, check '
-              '"Share system audio" in the '
-              'Windows screen picker that appears next.',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(
-                  'Got it',
-                  style: TextStyle(color: AppColors.primaryCyan),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-
-      if (!mounted) return;
       final isCamOn = state.isLocalVideoOn;
       final result = await showDialog<String>(
         context: context,
