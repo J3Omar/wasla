@@ -28,6 +28,29 @@ final _rtcConfig = <String, dynamic>{
 
 /// Manages the WebRTC PeerConnection for a voice call.
 /// One instance per call session — create a fresh one for each call.
+// ── Windows file-based logging ──────────────────────────────────────────────
+
+void _winLog(String message) {
+  debugPrint(message);
+  if (Platform.isWindows) {
+    try {
+      final dir = Directory(
+        '${Platform.environment['USERPROFILE']}'
+        r'\Documents\Wasla');
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      final file = File('${dir.path}\\debug.log');
+      file.writeAsStringSync(
+        '${DateTime.now()}: $message\n',
+        mode: FileMode.append,
+      );
+    } catch (_) {}
+  }
+}
+
+// ── CallManager ───────────────────────────────────────────────────────────────
+
 class CallManager {
   CallManager({
     required this.selfUuid,
@@ -475,7 +498,7 @@ class CallManager {
                           }
                         : false),
             });
-            debugPrint(
+            _winLog(
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
 
@@ -488,12 +511,22 @@ class CallManager {
                 withAudio &&
                 _screenStream!.getAudioTracks().isEmpty) {
               try {
-                debugPrint(
+                _winLog(
                   '[CallManager] Windows: no audio track from '
                   'getDisplayMedia. Searching for a loopback '
                   'recording device (e.g. "Stereo Mix")...',
                 );
                 final devices = await navigator.mediaDevices.enumerateDevices();
+                _winLog(
+                  '[CallManager] Windows: enumerating audio input '
+                  'devices for loopback search...');
+                for (final d in devices) {
+                  if (d.kind == 'audioinput') {
+                    _winLog(
+                      '[CallManager]   device: label="${d.label}" '
+                      'id="${d.deviceId}"');
+                  }
+                }
                 MediaDeviceInfo? loopbackDevice;
                 for (final d in devices) {
                   if (d.kind == 'audioinput') {
@@ -502,14 +535,20 @@ class CallManager {
                         label.contains('loopback') ||
                         label.contains('what u hear') ||
                         label.contains('wave out') ||
-                        label.contains('rec. playback')) {
+                        label.contains('rec. playback') ||
+                        label.contains('cable output') ||
+                        label.contains('cable-output') ||
+                        label.contains('vb-audio') ||
+                        label.contains('vb-cable') ||
+                        label.contains('virtual audio') ||
+                        label.contains('virtual-audio')) {
                       loopbackDevice = d;
                       break;
                     }
                   }
                 }
                 if (loopbackDevice != null) {
-                  debugPrint(
+                  _winLog(
                     '[CallManager] Found loopback device: '
                     '${loopbackDevice.label}',
                   );
@@ -537,7 +576,7 @@ class CallManager {
                       if (sender.track?.kind == 'audio') {
                         _originalAudioTrack ??= sender.track;
                         await sender.replaceTrack(loopbackTrack);
-                        debugPrint(
+                        _winLog(
                           '[CallManager] Windows loopback audio '
                           'routed to peer connection.',
                         );
@@ -546,7 +585,7 @@ class CallManager {
                     }
                   }
                 } else {
-                  debugPrint(
+                  _winLog(
                     '[CallManager] No loopback/"Stereo Mix" '
                     'device found. System audio sharing is '
                     'unavailable on this Windows machine unless '
@@ -754,25 +793,50 @@ class CallManager {
   static const _kMaxPort = 46200;
 
   Future<MediaStream> _getLocalAudioStream() async {
+    // Windows uses a broader AGC/processing set (incl. googAutoGainControl2)
+    // to compensate for the lack of hardware-assisted audio paths on Windows.
+    // All other platforms keep the original constraints unchanged.
+    final micAudioConstraints = Platform.isWindows
+        ? <String, dynamic>{
+            'echoCancellation': true,
+            'autoGainControl': true,
+            'noiseSuppression': true,
+            'googEchoCancellation': true,
+            'googAutoGainControl': true,
+            'googAutoGainControl2': true,
+            'googNoiseSuppression': true,
+            'googHighpassFilter': true,
+          }
+        : <String, dynamic>{
+            'mandatory': {
+              'echoCancellation': true,
+              'noiseSuppression': true,
+              'autoGainControl': true,
+              'googEchoCancellation': true,
+              'googAutoGainControl': true,
+              'googNoiseSuppression': true,
+              'googHighpassFilter': true,
+              'googTypingNoiseDetection': true,
+              'googAudioMirroring': false,
+              'googEchoCancellationMobile': true,
+            },
+            'optional': [],
+          };
     final Map<String, dynamic> mediaConstraints = {
-      'audio': {
-        'mandatory': {
-          'echoCancellation': true,
-          'noiseSuppression': true,
-          'autoGainControl': true,
-          'googEchoCancellation': true,
-          'googAutoGainControl': true,
-          'googNoiseSuppression': true,
-          'googHighpassFilter': true,
-          'googTypingNoiseDetection': true,
-          'googAudioMirroring': false,
-          'googEchoCancellationMobile': true,
-        },
-        'optional': [],
-      },
+      'audio': micAudioConstraints,
       'video': false,
     };
-    return await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    final stream =
+        await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    if (Platform.isWindows) {
+      for (final track in stream.getAudioTracks()) {
+        _winLog(
+          '[CallManager] Windows local audio track: '
+          'id=${track.id} enabled=${track.enabled} '
+          'muted=${track.muted}');
+      }
+    }
+    return stream;
   }
 
   Future<RTCPeerConnection> _createPeerConnection() async {
