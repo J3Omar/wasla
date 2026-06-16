@@ -35,6 +35,25 @@ void main() async {
     });
   }
 
+  if (Platform.isWindows) {
+    try {
+      await Process.run('reg', [
+        'add',
+        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio',
+        '/v',
+        'UserDuckingPreference',
+        '/t',
+        'REG_DWORD',
+        '/d',
+        '3',
+        '/f',
+      ]);
+      debugPrint('[Main] Windows audio ducking disabled.');
+    } catch (e) {
+      debugPrint('[Main] Failed to disable audio ducking: $e');
+    }
+  }
+
   runApp(const ProviderScope(child: WaslaApp()));
 }
 

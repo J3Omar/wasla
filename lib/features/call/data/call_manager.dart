@@ -10,6 +10,7 @@ import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
 import 'call_audio_service.dart';
 import 'linux_audio_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/utils/background_service_manager.dart';
 
@@ -30,23 +31,21 @@ final _rtcConfig = <String, dynamic>{
 /// One instance per call session — create a fresh one for each call.
 // ── Windows file-based logging ──────────────────────────────────────────────
 
-void _winLog(String message) {
+Future<void> _winLog(String message) async {
   debugPrint(message);
-  if (Platform.isWindows) {
-    try {
-      final dir = Directory(
-        '${Platform.environment['USERPROFILE']}'
-        r'\Documents\Wasla');
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
-      }
-      final file = File('${dir.path}\\debug.log');
-      file.writeAsStringSync(
-        '${DateTime.now()}: $message\n',
-        mode: FileMode.append,
-      );
-    } catch (_) {}
-  }
+  if (!Platform.isWindows) return;
+  try {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docsDir.path}\\Wasla');
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    final file = File('${dir.path}\\debug.log');
+    file.writeAsStringSync(
+      '${DateTime.now()}: $message\n',
+      mode: FileMode.append,
+    );
+  } catch (_) {}
 }
 
 // ── CallManager ───────────────────────────────────────────────────────────────
@@ -498,7 +497,7 @@ class CallManager {
                           }
                         : false),
             });
-            _winLog(
+            await _winLog(
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
 
@@ -511,20 +510,22 @@ class CallManager {
                 withAudio &&
                 _screenStream!.getAudioTracks().isEmpty) {
               try {
-                _winLog(
+                await _winLog(
                   '[CallManager] Windows: no audio track from '
                   'getDisplayMedia. Searching for a loopback '
                   'recording device (e.g. "Stereo Mix")...',
                 );
                 final devices = await navigator.mediaDevices.enumerateDevices();
-                _winLog(
+                await _winLog(
                   '[CallManager] Windows: enumerating audio input '
-                  'devices for loopback search...');
+                  'devices for loopback search...',
+                );
                 for (final d in devices) {
                   if (d.kind == 'audioinput') {
-                    _winLog(
+                    await _winLog(
                       '[CallManager]   device: label="${d.label}" '
-                      'id="${d.deviceId}"');
+                      'id="${d.deviceId}"',
+                    );
                   }
                 }
                 MediaDeviceInfo? loopbackDevice;
@@ -548,7 +549,7 @@ class CallManager {
                   }
                 }
                 if (loopbackDevice != null) {
-                  _winLog(
+                  await _winLog(
                     '[CallManager] Found loopback device: '
                     '${loopbackDevice.label}',
                   );
@@ -576,7 +577,7 @@ class CallManager {
                       if (sender.track?.kind == 'audio') {
                         _originalAudioTrack ??= sender.track;
                         await sender.replaceTrack(loopbackTrack);
-                        _winLog(
+                        await _winLog(
                           '[CallManager] Windows loopback audio '
                           'routed to peer connection.',
                         );
@@ -585,7 +586,7 @@ class CallManager {
                     }
                   }
                 } else {
-                  _winLog(
+                  await _winLog(
                     '[CallManager] No loopback/"Stereo Mix" '
                     'device found. System audio sharing is '
                     'unavailable on this Windows machine unless '
@@ -826,14 +827,14 @@ class CallManager {
       'audio': micAudioConstraints,
       'video': false,
     };
-    final stream =
-        await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    final stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     if (Platform.isWindows) {
       for (final track in stream.getAudioTracks()) {
-        _winLog(
+        await _winLog(
           '[CallManager] Windows local audio track: '
           'id=${track.id} enabled=${track.enabled} '
-          'muted=${track.muted}');
+          'muted=${track.muted}',
+        );
       }
     }
     return stream;
