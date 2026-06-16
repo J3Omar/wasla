@@ -166,7 +166,8 @@ jobs:
             -UseBasicParsing
           Expand-Archive -Path "vbcable.zip" `
             -DestinationPath "vbcable" -Force
-          Write-Host "VB-Audio downloaded and extracted."
+          Write-Host "Files in vbcable folder:"
+          Get-ChildItem "vbcable" | ForEach-Object { Write-Host $_.Name }
 
       - name: Build Windows Setup EXE
         shell: pwsh
@@ -187,31 +188,25 @@ jobs:
           WizardStyle=modern
           ArchitecturesAllowed=x64
           ArchitecturesInstallIn64BitMode=x64
-          
+
           [Tasks]
           Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
-          Name: "vbcable"; Description: "Install VB-Audio Virtual Cable (required for screen share with system audio)"; GroupDescription: "Audio components:"; Flags: checkedonce
-          
+          Name: "vbcable"; Description: "Install VB-Audio Virtual Cable (enables screen share with system audio)"; GroupDescription: "Audio components:"; Flags: checkedonce
+
           [Files]
-          ; Main application
           Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-          ; VB-Audio Virtual Cable driver files
-          Source: "vbcable\VBCABLE_Setup_x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Tasks: vbcable
-          
+          Source: "vbcable\*"; DestDir: "{tmp}\vbcable"; Flags: deleteafterinstall recursesubdirs; Tasks: vbcable
+
           [Icons]
           Name: "{group}\Wasla"; Filename: "{app}\wasla.exe"
           Name: "{autodesktop}\Wasla"; Filename: "{app}\wasla.exe"; Tasks: desktopicon
-          
+
           [Run]
-          ; Install VB-Audio Virtual Cable silently (requires admin — Inno runs as admin)
-          Filename: "{tmp}\VBCABLE_Setup_x64.exe"; Parameters: "/S"; Flags: waituntilterminated runhidden; Tasks: vbcable; Description: "Installing VB-Audio Virtual Cable..."
-          ; Fix Windows audio ducking (reduces call volume by 80% by default)
+          Filename: "{tmp}\vbcable\VBCABLE_Setup_x64.exe"; Parameters: "/S"; WorkingDir: "{tmp}\vbcable"; Flags: waituntilterminated runhidden; Tasks: vbcable; Description: "Installing VB-Audio Virtual Cable..."
           Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 3 /f"; Flags: runhidden waituntilterminated; Description: "Configuring audio settings..."
-          ; Launch Wasla after install
           Filename: "{app}\wasla.exe"; Description: "Launch Wasla"; Flags: nowait postinstall skipifsilent
-          
+
           [UninstallRun]
-          ; Restore audio ducking default on uninstall (optional — restore to 1 = 80% reduction)
           Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 1 /f"; Flags: runhidden waituntilterminated
           "@
           Set-Content -Path wasla.iss -Value $iss
