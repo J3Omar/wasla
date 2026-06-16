@@ -99,6 +99,8 @@ class CallManager {
   Timer? _iceEndCallTimer;
   Timer? _finalEndCallTimer;
   MediaStreamTrack? _originalAudioTrack;
+  // Windows loopback capture stream — stored so it can be stopped cleanly.
+  MediaStream? _windowsLoopbackStream;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -414,6 +416,13 @@ class CallManager {
       );
       onStateChanged(_session);
 
+      // Bug 1 fix: stop the Windows loopback capture stream so CABLE Output
+      // does not keep its capture session alive after screen share ends.
+      if (Platform.isWindows && _windowsLoopbackStream != null) {
+        _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
+        _windowsLoopbackStream = null;
+      }
+
       if (_pc != null) {
         final senders = await _pc!.getSenders();
         for (var sender in senders) {
@@ -553,6 +562,56 @@ class CallManager {
                     '[CallManager] Found loopback device: '
                     '${loopbackDevice.label}',
                   );
+
+                  // Bug 2/3 fix: save the current default communication
+                  // playback device before opening CABLE Output, so Windows
+                  // cannot silently switch the comm device to CABLE Input.
+                  String? savedCommDeviceName;
+                  String? savedCommDeviceId;
+
+                  // Primary: PowerShell AudioDeviceCmdlets module
+                  try {
+                    final psResult = await Process.run('powershell', [
+                      '-NonInteractive',
+                      '-Command',
+                      r'(Get-AudioDevice -Playback | Where-Object {$_.Default -eq $true}).Name',
+                    ]);
+                    final psOut = psResult.stdout.toString().trim();
+                    if (psOut.isNotEmpty &&
+                        !psOut.toLowerCase().contains('error') &&
+                        !psOut.toLowerCase().contains('is not recognized')) {
+                      savedCommDeviceName = psOut;
+                      await _winLog(
+                        '[CallManager] Saved default playback (PS): '
+                        '$savedCommDeviceName',
+                      );
+                    }
+                  } catch (_) {}
+
+                  // Fallback: read from registry
+                  if (savedCommDeviceName == null) {
+                    try {
+                      final regResult = await Process.run('reg', [
+                        'query',
+                        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+                        '/v',
+                        'DefaultCommunicationsDeviceId',
+                      ]);
+                      final regOut = regResult.stdout.toString();
+                      final match = RegExp(
+                        r'DefaultCommunicationsDeviceId\s+\S+\s+(\S+)',
+                      ).firstMatch(regOut);
+                      if (match != null) {
+                        savedCommDeviceId = match.group(1);
+                        await _winLog(
+                          '[CallManager] Saved comm device id (reg): '
+                          '$savedCommDeviceId',
+                        );
+                      }
+                    } catch (_) {}
+                  }
+
+                  // Open the loopback capture device
                   final loopbackStream = await navigator.mediaDevices
                       .getUserMedia({
                         'video': false,
@@ -569,6 +628,10 @@ class CallManager {
                           'optional': [],
                         },
                       });
+
+                  // Bug 1 fix: store the stream so we can stop it later.
+                  _windowsLoopbackStream = loopbackStream;
+
                   if (loopbackStream.getAudioTracks().isNotEmpty &&
                       _pc != null) {
                     final loopbackTrack = loopbackStream.getAudioTracks().first;
@@ -584,6 +647,43 @@ class CallManager {
                         break;
                       }
                     }
+                  }
+
+                  // Bug 2/3 fix: restore the default communication playback
+                  // device after getUserMedia so Windows does not remain
+                  // pointed at CABLE Input and silence the real speakers.
+                  bool commRestored = false;
+                  if (savedCommDeviceName != null) {
+                    try {
+                      await Process.run('powershell', [
+                        '-NonInteractive',
+                        '-Command',
+                        'Set-AudioDevice -Name "$savedCommDeviceName"',
+                      ]);
+                      commRestored = true;
+                      await _winLog(
+                        '[CallManager] Restored default playback (PS): '
+                        '$savedCommDeviceName',
+                      );
+                    } catch (_) {}
+                  }
+                  if (!commRestored && savedCommDeviceId != null) {
+                    try {
+                      await Process.run('reg', [
+                        'add',
+                        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+                        '/v',
+                        'DefaultCommunicationsDeviceId',
+                        '/t',
+                        'REG_SZ',
+                        '/d',
+                        savedCommDeviceId!,
+                        '/f',
+                      ]);
+                      await _winLog(
+                        '[CallManager] Restored comm device id (reg).',
+                      );
+                    } catch (_) {}
                   }
                 } else {
                   await _winLog(
@@ -1464,6 +1564,9 @@ class CallManager {
     await Future.delayed(const Duration(seconds: 1));
 
     try {
+      // Bug 1 fix: ensure Windows loopback stream is stopped on call end.
+      _windowsLoopbackStream?.getTracks().forEach((t) => t.stop());
+      _windowsLoopbackStream = null;
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
       _localVideoStream?.getTracks().forEach((t) => t.stop());
