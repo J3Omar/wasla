@@ -59,6 +59,7 @@ dependencies:
   flutter_riverpod: ^2.6.1          # State management
   google_fonts: ^6.2.1              # Hanken Grotesk + Inter + Geist (no .ttf files needed)
   intl: ^0.19.0                     # Date/time formatting for chat timestamps
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:

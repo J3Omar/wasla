@@ -51,11 +51,15 @@ Future<void> _winLog(String message) async {
 // ── CallManager ───────────────────────────────────────────────────────────────
 
 class CallManager {
+  static CallManager? instance;
+
   CallManager({
     required this.selfUuid,
     required this.selfName,
     required this.onStateChanged,
-  });
+  }) {
+    instance = this;
+  }
 
   final String selfUuid;
   final String selfName;
@@ -105,6 +109,11 @@ class CallManager {
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
+
+  bool get isInCall =>
+      _session.state == CallState.active ||
+      _session.state == CallState.connecting ||
+      _session.state == CallState.outgoing;
 
   // ── Outgoing call (caller side) ───────────────────────────────────────────
 
@@ -559,6 +568,34 @@ class CallManager {
                     );
                   }
                 }
+                MediaDeviceInfo? realMicDevice;
+                for (final d in devices) {
+                  if (d.kind == 'audioinput') {
+                    final label = d.label.toLowerCase();
+                    final isVirtual =
+                        label.contains('stereo mix') ||
+                        label.contains('loopback') ||
+                        label.contains('what u hear') ||
+                        label.contains('wave out') ||
+                        label.contains('rec. playback') ||
+                        label.contains('cable output') ||
+                        label.contains('cable-output') ||
+                        label.contains('vb-audio') ||
+                        label.contains('vb-cable') ||
+                        label.contains('virtual audio') ||
+                        label.contains('virtual-audio');
+                    if (!isVirtual) {
+                      realMicDevice = d;
+                      break;
+                    }
+                  }
+                }
+                if (realMicDevice != null) {
+                  await _winLog(
+                    '[CallManager] Identified real physical mic: '
+                    '${realMicDevice.label} (${realMicDevice.deviceId})',
+                  );
+                }
                 MediaDeviceInfo? loopbackDevice;
                 for (final d in devices) {
                   if (d.kind == 'audioinput') {
@@ -613,9 +650,10 @@ class CallManager {
                     } else {
                       await _winLog(
                         '[CallManager] Registry key/value not found — '
-                        'this PC may not have a DefaultCommunicationsDeviceId '
-                        'set under this registry path.',
+                        'falling back to real physical mic device id '
+                        'as restore target.',
                       );
+                      _savedWindowsCommDeviceId = realMicDevice?.deviceId;
                     }
                   } catch (e) {
                     await _winLog(
@@ -683,6 +721,16 @@ class CallManager {
                         'exitCode=${restoreResult.exitCode} '
                         'stdout="${restoreResult.stdout}" '
                         'stderr="${restoreResult.stderr}"',
+                      );
+                      final verifyResult = await Process.run('reg', [
+                        'query',
+                        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+                        '/v',
+                        'DefaultCommunicationsDeviceId',
+                      ]);
+                      await _winLog(
+                        '[CallManager] VERIFY after restore: '
+                        '${verifyResult.stdout.toString().trim()}',
                       );
                     } catch (e) {
                       await _winLog(

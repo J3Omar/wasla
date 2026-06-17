@@ -97,6 +97,8 @@ class FileTransferService {
   final Map<String, _ActiveTransfer> _activeTransfers = {};
   WebRtcChatService? _chatService;
 
+  bool get hasActiveTransfers => _activeTransfers.isNotEmpty;
+
   final _progressController = StreamController<TransferUpdate>.broadcast();
   Stream<TransferUpdate> get progressStream => _progressController.stream;
 
