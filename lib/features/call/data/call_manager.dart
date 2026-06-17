@@ -101,6 +101,7 @@ class CallManager {
   MediaStreamTrack? _originalAudioTrack;
   // Windows loopback capture stream — stored so it can be stopped cleanly.
   MediaStream? _windowsLoopbackStream;
+  String? _savedWindowsCommDeviceId;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
@@ -421,6 +422,27 @@ class CallManager {
       if (Platform.isWindows && _windowsLoopbackStream != null) {
         _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
         _windowsLoopbackStream = null;
+
+        if (_savedWindowsCommDeviceId != null) {
+          try {
+            await Process.run('reg', [
+              'add',
+              r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+              '/v',
+              'DefaultCommunicationsDeviceId',
+              '/t',
+              'REG_SZ',
+              '/d',
+              _savedWindowsCommDeviceId!,
+              '/f',
+            ]);
+            await _winLog(
+              '[CallManager] Restored comm device on '
+              'screen share stop.',
+            );
+          } catch (_) {}
+          _savedWindowsCommDeviceId = null;
+        }
       }
 
       if (_pc != null) {
@@ -566,49 +588,40 @@ class CallManager {
                   // Bug 2/3 fix: save the current default communication
                   // playback device before opening CABLE Output, so Windows
                   // cannot silently switch the comm device to CABLE Input.
-                  String? savedCommDeviceName;
-                  String? savedCommDeviceId;
-
-                  // Primary: PowerShell AudioDeviceCmdlets module
                   try {
-                    final psResult = await Process.run('powershell', [
-                      '-NonInteractive',
-                      '-Command',
-                      r'(Get-AudioDevice -Playback | Where-Object {$_.Default -eq $true}).Name',
+                    final regResult = await Process.run('reg', [
+                      'query',
+                      r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+                      '/v',
+                      'DefaultCommunicationsDeviceId',
                     ]);
-                    final psOut = psResult.stdout.toString().trim();
-                    if (psOut.isNotEmpty &&
-                        !psOut.toLowerCase().contains('error') &&
-                        !psOut.toLowerCase().contains('is not recognized')) {
-                      savedCommDeviceName = psOut;
+                    final regOut = regResult.stdout.toString();
+                    await _winLog(
+                      '[CallManager] RAW reg query output: "$regOut" '
+                      'exitCode=${regResult.exitCode} '
+                      'stderr="${regResult.stderr}"',
+                    );
+                    final match = RegExp(
+                      r'DefaultCommunicationsDeviceId\s+\S+\s+(\S+)',
+                    ).firstMatch(regOut);
+                    if (match != null) {
+                      _savedWindowsCommDeviceId = match.group(1);
                       await _winLog(
-                        '[CallManager] Saved default playback (PS): '
-                        '$savedCommDeviceName',
+                        '[CallManager] Saved comm device id (reg): '
+                        '$_savedWindowsCommDeviceId',
+                      );
+                    } else {
+                      await _winLog(
+                        '[CallManager] Registry key/value not found — '
+                        'this PC may not have a DefaultCommunicationsDeviceId '
+                        'set under this registry path.',
                       );
                     }
-                  } catch (_) {}
-
-                  // Fallback: read from registry
-                  if (savedCommDeviceName == null) {
-                    try {
-                      final regResult = await Process.run('reg', [
-                        'query',
-                        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-                        '/v',
-                        'DefaultCommunicationsDeviceId',
-                      ]);
-                      final regOut = regResult.stdout.toString();
-                      final match = RegExp(
-                        r'DefaultCommunicationsDeviceId\s+\S+\s+(\S+)',
-                      ).firstMatch(regOut);
-                      if (match != null) {
-                        savedCommDeviceId = match.group(1);
-                        await _winLog(
-                          '[CallManager] Saved comm device id (reg): '
-                          '$savedCommDeviceId',
-                        );
-                      }
-                    } catch (_) {}
+                  } catch (e) {
+                    await _winLog(
+                      '[CallManager] Registry save FAILED with '
+                      'exception: $e',
+                    );
                   }
 
                   // Open the loopback capture device
@@ -652,24 +665,9 @@ class CallManager {
                   // Bug 2/3 fix: restore the default communication playback
                   // device after getUserMedia so Windows does not remain
                   // pointed at CABLE Input and silence the real speakers.
-                  bool commRestored = false;
-                  if (savedCommDeviceName != null) {
+                  if (_savedWindowsCommDeviceId != null) {
                     try {
-                      await Process.run('powershell', [
-                        '-NonInteractive',
-                        '-Command',
-                        'Set-AudioDevice -Name "$savedCommDeviceName"',
-                      ]);
-                      commRestored = true;
-                      await _winLog(
-                        '[CallManager] Restored default playback (PS): '
-                        '$savedCommDeviceName',
-                      );
-                    } catch (_) {}
-                  }
-                  if (!commRestored && savedCommDeviceId != null) {
-                    try {
-                      await Process.run('reg', [
+                      final restoreResult = await Process.run('reg', [
                         'add',
                         r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
                         '/v',
@@ -677,13 +675,26 @@ class CallManager {
                         '/t',
                         'REG_SZ',
                         '/d',
-                        savedCommDeviceId!,
+                        _savedWindowsCommDeviceId!,
                         '/f',
                       ]);
                       await _winLog(
-                        '[CallManager] Restored comm device id (reg).',
+                        '[CallManager] Restore comm device id: '
+                        'exitCode=${restoreResult.exitCode} '
+                        'stdout="${restoreResult.stdout}" '
+                        'stderr="${restoreResult.stderr}"',
                       );
-                    } catch (_) {}
+                    } catch (e) {
+                      await _winLog(
+                        '[CallManager] Registry restore FAILED with '
+                        'exception: $e',
+                      );
+                    }
+                  } else {
+                    await _winLog(
+                      '[CallManager] No saved comm device id to restore '
+                      '(it was never found/saved).',
+                    );
                   }
                 } else {
                   await _winLog(
@@ -1567,6 +1578,24 @@ class CallManager {
       // Bug 1 fix: ensure Windows loopback stream is stopped on call end.
       _windowsLoopbackStream?.getTracks().forEach((t) => t.stop());
       _windowsLoopbackStream = null;
+
+      if (Platform.isWindows && _savedWindowsCommDeviceId != null) {
+        try {
+          await Process.run('reg', [
+            'add',
+            r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+            '/v',
+            'DefaultCommunicationsDeviceId',
+            '/t',
+            'REG_SZ',
+            '/d',
+            _savedWindowsCommDeviceId!,
+            '/f',
+          ]);
+          await _winLog('[CallManager] Restored comm device on dispose.');
+        } catch (_) {}
+        _savedWindowsCommDeviceId = null;
+      }
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
       _localVideoStream?.getTracks().forEach((t) => t.stop());
