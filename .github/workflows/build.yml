@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
     inputs:
       branch_note:
-        description: 'Branch being tested'
         required: false
 
 jobs:
@@ -99,7 +98,6 @@ jobs:
           Version=1.0
           Type=Application
           Name=Wasla
-          Comment=Local P2P Communication Application
           Exec=wasla
           Icon=wasla
           Terminal=false
@@ -132,11 +130,63 @@ jobs:
           dpkg-deb --build "$STAGE_DIR" \
             "build/wasla_1.0.0_amd64.deb"
 
+      - name: Create Portable Tarball for All Distros
+        run: |
+          cd build/linux/x64/release/bundle
+          tar -czvf ../../../../../wasla_1.0.0_linux_portable.tar.gz *
+          cd ../../../../../
+
+      - name: Install AppImage Builder Tool
+        run: |
+          wget -O appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          sudo mv appimagetool /usr/local/bin/
+
+      - name: Create AppDir & Build AppImage
+        run: |
+          APPDIR="Wasla.AppDir"
+          mkdir -p "$APPDIR/usr/bin"
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+
+          cp -r build/linux/x64/release/bundle/* "$APPDIR/usr/bin/"
+          
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+          exec "${HERE}/usr/bin/wasla" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          if [ -f "assets/images/Wasla-logo.png" ]; then
+            cp assets/images/Wasla-logo.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/wasla.png"
+            cp assets/images/Wasla-logo.png "$APPDIR/wasla.png"
+          fi
+
+          cp build/debian_package/usr/share/applications/wasla.desktop "$APPDIR/wasla.desktop"
+
+          appimagetool "$APPDIR" Wasla-x86_64.AppImage
+
       - name: Upload Linux .deb
         uses: actions/upload-artifact@v4
         with:
           name: wasla-linux-deb
           path: build/wasla_1.0.0_amd64.deb
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
+
+      - name: Upload Linux Portable Tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasla-linux-portable
+          path: wasla_1.0.0_linux_portable.tar.gz
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasla-linux-appimage
+          path: Wasla-x86_64.AppImage
           retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
 
   build-windows:
@@ -159,15 +209,22 @@ jobs:
       - name: Download VB-Audio Virtual Cable
         shell: pwsh
         run: |
-          Write-Host "Downloading VB-Audio Virtual Cable..."
           Invoke-WebRequest `
             -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" `
             -OutFile "vbcable.zip" `
             -UseBasicParsing
           Expand-Archive -Path "vbcable.zip" `
             -DestinationPath "vbcable" -Force
-          Write-Host "Files in vbcable folder:"
-          Get-ChildItem "vbcable" | ForEach-Object { Write-Host $_.Name }
+
+      - name: Download SoundVolumeView
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://www.nirsoft.net/utils/soundvolumeview-x64.zip" `
+            -OutFile "svv.zip" `
+            -UseBasicParsing
+          Expand-Archive -Path "svv.zip" `
+            -DestinationPath "svv" -Force
 
       - name: Build Windows Setup EXE
         shell: pwsh
@@ -190,21 +247,22 @@ jobs:
           ArchitecturesInstallIn64BitMode=x64
 
           [Tasks]
-          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
-          Name: "vbcable"; Description: "Install VB-Audio Virtual Cable (enables screen share with system audio)"; GroupDescription: "Audio components:"; Flags: checkedonce
+          Name: "desktopicon"; Flags: checkedonce
+          Name: "vbcable"; Flags: checkedonce
 
           [Files]
           Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
           Source: "vbcable\*"; DestDir: "{tmp}\vbcable"; Flags: deleteafterinstall recursesubdirs; Tasks: vbcable
+          Source: "svv\SoundVolumeView.exe"; DestDir: "{app}"; Flags: ignoreversion
 
           [Icons]
           Name: "{group}\Wasla"; Filename: "{app}\wasla.exe"
           Name: "{autodesktop}\Wasla"; Filename: "{app}\wasla.exe"; Tasks: desktopicon
 
           [Run]
-          Filename: "{tmp}\vbcable\VBCABLE_Setup_x64.exe"; Parameters: "/S"; WorkingDir: "{tmp}\vbcable"; Flags: waituntilterminated runhidden; Tasks: vbcable; Description: "Installing VB-Audio Virtual Cable..."
-          Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 3 /f"; Flags: runhidden waituntilterminated; Description: "Configuring audio settings..."
-          Filename: "{app}\wasla.exe"; Description: "Launch Wasla"; Flags: nowait postinstall skipifsilent
+          Filename: "{tmp}\vbcable\VBCABLE_Setup_x64.exe"; Parameters: "/S"; WorkingDir: "{tmp}\vbcable"; Flags: waituntilterminated runhidden; Tasks: vbcable
+          Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 3 /f"; Flags: runhidden waituntilterminated
+          Filename: "{app}\wasla.exe"; Flags: nowait postinstall skipifsilent
 
           [UninstallRun]
           Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 1 /f"; Flags: runhidden waituntilterminated
@@ -239,11 +297,12 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: "Wasla Build #${{ github.run_number }}"
           body: |
-            Auto-release from main branch.
             Commit: ${{ github.sha }}
           files: |
             release-artifacts/wasla-android-apk/app-release.apk
             release-artifacts/wasla-linux-deb/wasla_1.0.0_amd64.deb
+            release-artifacts/wasla-linux-portable/wasla_1.0.0_linux_portable.tar.gz
+            release-artifacts/wasla-linux-appimage/Wasla-x86_64.AppImage
             release-artifacts/wasla-windows-setup/Wasla_Setup.exe
           draft: false
           prerelease: false

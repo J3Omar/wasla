@@ -105,6 +105,10 @@ class CallManager {
   MediaStreamTrack? _originalAudioTrack;
   // Windows loopback capture stream — stored so it can be stopped cleanly.
   MediaStream? _windowsLoopbackStream;
+  // Windows comm device restore — set before CABLE Output opens.
+  // SVV: human-readable device name used with SoundVolumeView /SetDefault.
+  String? _savedWindowsCommDeviceName;
+  // Registry: raw MMDevice GUID used as secondary fallback.
   String? _savedWindowsCommDeviceId;
 
   /// Current session snapshot — updated by the notifier.
@@ -432,6 +436,26 @@ class CallManager {
         _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
         _windowsLoopbackStream = null;
 
+        // Primary: SVV restore
+        if (_savedWindowsCommDeviceName != null) {
+          try {
+            final svvPath =
+                '${File(Platform.resolvedExecutable).parent.path}'
+                r'\SoundVolumeView.exe';
+            await Process.run(svvPath, [
+              '/SetDefault',
+              _savedWindowsCommDeviceName!,
+              '4',
+            ]);
+            await _winLog(
+              '[CallManager] SVV: Restored comm device on '
+              'screen share stop.',
+            );
+          } catch (_) {}
+          _savedWindowsCommDeviceName = null;
+        }
+
+        // Secondary: registry restore
         if (_savedWindowsCommDeviceId != null) {
           try {
             await Process.run('reg', [
@@ -446,7 +470,7 @@ class CallManager {
               '/f',
             ]);
             await _winLog(
-              '[CallManager] Restored comm device on '
+              '[CallManager] Registry: Restored comm device on '
               'screen share stop.',
             );
           } catch (_) {}
@@ -622,6 +646,60 @@ class CallManager {
                     '${loopbackDevice.label}',
                   );
 
+                  // ── PRIMARY: SoundVolumeView save ─────────────────────────
+                  // Save the current default communications Render device
+                  // (speakers) using SVV's CSV report before CABLE Output
+                  // opens and Windows reassigns the comm device.
+                  try {
+                    final svvPath =
+                        '${File(Platform.resolvedExecutable).parent.path}'
+                        r'\SoundVolumeView.exe';
+                    final csvPath =
+                        '${Directory.systemTemp.path}\\wasla_audio_state.csv';
+                    await Process.run(svvPath, ['/scomma', csvPath]);
+                    final csvFile = File(csvPath);
+                    if (await csvFile.exists()) {
+                      final lines = await csvFile.readAsLines();
+                      await _winLog(
+                        '[CallManager] SVV CSV captured '
+                        '(${lines.length} lines).',
+                      );
+                      // CSV columns (0-based, confirmed from live output):
+                      //  0=Name, 1=Type, 2=Direction, 6=Default Communications
+                      // We want: Type=Device, Direction=Render,
+                      //          DefaultComm="Render" (the speakers).
+                      for (final line in lines.skip(1)) {
+                        // skip header
+                        final cols = line.split(',');
+                        if (cols.length > 6 &&
+                            cols[1].trim() == 'Device' &&
+                            cols[2].trim() == 'Render' &&
+                            cols[6].trim() == 'Render') {
+                          _savedWindowsCommDeviceName = cols[0].trim();
+                          await _winLog(
+                            '[CallManager] SVV saved comm device name: '
+                            '"$_savedWindowsCommDeviceName"',
+                          );
+                          break;
+                        }
+                      }
+                      if (_savedWindowsCommDeviceName == null) {
+                        await _winLog(
+                          '[CallManager] SVV: no default comm Render device '
+                          'found in CSV — will rely on registry fallback.',
+                        );
+                      }
+                    } else {
+                      await _winLog(
+                        '[CallManager] SVV: CSV file not created '
+                        '(path=$csvPath).',
+                      );
+                    }
+                  } catch (e) {
+                    await _winLog('[CallManager] SVV save FAILED: $e');
+                  }
+
+                  // ── SECONDARY: Registry save ──────────────────────────────
                   // Bug 2/3 fix: save the current default communication
                   // playback device before opening CABLE Output, so Windows
                   // cannot silently switch the comm device to CABLE Input.
@@ -700,6 +778,34 @@ class CallManager {
                     }
                   }
 
+                  // ── PRIMARY: SoundVolumeView restore ─────────────────────
+                  // Run immediately after getUserMedia so Windows cannot
+                  // keep CABLE Input as the comm device.
+                  if (_savedWindowsCommDeviceName != null) {
+                    try {
+                      final svvPath =
+                          '${File(Platform.resolvedExecutable).parent.path}'
+                          r'\SoundVolumeView.exe';
+                      final svvResult = await Process.run(svvPath, [
+                        '/SetDefault',
+                        _savedWindowsCommDeviceName!,
+                        '4', // role 4 = Communications only
+                      ]);
+                      await _winLog(
+                        '[CallManager] SVV restore: '
+                        'exitCode=${svvResult.exitCode} '
+                        'stderr="${svvResult.stderr.toString().trim()}"',
+                      );
+                    } catch (e) {
+                      await _winLog('[CallManager] SVV restore FAILED: $e');
+                    }
+                  } else {
+                    await _winLog(
+                      '[CallManager] SVV: no saved name — skipping SVV restore.',
+                    );
+                  }
+
+                  // ── SECONDARY: Registry restore ───────────────────────────
                   // Bug 2/3 fix: restore the default communication playback
                   // device after getUserMedia so Windows does not remain
                   // pointed at CABLE Input and silence the real speakers.
@@ -1627,22 +1733,45 @@ class CallManager {
       _windowsLoopbackStream?.getTracks().forEach((t) => t.stop());
       _windowsLoopbackStream = null;
 
-      if (Platform.isWindows && _savedWindowsCommDeviceId != null) {
-        try {
-          await Process.run('reg', [
-            'add',
-            r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-            '/v',
-            'DefaultCommunicationsDeviceId',
-            '/t',
-            'REG_SZ',
-            '/d',
-            _savedWindowsCommDeviceId!,
-            '/f',
-          ]);
-          await _winLog('[CallManager] Restored comm device on dispose.');
-        } catch (_) {}
-        _savedWindowsCommDeviceId = null;
+      if (Platform.isWindows) {
+        // Primary: SVV restore
+        if (_savedWindowsCommDeviceName != null) {
+          try {
+            final svvPath =
+                '${File(Platform.resolvedExecutable).parent.path}'
+                r'\SoundVolumeView.exe';
+            await Process.run(svvPath, [
+              '/SetDefault',
+              _savedWindowsCommDeviceName!,
+              '4',
+            ]);
+            await _winLog(
+              '[CallManager] SVV: Restored comm device on dispose.',
+            );
+          } catch (_) {}
+          _savedWindowsCommDeviceName = null;
+        }
+
+        // Secondary: registry restore
+        if (_savedWindowsCommDeviceId != null) {
+          try {
+            await Process.run('reg', [
+              'add',
+              r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
+              '/v',
+              'DefaultCommunicationsDeviceId',
+              '/t',
+              'REG_SZ',
+              '/d',
+              _savedWindowsCommDeviceId!,
+              '/f',
+            ]);
+            await _winLog(
+              '[CallManager] Registry: Restored comm device on dispose.',
+            );
+          } catch (_) {}
+          _savedWindowsCommDeviceId = null;
+        }
       }
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
