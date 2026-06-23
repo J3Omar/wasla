@@ -248,8 +248,8 @@ jobs:
           ArchitecturesInstallIn64BitMode=x64
 
           [Tasks]
-          Name: "desktopicon"; Flags: checkedonce
-          Name: "vbcable"; Flags: checkedonce
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
+          Name: "vbcable"; Description: "Install VB-Audio Virtual Cable (required for system audio share)"; GroupDescription: "Audio components:"; Flags: checkedonce
 
           [Files]
           Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -263,7 +263,7 @@ jobs:
           [Run]
           Filename: "{tmp}\vbcable\VBCABLE_Setup_x64.exe"; Parameters: "/S"; WorkingDir: "{tmp}\vbcable"; Flags: waituntilterminated runhidden; Tasks: vbcable
           Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 3 /f"; Flags: runhidden waituntilterminated
-          Filename: "{app}\wasla.exe"; Flags: nowait postinstall skipifsilent
+          Filename: "{app}\wasla.exe"; Description: "Launch Wasla"; Flags: nowait postinstall skipifsilent
 
           [UninstallRun]
           Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 1 /f"; Flags: runhidden waituntilterminated
