@@ -58,7 +58,8 @@ jobs:
             libgstreamer-plugins-bad1.0-dev \
             gstreamer1.0-plugins-good \
             gstreamer1.0-plugins-bad \
-            pulseaudio-utils
+            pulseaudio-utils \
+            libfuse2
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -166,7 +167,7 @@ jobs:
 
           cp build/debian_package/usr/share/applications/wasla.desktop "$APPDIR/wasla.desktop"
 
-          appimagetool "$APPDIR" Wasla-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 appimagetool "$APPDIR" Wasla-x86_64.AppImage
 
       - name: Upload Linux .deb
         uses: actions/upload-artifact@v4
