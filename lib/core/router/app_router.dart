@@ -25,8 +25,11 @@ abstract final class AppRoutes {
   static const String callActive = '/call/active';
 }
 
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 /// App router — screens are added as features are implemented
 final GoRouter appRouter = GoRouter(
+  navigatorKey: rootNavigatorKey,
   initialLocation: AppRoutes.splash,
   debugLogDiagnostics: true,
   routes: [

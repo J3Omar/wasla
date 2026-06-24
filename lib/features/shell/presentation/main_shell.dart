@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -141,62 +142,95 @@ class _MainShellState extends ConsumerState<MainShell> {
             session.state == CallState.connecting ||
             session.state == CallState.outgoing);
 
-    return Scaffold(
-      backgroundColor: AppColors.bgPrimary,
-      body: Column(
-        children: [
-          if (isInCall)
-            SafeArea(
-              bottom: false,
-              child: GestureDetector(
-                onTap: () {
-                  if (session.state == CallState.outgoing) {
-                    context.push('/call/outgoing');
-                  } else {
-                    context.push('/call/active'); // connecting or active
-                  }
-                },
-                child: Container(
-                  width: double.infinity,
-                  color: Colors.amber.withValues(alpha: 0.9),
-                  padding: const EdgeInsets.only(
-                    top: 4,
-                    bottom: 4,
-                    left: 16,
-                    right: 16,
-                  ),
-                  height: 32,
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.phone_in_talk_rounded,
-                        size: 14,
-                        color: Colors.black87,
-                      ),
-                      SizedBox(width: 6),
-                      Text(
-                        'In Call — tap to return',
-                        style: TextStyle(
+    final hasActiveTransfers = FileTransferService.instance.hasActiveTransfers;
+    final hasActiveOperation = isInCall || hasActiveTransfers;
+
+    return PopScope(
+      canPop: !hasActiveOperation,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Active call or transfer in progress"),
+            content: const Text(
+              "Closing the app now will end your call or interrupt a file transfer. Are you sure you want to exit?",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text("Exit anyway"),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldPop == true) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bgPrimary,
+        body: Column(
+          children: [
+            if (isInCall)
+              SafeArea(
+                bottom: false,
+                child: GestureDetector(
+                  onTap: () {
+                    if (session.state == CallState.outgoing) {
+                      context.push('/call/outgoing');
+                    } else {
+                      context.push('/call/active'); // connecting or active
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    color: Colors.amber.withValues(alpha: 0.9),
+                    padding: const EdgeInsets.only(
+                      top: 4,
+                      bottom: 4,
+                      left: 16,
+                      right: 16,
+                    ),
+                    height: 32,
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.phone_in_talk_rounded,
+                          size: 14,
                           color: Colors.black87,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                    ],
+                        SizedBox(width: 6),
+                        Text(
+                          'In Call — tap to return',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
+            Expanded(
+              child: IndexedStack(index: _currentIndex, children: _tabs),
             ),
-          Expanded(
-            child: IndexedStack(index: _currentIndex, children: _tabs),
-          ),
-        ],
-      ),
-      bottomNavigationBar: _WaslaNavBar(
-        currentIndex: _currentIndex,
-        totalUnread: totalUnread,
-        onTap: (i) => setState(() => _currentIndex = i),
+          ],
+        ),
+        bottomNavigationBar: _WaslaNavBar(
+          currentIndex: _currentIndex,
+          totalUnread: totalUnread,
+          onTap: (i) => setState(() => _currentIndex = i),
+        ),
       ),
     );
   }

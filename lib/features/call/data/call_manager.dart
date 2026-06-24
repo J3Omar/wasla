@@ -10,6 +10,7 @@ import '../domain/call_state.dart';
 import '../../../core/network/network_utils.dart';
 import 'call_audio_service.dart';
 import 'linux_audio_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/utils/background_service_manager.dart';
 
@@ -28,12 +29,37 @@ final _rtcConfig = <String, dynamic>{
 
 /// Manages the WebRTC PeerConnection for a voice call.
 /// One instance per call session — create a fresh one for each call.
+// ── Windows file-based logging ──────────────────────────────────────────────
+
+Future<void> _winLog(String message) async {
+  debugPrint(message);
+  if (!Platform.isWindows) return;
+  try {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docsDir.path}\\Wasla');
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    final file = File('${dir.path}\\debug.log');
+    file.writeAsStringSync(
+      '${DateTime.now()}: $message\n',
+      mode: FileMode.append,
+    );
+  } catch (_) {}
+}
+
+// ── CallManager ───────────────────────────────────────────────────────────────
+
 class CallManager {
+  static CallManager? instance;
+
   CallManager({
     required this.selfUuid,
     required this.selfName,
     required this.onStateChanged,
-  });
+  }) {
+    instance = this;
+  }
 
   final String selfUuid;
   final String selfName;
@@ -77,9 +103,23 @@ class CallManager {
   Timer? _iceEndCallTimer;
   Timer? _finalEndCallTimer;
   MediaStreamTrack? _originalAudioTrack;
+  // Windows loopback capture stream — stored so it can be stopped cleanly.
+  MediaStream? _windowsLoopbackStream;
+  // Windows comm device restore — set before CABLE Output opens.
+  // SVV: human-readable device name used with SoundVolumeView /SetDefault.
+  // ignore: unused_field
+  String? _savedWindowsCommDeviceName;
+  // Registry: raw MMDevice GUID used as secondary fallback.
+  // ignore: unused_field
+  String? _savedWindowsCommDeviceId;
 
   /// Current session snapshot — updated by the notifier.
   CallSession _session = CallSession.idle;
+
+  bool get isInCall =>
+      _session.state == CallState.active ||
+      _session.state == CallState.connecting ||
+      _session.state == CallState.outgoing;
 
   // ── Outgoing call (caller side) ───────────────────────────────────────────
 
@@ -104,6 +144,66 @@ class CallManager {
     BackgroundServiceManager.instance.release('call');
   }
 
+  /// Checks if a virtual device (e.g. CABLE Output) has been left as the
+  /// default communications input after a crashed session, and restores the
+  /// real physical microphone using SoundVolumeView. Called at call start so
+  /// every new call self-heals without requiring a manual reset.
+  ///
+  /// DISABLED: Windows system audio capture disabled in this version.
+  /// To re-enable: uncomment the body of this method.
+  // ignore: unused_element
+  Future<void> _winHealCommDevice() async {
+    // DISABLED — Windows system audio capture disabled in this version.
+    // ignore: dead_code
+    if (true) return;
+    // ignore: unreachable_from_main
+    // if (!Platform.isWindows) return;
+    // try {
+    //   final svvPath =
+    //       '${File(Platform.resolvedExecutable).parent.path}'
+    //       r'\SoundVolumeView.exe';
+    //   final csvPath =
+    //       '${Directory.systemTemp.path}\\wasla_heal_check.csv';
+    //   await Process.run(svvPath, ['/scomma', csvPath]);
+    //   final csvFile = File(csvPath);
+    //   if (!await csvFile.exists()) {
+    //     await _winLog('[CallManager] Heal: CSV not created, skipping.');
+    //     return;
+    //   }
+    //   final lines = await csvFile.readAsLines();
+    //   String? currentCommInput;
+    //   String? realMicName;
+    //   for (final line in lines.skip(1)) {
+    //     final cols = line.split(',');
+    //     if (cols.length <= 6) continue;
+    //     if (cols[1].trim() != 'Device' || cols[2].trim() != 'Capture') continue;
+    //     final name = cols[0].trim();
+    //     final isDefaultComm = cols[6].trim() == 'Capture';
+    //     if (isDefaultComm) { currentCommInput = name; }
+    //     final nameLower = name.toLowerCase();
+    //     final isVirtual = nameLower.contains('cable') ||
+    //         nameLower.contains('vb-audio') || nameLower.contains('vb audio') ||
+    //         nameLower.contains('virtual') || nameLower.contains('loopback') ||
+    //         nameLower.contains('stereo mix') || nameLower.contains('wave out');
+    //     if (!isVirtual && realMicName == null) { realMicName = name; }
+    //   }
+    //   await _winLog('[CallManager] Heal check: currentCommInput="$currentCommInput" realMicName="$realMicName"');
+    //   if (currentCommInput == null) { await _winLog('[CallManager] Heal: no default comm input found.'); return; }
+    //   final currentLower = currentCommInput.toLowerCase();
+    //   final isVirtualComm = currentLower.contains('cable') ||
+    //       currentLower.contains('vb-audio') || currentLower.contains('vb audio') ||
+    //       currentLower.contains('virtual') || currentLower.contains('loopback') ||
+    //       currentLower.contains('stereo mix') || currentLower.contains('wave out');
+    //   if (!isVirtualComm) { await _winLog('[CallManager] Heal: comm input is already real device "$currentCommInput" — no action needed.'); return; }
+    //   if (realMicName == null) { await _winLog('[CallManager] Heal: virtual comm input detected but no real mic found in CSV — cannot heal.'); return; }
+    //   await _winLog('[CallManager] Heal: virtual device "$currentCommInput" is comm input — restoring to "$realMicName".');
+    //   final result = await Process.run(svvPath, ['/SetDefault', realMicName, '4']);
+    //   await _winLog('[CallManager] Heal restore: exitCode=${result.exitCode}');
+    // } catch (e) {
+    //   await _winLog('[CallManager] Heal FAILED: $e');
+    // }
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
 
   /// Start an outgoing call to [peerId] at [peerIp].
@@ -119,6 +219,8 @@ class CallManager {
     if (Platform.isLinux) {
       await LinuxAudioService().restoreIfBroken();
     }
+    // Self-heal: disabled — Windows system audio capture disabled in this version.
+    // await _winHealCommDevice();
     _session = CallSession(
       state: CallState.outgoing,
       peerId: peerId,
@@ -221,6 +323,8 @@ class CallManager {
     if (Platform.isLinux) {
       await LinuxAudioService().restoreIfBroken();
     }
+    // Self-heal: disabled — Windows system audio capture disabled in this version.
+    // await _winHealCommDevice();
     _session = CallSession(
       state: CallState.connecting,
       peerId: callerId,
@@ -382,6 +486,17 @@ class CallManager {
   Future<void> toggleScreenShare({bool withAudio = false}) async {
     if (_session.isScreenSharing) {
       // STOP SCREEN SHARE: Revert to Audio-Only Call
+
+      // Diagnostic: log entry state before any changes
+      if (Platform.isWindows) {
+        await _winLog(
+          '[CallManager] STOP SCREEN SHARE triggered. '
+          'isScreenSharing=${_session.isScreenSharing} '
+          '_originalAudioTrack=${_originalAudioTrack?.id} '
+          '_windowsLoopbackStream=${_windowsLoopbackStream != null}',
+        );
+      }
+
       _screenStream?.getTracks().forEach((t) => t.stop());
       _screenStream = null;
       _localRenderer?.srcObject = null;
@@ -392,6 +507,28 @@ class CallManager {
       );
       onStateChanged(_session);
 
+      // Windows comm device restore — DISABLED (system audio capture disabled in this version).
+      // To re-enable: uncomment the SVV and registry restore blocks below.
+      // if (Platform.isWindows) {
+      //   // Primary: SVV restore
+      //   if (_savedWindowsCommDeviceName != null) {
+      //     try {
+      //       final svvPath = '${File(Platform.resolvedExecutable).parent.path}' r'\SoundVolumeView.exe';
+      //       await Process.run(svvPath, ['/SetDefault', _savedWindowsCommDeviceName!, '4']);
+      //       await _winLog('[CallManager] SVV: Restored comm device on screen share stop.');
+      //     } catch (_) {}
+      //     _savedWindowsCommDeviceName = null;
+      //   }
+      //   // Secondary: registry restore
+      //   if (_savedWindowsCommDeviceId != null) {
+      //     try {
+      //       await Process.run('reg', ['add', r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator', '/v', 'DefaultCommunicationsDeviceId', '/t', 'REG_SZ', '/d', _savedWindowsCommDeviceId!, '/f']);
+      //       await _winLog('[CallManager] Registry: Restored comm device on screen share stop.');
+      //     } catch (_) {}
+      //     _savedWindowsCommDeviceId = null;
+      //   }
+      // }
+
       if (_pc != null) {
         final senders = await _pc!.getSenders();
         for (var sender in senders) {
@@ -399,11 +536,24 @@ class CallManager {
             await _pc!.removeTrack(sender);
           } else if (sender.track?.kind == 'audio' &&
               _originalAudioTrack != null) {
+            await _winLog(
+              '[CallManager] Restoring original audio track: '
+              '${_originalAudioTrack?.id}',
+            );
             await sender.replaceTrack(_originalAudioTrack!);
             _originalAudioTrack = null;
+            await _winLog('[CallManager] Original audio track restored.');
           }
         }
       }
+
+      // Windows loopback stream stop — DISABLED (system audio capture disabled in this version).
+      // To re-enable: uncomment the block below.
+      // if (Platform.isWindows && _windowsLoopbackStream != null) {
+      //   _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
+      //   _windowsLoopbackStream = null;
+      //   await _winLog('[CallManager] Windows loopback stream stopped (after sender restore).');
+      // }
 
       if (Platform.isLinux) {
         debugPrint(
@@ -475,9 +625,30 @@ class CallManager {
                           }
                         : false),
             });
-            debugPrint(
+            await _winLog(
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
+
+            // 2b. Windows system audio capture — DISABLED in this version.
+            // Screen share works (video only) on Windows.
+            // To re-enable: uncomment the block below and restore
+            // the SVV/registry save/restore calls that follow it.
+            if (Platform.isWindows &&
+                withAudio &&
+                _screenStream!.getAudioTracks().isEmpty) {
+              debugPrint(
+                '[CallManager] Windows: system audio capture disabled in this version.',
+              );
+              // DISABLED BLOCK — preserved for future re-enable:
+              // try {
+              //   await _winLog('[CallManager] Windows: no audio track from getDisplayMedia. Searching for loopback device...');
+              //   final devices = await navigator.mediaDevices.enumerateDevices();
+              //   ... (full loopback enumeration, SVV save, getUserMedia, replaceTrack, SVV restore, registry restore)
+              //   See git history or commented code in previous commits to restore.
+              // } catch (e) {
+              //   debugPrint('[CallManager] Windows loopback fallback failed: $e');
+              // }
+            }
 
             // 3. Inject the System Audio as a separate Microphone Track
             if (Platform.isLinux && withAudio && _screenStream != null) {
@@ -670,25 +841,50 @@ class CallManager {
   static const _kMaxPort = 46200;
 
   Future<MediaStream> _getLocalAudioStream() async {
+    // Windows uses a broader AGC/processing set (incl. googAutoGainControl2)
+    // to compensate for the lack of hardware-assisted audio paths on Windows.
+    // All other platforms keep the original constraints unchanged.
+    final micAudioConstraints = Platform.isWindows
+        ? <String, dynamic>{
+            'echoCancellation': true,
+            'autoGainControl': true,
+            'noiseSuppression': true,
+            'googEchoCancellation': true,
+            'googAutoGainControl': true,
+            'googAutoGainControl2': true,
+            'googNoiseSuppression': true,
+            'googHighpassFilter': true,
+          }
+        : <String, dynamic>{
+            'mandatory': {
+              'echoCancellation': true,
+              'noiseSuppression': true,
+              'autoGainControl': true,
+              'googEchoCancellation': true,
+              'googAutoGainControl': true,
+              'googNoiseSuppression': true,
+              'googHighpassFilter': true,
+              'googTypingNoiseDetection': true,
+              'googAudioMirroring': false,
+              'googEchoCancellationMobile': true,
+            },
+            'optional': [],
+          };
     final Map<String, dynamic> mediaConstraints = {
-      'audio': {
-        'mandatory': {
-          'echoCancellation': true,
-          'noiseSuppression': true,
-          'autoGainControl': true,
-          'googEchoCancellation': true,
-          'googAutoGainControl': true,
-          'googNoiseSuppression': true,
-          'googHighpassFilter': true,
-          'googTypingNoiseDetection': true,
-          'googAudioMirroring': false,
-          'googEchoCancellationMobile': true,
-        },
-        'optional': [],
-      },
+      'audio': micAudioConstraints,
       'video': false,
     };
-    return await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    final stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    if (Platform.isWindows) {
+      for (final track in stream.getAudioTracks()) {
+        await _winLog(
+          '[CallManager] Windows local audio track: '
+          'id=${track.id} enabled=${track.enabled} '
+          'muted=${track.muted}',
+        );
+      }
+    }
+    return stream;
   }
 
   Future<RTCPeerConnection> _createPeerConnection() async {
@@ -1315,6 +1511,35 @@ class CallManager {
     await Future.delayed(const Duration(seconds: 1));
 
     try {
+      // Bug 1 fix: ensure Windows loopback stream is stopped on call end.
+      // DISABLED: system audio capture disabled in this version — loopback
+      // stream is never opened, so nothing to stop.
+      // _windowsLoopbackStream?.getTracks().forEach((t) => t.stop());
+      _windowsLoopbackStream = null;
+
+      // Windows comm device restore on dispose — DISABLED in this version.
+      // To re-enable: uncomment the SVV and registry restore blocks below.
+      if (Platform.isWindows) {
+        // SVV restore — DISABLED:
+        // if (_savedWindowsCommDeviceName != null) {
+        //   try {
+        //     final svvPath = '${File(Platform.resolvedExecutable).parent.path}' r'\SoundVolumeView.exe';
+        //     await Process.run(svvPath, ['/SetDefault', _savedWindowsCommDeviceName!, '4']);
+        //     await _winLog('[CallManager] SVV: Restored comm device on dispose.');
+        //   } catch (_) {}
+        //   _savedWindowsCommDeviceName = null;
+        // }
+        // Registry restore — DISABLED:
+        // if (_savedWindowsCommDeviceId != null) {
+        //   try {
+        //     await Process.run('reg', ['add', r'HKCU\...', '/v', 'DefaultCommunicationsDeviceId', '/t', 'REG_SZ', '/d', _savedWindowsCommDeviceId!, '/f']);
+        //     await _winLog('[CallManager] Registry: Restored comm device on dispose.');
+        //   } catch (_) {}
+        //   _savedWindowsCommDeviceId = null;
+        // }
+        _savedWindowsCommDeviceName = null;
+        _savedWindowsCommDeviceId = null;
+      }
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
       _localVideoStream?.getTracks().forEach((t) => t.stop());

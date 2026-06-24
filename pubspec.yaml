@@ -1,8 +1,8 @@
 name: wasla
-description: "وصلة — LAN Communication App. Chat, voice & video calls, file sharing on your local network without internet."
+description: "Wasla — LAN Communication App. Chat, voice & video calls, file sharing on your local network without internet."
 publish_to: 'none'
 
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.11.5
@@ -16,19 +16,19 @@ dependencies:
   go_router: ^14.6.2
 
   # --- Device Identity ---
-  flutter_secure_storage: ^9.2.4    # حفظ UUID + اسم الجهاز بأمان
-  uuid: ^4.5.1                      # توليد UUID فريد لكل جهاز
+  flutter_secure_storage: ^9.2.4    # Securely save UUID + device name
+  uuid: ^4.5.1                      # Generate unique UUID per device
 
   # --- Device Discovery ---
-  multicast_dns: ^0.3.2+3           # mDNS — اكتشاف الأجهزة على الـ LAN
-  network_info_plus: ^6.1.4         # جلب الـ Local IP للجهاز
-  device_info_plus: ^10.1.2         # قراءة اسم الجهاز (model/hostname)
+  multicast_dns: ^0.3.2+3           # mDNS — discover devices on LAN
+  network_info_plus: ^6.1.4         # Get device Local IP
+  device_info_plus: ^10.1.2         # Read device name (model/hostname)
 
   # --- WebRTC (Audio + Video + Data Channel) ---
   flutter_webrtc: ^0.14.1           # P2P calls + screen share + file transfer
 
   # --- Local WebSocket Signaling ---
-  web_socket_channel: ^3.0.3        # Local WebSocket Server للـ Signaling
+  web_socket_channel: ^3.0.3        # Local WebSocket Server for Signaling
 
   # --- Local Database (Chat History) ---
   drift: ^2.25.0                    # SQLite wrapper — actively maintained
@@ -41,8 +41,8 @@ dependencies:
   app_settings: ^5.1.1              # Open specific settings screens
 
   # --- File Sharing ---
-  file_picker: ^8.3.7               # اختيار الملفات للإرسال
-  path_provider: ^2.1.5             # مسار حفظ الملفات الواردة
+  file_picker: ^8.3.7               # Select files to send
+  path_provider: ^2.1.5             # Path to save incoming files
   disk_space_plus: ^0.2.6           # check free disk space on receiver
   crypto: ^3.0.3                    # MD5 checksum verification
   mime: ^1.0.5                      # detect file type from extension
@@ -59,6 +59,7 @@ dependencies:
   flutter_riverpod: ^2.6.1          # State management
   google_fonts: ^6.2.1              # Hanken Grotesk + Inter + Geist (no .ttf files needed)
   intl: ^0.19.0                     # Date/time formatting for chat timestamps
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:
