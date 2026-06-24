@@ -420,6 +420,17 @@ class CallManager {
   Future<void> toggleScreenShare({bool withAudio = false}) async {
     if (_session.isScreenSharing) {
       // STOP SCREEN SHARE: Revert to Audio-Only Call
+
+      // Diagnostic: log entry state before any changes
+      if (Platform.isWindows) {
+        await _winLog(
+          '[CallManager] STOP SCREEN SHARE triggered. '
+          'isScreenSharing=${_session.isScreenSharing} '
+          '_originalAudioTrack=${_originalAudioTrack?.id} '
+          '_windowsLoopbackStream=${_windowsLoopbackStream != null}',
+        );
+      }
+
       _screenStream?.getTracks().forEach((t) => t.stop());
       _screenStream = null;
       _localRenderer?.srcObject = null;
@@ -430,12 +441,12 @@ class CallManager {
       );
       onStateChanged(_session);
 
-      // Bug 1 fix: stop the Windows loopback capture stream so CABLE Output
-      // does not keep its capture session alive after screen share ends.
-      if (Platform.isWindows && _windowsLoopbackStream != null) {
-        _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
-        _windowsLoopbackStream = null;
-
+      // Windows comm device restore (SVV primary + registry secondary).
+      // NOTE: We do NOT stop _windowsLoopbackStream here yet — the loopback
+      // track is still live inside the WebRTC audio sender. Stopping it before
+      // replaceTrack() would leave the sender with a dead/stopped track and
+      // silence audio permanently. The stream is stopped AFTER replaceTrack().
+      if (Platform.isWindows) {
         // Primary: SVV restore
         if (_savedWindowsCommDeviceName != null) {
           try {
@@ -485,10 +496,27 @@ class CallManager {
             await _pc!.removeTrack(sender);
           } else if (sender.track?.kind == 'audio' &&
               _originalAudioTrack != null) {
+            await _winLog(
+              '[CallManager] Restoring original audio track: '
+              '${_originalAudioTrack?.id}',
+            );
             await sender.replaceTrack(_originalAudioTrack!);
             _originalAudioTrack = null;
+            await _winLog('[CallManager] Original audio track restored.');
           }
         }
+      }
+
+      // Bug 1 fix: NOW stop the Windows loopback capture stream — AFTER
+      // replaceTrack() has already swapped the sender back to the real mic.
+      // Stopping it before replaceTrack was the root cause of audio silence.
+      if (Platform.isWindows && _windowsLoopbackStream != null) {
+        _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
+        _windowsLoopbackStream = null;
+        await _winLog(
+          '[CallManager] Windows loopback stream stopped '
+          '(after sender restore).',
+        );
       }
 
       if (Platform.isLinux) {
