@@ -207,25 +207,25 @@ jobs:
       - name: Build Windows Application
         run: flutter build windows --release
 
-      - name: Download VB-Audio Virtual Cable
-        shell: pwsh
-        run: |
-          Invoke-WebRequest `
-            -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" `
-            -OutFile "vbcable.zip" `
-            -UseBasicParsing
-          Expand-Archive -Path "vbcable.zip" `
-            -DestinationPath "vbcable" -Force
+      # - name: Download VB-Audio Virtual Cable
+      #   shell: pwsh
+      #   run: |
+      #     Invoke-WebRequest `
+      #       -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" `
+      #       -OutFile "vbcable.zip" `
+      #       -UseBasicParsing
+      #     Expand-Archive -Path "vbcable.zip" `
+      #       -DestinationPath "vbcable" -Force
 
-      - name: Download SoundVolumeView
-        shell: pwsh
-        run: |
-          Invoke-WebRequest `
-            -Uri "https://www.nirsoft.net/utils/soundvolumeview-x64.zip" `
-            -OutFile "svv.zip" `
-            -UseBasicParsing
-          Expand-Archive -Path "svv.zip" `
-            -DestinationPath "svv" -Force
+      # - name: Download SoundVolumeView
+      #   shell: pwsh
+      #   run: |
+      #     Invoke-WebRequest `
+      #       -Uri "https://www.nirsoft.net/utils/soundvolumeview-x64.zip" `
+      #       -OutFile "svv.zip" `
+      #       -UseBasicParsing
+      #     Expand-Archive -Path "svv.zip" `
+      #       -DestinationPath "svv" -Force
 
       - name: Build Windows Setup EXE
         shell: pwsh
@@ -249,19 +249,19 @@ jobs:
 
           [Tasks]
           Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
-          Name: "vbcable"; Description: "Install VB-Audio Virtual Cable (required for system audio share)"; GroupDescription: "Audio components:"; Flags: checkedonce
+          ; Name: "vbcable"; Description: "Install VB-Audio Virtual Cable (required for system audio share)"; GroupDescription: "Audio components:"; Flags: checkedonce
 
           [Files]
           Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-          Source: "vbcable\*"; DestDir: "{tmp}\vbcable"; Flags: deleteafterinstall recursesubdirs; Tasks: vbcable
-          Source: "svv\SoundVolumeView.exe"; DestDir: "{app}"; Flags: ignoreversion
+          ; Source: "vbcable\*"; DestDir: "{tmp}\vbcable"; Flags: deleteafterinstall recursesubdirs; Tasks: vbcable
+          ; Source: "svv\SoundVolumeView.exe"; DestDir: "{app}"; Flags: ignoreversion
 
           [Icons]
           Name: "{group}\Wasla"; Filename: "{app}\wasla.exe"
           Name: "{autodesktop}\Wasla"; Filename: "{app}\wasla.exe"; Tasks: desktopicon
 
           [Run]
-          Filename: "{tmp}\vbcable\VBCABLE_Setup_x64.exe"; Parameters: "/S"; WorkingDir: "{tmp}\vbcable"; Flags: waituntilterminated runhidden; Tasks: vbcable
+          ; Filename: "{tmp}\vbcable\VBCABLE_Setup_x64.exe"; Parameters: "/S"; WorkingDir: "{tmp}\vbcable"; Flags: waituntilterminated runhidden; Tasks: vbcable
           Filename: "reg.exe"; Parameters: "add ""HKCU\SOFTWARE\Microsoft\Multimedia\Audio"" /v UserDuckingPreference /t REG_DWORD /d 3 /f"; Flags: runhidden waituntilterminated
           Filename: "{app}\wasla.exe"; Description: "Launch Wasla"; Flags: nowait postinstall skipifsilent
 
