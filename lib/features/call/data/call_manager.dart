@@ -107,8 +107,10 @@ class CallManager {
   MediaStream? _windowsLoopbackStream;
   // Windows comm device restore — set before CABLE Output opens.
   // SVV: human-readable device name used with SoundVolumeView /SetDefault.
+  // ignore: unused_field
   String? _savedWindowsCommDeviceName;
   // Registry: raw MMDevice GUID used as secondary fallback.
+  // ignore: unused_field
   String? _savedWindowsCommDeviceId;
 
   /// Current session snapshot — updated by the notifier.
@@ -142,6 +144,66 @@ class CallManager {
     BackgroundServiceManager.instance.release('call');
   }
 
+  /// Checks if a virtual device (e.g. CABLE Output) has been left as the
+  /// default communications input after a crashed session, and restores the
+  /// real physical microphone using SoundVolumeView. Called at call start so
+  /// every new call self-heals without requiring a manual reset.
+  ///
+  /// DISABLED: Windows system audio capture disabled in this version.
+  /// To re-enable: uncomment the body of this method.
+  // ignore: unused_element
+  Future<void> _winHealCommDevice() async {
+    // DISABLED — Windows system audio capture disabled in this version.
+    // ignore: dead_code
+    if (true) return;
+    // ignore: unreachable_from_main
+    // if (!Platform.isWindows) return;
+    // try {
+    //   final svvPath =
+    //       '${File(Platform.resolvedExecutable).parent.path}'
+    //       r'\SoundVolumeView.exe';
+    //   final csvPath =
+    //       '${Directory.systemTemp.path}\\wasla_heal_check.csv';
+    //   await Process.run(svvPath, ['/scomma', csvPath]);
+    //   final csvFile = File(csvPath);
+    //   if (!await csvFile.exists()) {
+    //     await _winLog('[CallManager] Heal: CSV not created, skipping.');
+    //     return;
+    //   }
+    //   final lines = await csvFile.readAsLines();
+    //   String? currentCommInput;
+    //   String? realMicName;
+    //   for (final line in lines.skip(1)) {
+    //     final cols = line.split(',');
+    //     if (cols.length <= 6) continue;
+    //     if (cols[1].trim() != 'Device' || cols[2].trim() != 'Capture') continue;
+    //     final name = cols[0].trim();
+    //     final isDefaultComm = cols[6].trim() == 'Capture';
+    //     if (isDefaultComm) { currentCommInput = name; }
+    //     final nameLower = name.toLowerCase();
+    //     final isVirtual = nameLower.contains('cable') ||
+    //         nameLower.contains('vb-audio') || nameLower.contains('vb audio') ||
+    //         nameLower.contains('virtual') || nameLower.contains('loopback') ||
+    //         nameLower.contains('stereo mix') || nameLower.contains('wave out');
+    //     if (!isVirtual && realMicName == null) { realMicName = name; }
+    //   }
+    //   await _winLog('[CallManager] Heal check: currentCommInput="$currentCommInput" realMicName="$realMicName"');
+    //   if (currentCommInput == null) { await _winLog('[CallManager] Heal: no default comm input found.'); return; }
+    //   final currentLower = currentCommInput.toLowerCase();
+    //   final isVirtualComm = currentLower.contains('cable') ||
+    //       currentLower.contains('vb-audio') || currentLower.contains('vb audio') ||
+    //       currentLower.contains('virtual') || currentLower.contains('loopback') ||
+    //       currentLower.contains('stereo mix') || currentLower.contains('wave out');
+    //   if (!isVirtualComm) { await _winLog('[CallManager] Heal: comm input is already real device "$currentCommInput" — no action needed.'); return; }
+    //   if (realMicName == null) { await _winLog('[CallManager] Heal: virtual comm input detected but no real mic found in CSV — cannot heal.'); return; }
+    //   await _winLog('[CallManager] Heal: virtual device "$currentCommInput" is comm input — restoring to "$realMicName".');
+    //   final result = await Process.run(svvPath, ['/SetDefault', realMicName, '4']);
+    //   await _winLog('[CallManager] Heal restore: exitCode=${result.exitCode}');
+    // } catch (e) {
+    //   await _winLog('[CallManager] Heal FAILED: $e');
+    // }
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
 
   /// Start an outgoing call to [peerId] at [peerIp].
@@ -157,6 +219,8 @@ class CallManager {
     if (Platform.isLinux) {
       await LinuxAudioService().restoreIfBroken();
     }
+    // Self-heal: disabled — Windows system audio capture disabled in this version.
+    // await _winHealCommDevice();
     _session = CallSession(
       state: CallState.outgoing,
       peerId: peerId,
@@ -259,6 +323,8 @@ class CallManager {
     if (Platform.isLinux) {
       await LinuxAudioService().restoreIfBroken();
     }
+    // Self-heal: disabled — Windows system audio capture disabled in this version.
+    // await _winHealCommDevice();
     _session = CallSession(
       state: CallState.connecting,
       peerId: callerId,
@@ -441,53 +507,27 @@ class CallManager {
       );
       onStateChanged(_session);
 
-      // Windows comm device restore (SVV primary + registry secondary).
-      // NOTE: We do NOT stop _windowsLoopbackStream here yet — the loopback
-      // track is still live inside the WebRTC audio sender. Stopping it before
-      // replaceTrack() would leave the sender with a dead/stopped track and
-      // silence audio permanently. The stream is stopped AFTER replaceTrack().
-      if (Platform.isWindows) {
-        // Primary: SVV restore
-        if (_savedWindowsCommDeviceName != null) {
-          try {
-            final svvPath =
-                '${File(Platform.resolvedExecutable).parent.path}'
-                r'\SoundVolumeView.exe';
-            await Process.run(svvPath, [
-              '/SetDefault',
-              _savedWindowsCommDeviceName!,
-              '4',
-            ]);
-            await _winLog(
-              '[CallManager] SVV: Restored comm device on '
-              'screen share stop.',
-            );
-          } catch (_) {}
-          _savedWindowsCommDeviceName = null;
-        }
-
-        // Secondary: registry restore
-        if (_savedWindowsCommDeviceId != null) {
-          try {
-            await Process.run('reg', [
-              'add',
-              r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-              '/v',
-              'DefaultCommunicationsDeviceId',
-              '/t',
-              'REG_SZ',
-              '/d',
-              _savedWindowsCommDeviceId!,
-              '/f',
-            ]);
-            await _winLog(
-              '[CallManager] Registry: Restored comm device on '
-              'screen share stop.',
-            );
-          } catch (_) {}
-          _savedWindowsCommDeviceId = null;
-        }
-      }
+      // Windows comm device restore — DISABLED (system audio capture disabled in this version).
+      // To re-enable: uncomment the SVV and registry restore blocks below.
+      // if (Platform.isWindows) {
+      //   // Primary: SVV restore
+      //   if (_savedWindowsCommDeviceName != null) {
+      //     try {
+      //       final svvPath = '${File(Platform.resolvedExecutable).parent.path}' r'\SoundVolumeView.exe';
+      //       await Process.run(svvPath, ['/SetDefault', _savedWindowsCommDeviceName!, '4']);
+      //       await _winLog('[CallManager] SVV: Restored comm device on screen share stop.');
+      //     } catch (_) {}
+      //     _savedWindowsCommDeviceName = null;
+      //   }
+      //   // Secondary: registry restore
+      //   if (_savedWindowsCommDeviceId != null) {
+      //     try {
+      //       await Process.run('reg', ['add', r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator', '/v', 'DefaultCommunicationsDeviceId', '/t', 'REG_SZ', '/d', _savedWindowsCommDeviceId!, '/f']);
+      //       await _winLog('[CallManager] Registry: Restored comm device on screen share stop.');
+      //     } catch (_) {}
+      //     _savedWindowsCommDeviceId = null;
+      //   }
+      // }
 
       if (_pc != null) {
         final senders = await _pc!.getSenders();
@@ -507,17 +547,13 @@ class CallManager {
         }
       }
 
-      // Bug 1 fix: NOW stop the Windows loopback capture stream — AFTER
-      // replaceTrack() has already swapped the sender back to the real mic.
-      // Stopping it before replaceTrack was the root cause of audio silence.
-      if (Platform.isWindows && _windowsLoopbackStream != null) {
-        _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
-        _windowsLoopbackStream = null;
-        await _winLog(
-          '[CallManager] Windows loopback stream stopped '
-          '(after sender restore).',
-        );
-      }
+      // Windows loopback stream stop — DISABLED (system audio capture disabled in this version).
+      // To re-enable: uncomment the block below.
+      // if (Platform.isWindows && _windowsLoopbackStream != null) {
+      //   _windowsLoopbackStream!.getTracks().forEach((t) => t.stop());
+      //   _windowsLoopbackStream = null;
+      //   await _winLog('[CallManager] Windows loopback stream stopped (after sender restore).');
+      // }
 
       if (Platform.isLinux) {
         debugPrint(
@@ -593,307 +629,25 @@ class CallManager {
               '[CallManager] Desktop screen audio tracks: ${_screenStream!.getAudioTracks().length}',
             );
 
-            // 2b. Windows fallback: getDisplayMedia rarely
-            // provides a system-audio loopback track on
-            // Windows via flutter_webrtc. Try to find a
-            // "Stereo Mix"-style loopback recording device
-            // and use it instead.
+            // 2b. Windows system audio capture — DISABLED in this version.
+            // Screen share works (video only) on Windows.
+            // To re-enable: uncomment the block below and restore
+            // the SVV/registry save/restore calls that follow it.
             if (Platform.isWindows &&
                 withAudio &&
                 _screenStream!.getAudioTracks().isEmpty) {
-              try {
-                await _winLog(
-                  '[CallManager] Windows: no audio track from '
-                  'getDisplayMedia. Searching for a loopback '
-                  'recording device (e.g. "Stereo Mix")...',
-                );
-                final devices = await navigator.mediaDevices.enumerateDevices();
-                await _winLog(
-                  '[CallManager] Windows: enumerating audio input '
-                  'devices for loopback search...',
-                );
-                for (final d in devices) {
-                  if (d.kind == 'audioinput') {
-                    await _winLog(
-                      '[CallManager]   device: label="${d.label}" '
-                      'id="${d.deviceId}"',
-                    );
-                  }
-                }
-                MediaDeviceInfo? realMicDevice;
-                for (final d in devices) {
-                  if (d.kind == 'audioinput') {
-                    final label = d.label.toLowerCase();
-                    final isVirtual =
-                        label.contains('stereo mix') ||
-                        label.contains('loopback') ||
-                        label.contains('what u hear') ||
-                        label.contains('wave out') ||
-                        label.contains('rec. playback') ||
-                        label.contains('cable output') ||
-                        label.contains('cable-output') ||
-                        label.contains('vb-audio') ||
-                        label.contains('vb-cable') ||
-                        label.contains('virtual audio') ||
-                        label.contains('virtual-audio');
-                    if (!isVirtual) {
-                      realMicDevice = d;
-                      break;
-                    }
-                  }
-                }
-                if (realMicDevice != null) {
-                  await _winLog(
-                    '[CallManager] Identified real physical mic: '
-                    '${realMicDevice.label} (${realMicDevice.deviceId})',
-                  );
-                }
-                MediaDeviceInfo? loopbackDevice;
-                for (final d in devices) {
-                  if (d.kind == 'audioinput') {
-                    final label = d.label.toLowerCase();
-                    if (label.contains('stereo mix') ||
-                        label.contains('loopback') ||
-                        label.contains('what u hear') ||
-                        label.contains('wave out') ||
-                        label.contains('rec. playback') ||
-                        label.contains('cable output') ||
-                        label.contains('cable-output') ||
-                        label.contains('vb-audio') ||
-                        label.contains('vb-cable') ||
-                        label.contains('virtual audio') ||
-                        label.contains('virtual-audio')) {
-                      loopbackDevice = d;
-                      break;
-                    }
-                  }
-                }
-                if (loopbackDevice != null) {
-                  await _winLog(
-                    '[CallManager] Found loopback device: '
-                    '${loopbackDevice.label}',
-                  );
-
-                  // ── PRIMARY: SoundVolumeView save ─────────────────────────
-                  // Save the current default communications Render device
-                  // (speakers) using SVV's CSV report before CABLE Output
-                  // opens and Windows reassigns the comm device.
-                  try {
-                    final svvPath =
-                        '${File(Platform.resolvedExecutable).parent.path}'
-                        r'\SoundVolumeView.exe';
-                    final csvPath =
-                        '${Directory.systemTemp.path}\\wasla_audio_state.csv';
-                    await Process.run(svvPath, ['/scomma', csvPath]);
-                    final csvFile = File(csvPath);
-                    if (await csvFile.exists()) {
-                      final lines = await csvFile.readAsLines();
-                      await _winLog(
-                        '[CallManager] SVV CSV captured '
-                        '(${lines.length} lines).',
-                      );
-                      // CSV columns (0-based, confirmed from live output):
-                      //  0=Name, 1=Type, 2=Direction, 6=Default Communications
-                      // We want: Type=Device, Direction=Render,
-                      //          DefaultComm="Render" (the speakers).
-                      for (final line in lines.skip(1)) {
-                        // skip header
-                        final cols = line.split(',');
-                        if (cols.length > 6 &&
-                            cols[1].trim() == 'Device' &&
-                            cols[2].trim() == 'Render' &&
-                            cols[6].trim() == 'Render') {
-                          _savedWindowsCommDeviceName = cols[0].trim();
-                          await _winLog(
-                            '[CallManager] SVV saved comm device name: '
-                            '"$_savedWindowsCommDeviceName"',
-                          );
-                          break;
-                        }
-                      }
-                      if (_savedWindowsCommDeviceName == null) {
-                        await _winLog(
-                          '[CallManager] SVV: no default comm Render device '
-                          'found in CSV — will rely on registry fallback.',
-                        );
-                      }
-                    } else {
-                      await _winLog(
-                        '[CallManager] SVV: CSV file not created '
-                        '(path=$csvPath).',
-                      );
-                    }
-                  } catch (e) {
-                    await _winLog('[CallManager] SVV save FAILED: $e');
-                  }
-
-                  // ── SECONDARY: Registry save ──────────────────────────────
-                  // Bug 2/3 fix: save the current default communication
-                  // playback device before opening CABLE Output, so Windows
-                  // cannot silently switch the comm device to CABLE Input.
-                  try {
-                    final regResult = await Process.run('reg', [
-                      'query',
-                      r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-                      '/v',
-                      'DefaultCommunicationsDeviceId',
-                    ]);
-                    final regOut = regResult.stdout.toString();
-                    await _winLog(
-                      '[CallManager] RAW reg query output: "$regOut" '
-                      'exitCode=${regResult.exitCode} '
-                      'stderr="${regResult.stderr}"',
-                    );
-                    final match = RegExp(
-                      r'DefaultCommunicationsDeviceId\s+\S+\s+(\S+)',
-                    ).firstMatch(regOut);
-                    if (match != null) {
-                      _savedWindowsCommDeviceId = match.group(1);
-                      await _winLog(
-                        '[CallManager] Saved comm device id (reg): '
-                        '$_savedWindowsCommDeviceId',
-                      );
-                    } else {
-                      await _winLog(
-                        '[CallManager] Registry key/value not found — '
-                        'falling back to real physical mic device id '
-                        'as restore target.',
-                      );
-                      _savedWindowsCommDeviceId = realMicDevice?.deviceId;
-                    }
-                  } catch (e) {
-                    await _winLog(
-                      '[CallManager] Registry save FAILED with '
-                      'exception: $e',
-                    );
-                  }
-
-                  // Open the loopback capture device
-                  final loopbackStream = await navigator.mediaDevices
-                      .getUserMedia({
-                        'video': false,
-                        'audio': {
-                          'deviceId': {'exact': loopbackDevice.deviceId},
-                          'mandatory': {
-                            'echoCancellation': false,
-                            'googEchoCancellation': false,
-                            'autoGainControl': false,
-                            'googAutoGainControl': false,
-                            'noiseSuppression': false,
-                            'googNoiseSuppression': false,
-                          },
-                          'optional': [],
-                        },
-                      });
-
-                  // Bug 1 fix: store the stream so we can stop it later.
-                  _windowsLoopbackStream = loopbackStream;
-
-                  if (loopbackStream.getAudioTracks().isNotEmpty &&
-                      _pc != null) {
-                    final loopbackTrack = loopbackStream.getAudioTracks().first;
-                    final senders = await _pc!.getSenders();
-                    for (var sender in senders) {
-                      if (sender.track?.kind == 'audio') {
-                        _originalAudioTrack ??= sender.track;
-                        await sender.replaceTrack(loopbackTrack);
-                        await _winLog(
-                          '[CallManager] Windows loopback audio '
-                          'routed to peer connection.',
-                        );
-                        break;
-                      }
-                    }
-                  }
-
-                  // ── PRIMARY: SoundVolumeView restore ─────────────────────
-                  // Run immediately after getUserMedia so Windows cannot
-                  // keep CABLE Input as the comm device.
-                  if (_savedWindowsCommDeviceName != null) {
-                    try {
-                      final svvPath =
-                          '${File(Platform.resolvedExecutable).parent.path}'
-                          r'\SoundVolumeView.exe';
-                      final svvResult = await Process.run(svvPath, [
-                        '/SetDefault',
-                        _savedWindowsCommDeviceName!,
-                        '4', // role 4 = Communications only
-                      ]);
-                      await _winLog(
-                        '[CallManager] SVV restore: '
-                        'exitCode=${svvResult.exitCode} '
-                        'stderr="${svvResult.stderr.toString().trim()}"',
-                      );
-                    } catch (e) {
-                      await _winLog('[CallManager] SVV restore FAILED: $e');
-                    }
-                  } else {
-                    await _winLog(
-                      '[CallManager] SVV: no saved name — skipping SVV restore.',
-                    );
-                  }
-
-                  // ── SECONDARY: Registry restore ───────────────────────────
-                  // Bug 2/3 fix: restore the default communication playback
-                  // device after getUserMedia so Windows does not remain
-                  // pointed at CABLE Input and silence the real speakers.
-                  if (_savedWindowsCommDeviceId != null) {
-                    try {
-                      final restoreResult = await Process.run('reg', [
-                        'add',
-                        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-                        '/v',
-                        'DefaultCommunicationsDeviceId',
-                        '/t',
-                        'REG_SZ',
-                        '/d',
-                        _savedWindowsCommDeviceId!,
-                        '/f',
-                      ]);
-                      await _winLog(
-                        '[CallManager] Restore comm device id: '
-                        'exitCode=${restoreResult.exitCode} '
-                        'stdout="${restoreResult.stdout}" '
-                        'stderr="${restoreResult.stderr}"',
-                      );
-                      final verifyResult = await Process.run('reg', [
-                        'query',
-                        r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-                        '/v',
-                        'DefaultCommunicationsDeviceId',
-                      ]);
-                      await _winLog(
-                        '[CallManager] VERIFY after restore: '
-                        '${verifyResult.stdout.toString().trim()}',
-                      );
-                    } catch (e) {
-                      await _winLog(
-                        '[CallManager] Registry restore FAILED with '
-                        'exception: $e',
-                      );
-                    }
-                  } else {
-                    await _winLog(
-                      '[CallManager] No saved comm device id to restore '
-                      '(it was never found/saved).',
-                    );
-                  }
-                } else {
-                  await _winLog(
-                    '[CallManager] No loopback/"Stereo Mix" '
-                    'device found. System audio sharing is '
-                    'unavailable on this Windows machine unless '
-                    'the user enables "Stereo Mix" (or a similar '
-                    'loopback recording device) in Windows Sound '
-                    'settings > Recording devices.',
-                  );
-                }
-              } catch (e) {
-                debugPrint(
-                  '[CallManager] Windows loopback fallback '
-                  'failed: $e',
-                );
-              }
+              debugPrint(
+                '[CallManager] Windows: system audio capture disabled in this version.',
+              );
+              // DISABLED BLOCK — preserved for future re-enable:
+              // try {
+              //   await _winLog('[CallManager] Windows: no audio track from getDisplayMedia. Searching for loopback device...');
+              //   final devices = await navigator.mediaDevices.enumerateDevices();
+              //   ... (full loopback enumeration, SVV save, getUserMedia, replaceTrack, SVV restore, registry restore)
+              //   See git history or commented code in previous commits to restore.
+              // } catch (e) {
+              //   debugPrint('[CallManager] Windows loopback fallback failed: $e');
+              // }
             }
 
             // 3. Inject the System Audio as a separate Microphone Track
@@ -1758,48 +1512,33 @@ class CallManager {
 
     try {
       // Bug 1 fix: ensure Windows loopback stream is stopped on call end.
-      _windowsLoopbackStream?.getTracks().forEach((t) => t.stop());
+      // DISABLED: system audio capture disabled in this version — loopback
+      // stream is never opened, so nothing to stop.
+      // _windowsLoopbackStream?.getTracks().forEach((t) => t.stop());
       _windowsLoopbackStream = null;
 
+      // Windows comm device restore on dispose — DISABLED in this version.
+      // To re-enable: uncomment the SVV and registry restore blocks below.
       if (Platform.isWindows) {
-        // Primary: SVV restore
-        if (_savedWindowsCommDeviceName != null) {
-          try {
-            final svvPath =
-                '${File(Platform.resolvedExecutable).parent.path}'
-                r'\SoundVolumeView.exe';
-            await Process.run(svvPath, [
-              '/SetDefault',
-              _savedWindowsCommDeviceName!,
-              '4',
-            ]);
-            await _winLog(
-              '[CallManager] SVV: Restored comm device on dispose.',
-            );
-          } catch (_) {}
-          _savedWindowsCommDeviceName = null;
-        }
-
-        // Secondary: registry restore
-        if (_savedWindowsCommDeviceId != null) {
-          try {
-            await Process.run('reg', [
-              'add',
-              r'HKCU\SOFTWARE\Microsoft\Multimedia\Audio\DefaultEndpointAggregator',
-              '/v',
-              'DefaultCommunicationsDeviceId',
-              '/t',
-              'REG_SZ',
-              '/d',
-              _savedWindowsCommDeviceId!,
-              '/f',
-            ]);
-            await _winLog(
-              '[CallManager] Registry: Restored comm device on dispose.',
-            );
-          } catch (_) {}
-          _savedWindowsCommDeviceId = null;
-        }
+        // SVV restore — DISABLED:
+        // if (_savedWindowsCommDeviceName != null) {
+        //   try {
+        //     final svvPath = '${File(Platform.resolvedExecutable).parent.path}' r'\SoundVolumeView.exe';
+        //     await Process.run(svvPath, ['/SetDefault', _savedWindowsCommDeviceName!, '4']);
+        //     await _winLog('[CallManager] SVV: Restored comm device on dispose.');
+        //   } catch (_) {}
+        //   _savedWindowsCommDeviceName = null;
+        // }
+        // Registry restore — DISABLED:
+        // if (_savedWindowsCommDeviceId != null) {
+        //   try {
+        //     await Process.run('reg', ['add', r'HKCU\...', '/v', 'DefaultCommunicationsDeviceId', '/t', 'REG_SZ', '/d', _savedWindowsCommDeviceId!, '/f']);
+        //     await _winLog('[CallManager] Registry: Restored comm device on dispose.');
+        //   } catch (_) {}
+        //   _savedWindowsCommDeviceId = null;
+        // }
+        _savedWindowsCommDeviceName = null;
+        _savedWindowsCommDeviceId = null;
       }
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
